@@ -1,5 +1,5 @@
 /*
- * AO-09 + AO-22: CONTROL: Kontroll & Schemaläggning
+ * AO-09 + AO-02A: CONTROL: Kontroll & Schemaläggning (FIXED)
  */
 
 import { evaluate } from '../rules.js';
@@ -100,63 +100,74 @@ function renderSchedulerSection(state) {
         'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December',
     ];
 
+    const activePeople = state.people.filter((p) => p.isActive).length;
+
     return `
         <section class="scheduler-section">
             <h3>🤖 Föreslå schema</h3>
             <p class="section-desc">
                 Generera ett schemaförslag baserat på bemanningsbehov per veckodag.
+                <br>
+                <strong>Aktiv personal:</strong> ${activePeople} personer
             </p>
 
-            <div class="scheduler-form">
-                <div class="form-group">
-                    <label for="scheduler-month">Välj månad:</label>
-                    <select id="scheduler-month" class="month-select">
-                        ${monthNames.map((name, idx) => `
-                            <option value="${idx + 1}" ${idx + 1 === selectedMonth ? 'selected' : ''}>
-                                ${name}
-                            </option>
-                        `).join('')}
-                    </select>
+            ${activePeople === 0 ? `
+                <div class="alert alert-error">
+                    <h4>❌ Ingen aktiv personal</h4>
+                    <p>Lägg till minst 1 person i <strong>"Personal"</strong>-vyn innan du genererar schema.</p>
                 </div>
-
-                <div class="need-inputs">
-                    <h4>Bemanningsbehov per veckodag (antal A):</h4>
-                    <div class="need-grid">
-                        ${['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön']
-                            .map((day, idx) => `
-                            <div class="need-input-group">
-                                <label for="need-${idx}">${day}:</label>
-                                <input 
-                                    type="number" 
-                                    id="need-${idx}" 
-                                    class="need-input"
-                                    min="0"
-                                    max="20"
-                                    value="${idx < 5 ? '6' : '4'}"
-                                    placeholder="0"
-                                >
-                            </div>
-                        `).join('')}
+            ` : `
+                <div class="scheduler-form">
+                    <div class="form-group">
+                        <label for="scheduler-month">Välj månad:</label>
+                        <select id="scheduler-month" class="month-select">
+                            ${monthNames.map((name, idx) => `
+                                <option value="${idx + 1}" ${idx + 1 === selectedMonth ? 'selected' : ''}>
+                                    ${name}
+                                </option>
+                            `).join('')}
+                        </select>
                     </div>
-                </div>
 
-                <div class="scheduler-actions">
-                    <button id="generate-schedule-btn" class="btn btn-primary">
-                        ✨ Föreslå schema
-                    </button>
-                    <p class="warning-text">
-                        ⚠️ Detta kommer att ersätta all A-status för vald månad.
-                    </p>
-                </div>
+                    <div class="need-inputs">
+                        <h4>Bemanningsbehov per veckodag (antal A):</h4>
+                        <div class="need-grid">
+                            ${['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön']
+                                .map((day, idx) => `
+                                <div class="need-input-group">
+                                    <label for="need-${idx}">${day}:</label>
+                                    <input 
+                                        type="number" 
+                                        id="need-${idx}" 
+                                        class="need-input"
+                                        min="0"
+                                        max="20"
+                                        value="${idx < 5 ? '6' : '4'}"
+                                        placeholder="0"
+                                    >
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
 
-                <div id="scheduler-result" class="scheduler-result hidden"></div>
-            </div>
+                    <div class="scheduler-actions">
+                        <button id="generate-schedule-btn" class="btn btn-primary">
+                            ✨ Föreslå schema
+                        </button>
+                        <p class="warning-text">
+                            ⚠️ Detta kommer att ersätta all A-status för vald månad.
+                        </p>
+                    </div>
+
+                    <div id="scheduler-result" class="scheduler-result hidden"></div>
+                </div>
+            `}
         </section>
     `;
 }
 
 /**
- * AO-09: Hantera schemagenering
+ * AO-02A + AO-09: Hantera schemagenering med FAIL-CLOSED
  */
 function handleGenerateSchedule(store, container, ctx) {
     try {
@@ -168,35 +179,51 @@ function handleGenerateSchedule(store, container, ctx) {
         for (let i = 0; i < 7; i++) {
             const input = container.querySelector(`#need-${i}`);
             const value = parseInt(input.value, 10) || 0;
+            
+            if (value < 0 || value > 20) {
+                throw new Error(`Dag ${i + 1}: Behov måste vara mellan 0–20`);
+            }
+            
             needByWeekday.push(value);
         }
 
         console.log('🔄 Genererar schema för månad', selectedMonth, 'med behov:', needByWeekday);
 
-        if (!confirm('Är du säker? Detta ersätter all A-status för vald månad.')) {
+        if (!confirm('Är du säker? Detta ersätter all A-status för vald månad. Originaldata kan inte återställas.')) {
             return;
         }
 
         const state = store.getState();
-        const result = generate(state, {
-            year: 2026,
-            month: selectedMonth,
-            needByWeekday,
-        });
+
+        // AO-02A: Försöka generera INNAN något ändras
+        let result;
+        try {
+            result = generate(state, {
+                year: 2026,
+                month: selectedMonth,
+                needByWeekday,
+            });
+        } catch (genErr) {
+            console.error('❌ Generering misslyckades:', genErr);
+            
+            // FAIL-CLOSED: Visa fel utan att ändra något
+            const resultDiv = container.querySelector('#scheduler-result');
+            resultDiv.innerHTML = `
+                <div class="result-box error">
+                    <h4>❌ Fel vid generering</h4>
+                    <p>${escapeHtml(genErr.message)}</p>
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: #999;">
+                        ℹ️ Originalschemat är oförändrat. Försök åtgärda problemet och försök igen.
+                    </p>
+                </div>
+            `;
+            resultDiv.classList.remove('hidden');
+            return; // STOPPA här, spara INGENTING
+        }
 
         console.log('✓ Schema genererat:', result);
 
-        // Spara förslaget
-        store.update((s) => {
-            // Kopiera över entries från proposedState
-            result.proposedState.schedule.months.forEach((proposedMonth, idx) => {
-                s.schedule.months[idx].days = proposedMonth.days;
-            });
-            s.meta.updatedAt = Date.now();
-            return s;
-        });
-
-        // Visa resultat
+        // FIRST: Visa resultat
         const resultDiv = container.querySelector('#scheduler-result');
         const vacancyList = result.vacancies.length > 0
             ? `<ul>${result.vacancies.map((v) => `<li>${v.date}: ${v.needed} behövs</li>`).join('')}</ul>`
@@ -212,7 +239,7 @@ function handleGenerateSchedule(store, container, ctx) {
                 </div>
                 <div class="result-notes">
                     <h5>Anteckningar:</h5>
-                    <ul>${result.notes.map((note) => `<li>${note}</li>`).join('')}</ul>
+                    <ul>${result.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>
                 </div>
                 ${result.vacancies.length > 0 ? `
                     <div class="result-vacancies">
@@ -226,22 +253,48 @@ function handleGenerateSchedule(store, container, ctx) {
         resultDiv.innerHTML = html;
         resultDiv.classList.remove('hidden');
 
+        // SECOND: Spara till store (EFTER validering passerad)
+        store.update((s) => {
+            // Kopiera över entries från proposedState
+            result.proposedState.schedule.months.forEach((proposedMonth, idx) => {
+                s.schedule.months[idx].days = proposedMonth.days;
+            });
+            s.meta.updatedAt = Date.now();
+            return s;
+        });
+
+        console.log('✓ Schema sparat i store');
+
         // Uppdatera regler-banner
         setTimeout(() => {
             renderControl(container, ctx);
         }, 500);
 
     } catch (err) {
-        console.error('Schemagenerings-fel', err);
+        console.error('Oväntad fel i handleGenerateSchedule:', err);
         const resultDiv = container.querySelector('#scheduler-result');
         resultDiv.innerHTML = `
             <div class="result-box error">
-                <h4>❌ Fel vid generering</h4>
-                <p>${err.message}</p>
+                <h4>❌ Oväntad fel</h4>
+                <p>${escapeHtml(err.message)}</p>
             </div>
         `;
         resultDiv.classList.remove('hidden');
     }
+}
+
+/**
+ * Escape HTML för säkerhet
+ */
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    };
+    return String(text).replace(/[&<>"']/g, (m) => map[m]);
 }
 
 /**
@@ -266,8 +319,8 @@ function renderWarningsSection(result) {
                 <ul class="warnings-list">
                     ${p0Warnings.slice(0, 10).map((w) => `
                         <li class="warning-item p0">
-                            <span class="warning-code">${w.code}</span>
-                            <span class="warning-text">${w.message}</span>
+                            <span class="warning-code">${escapeHtml(w.code)}</span>
+                            <span class="warning-text">${escapeHtml(w.message)}</span>
                         </li>
                     `).join('')}
                 </ul>
@@ -283,8 +336,8 @@ function renderWarningsSection(result) {
                 <ul class="warnings-list">
                     ${p1Warnings.slice(0, 10).map((w) => `
                         <li class="warning-item p1">
-                            <span class="warning-code">${w.code}</span>
-                            <span class="warning-text">${w.message}</span>
+                            <span class="warning-code">${escapeHtml(w.code)}</span>
+                            <span class="warning-text">${escapeHtml(w.message)}</span>
                         </li>
                     `).join('')}
                 </ul>
