@@ -52,6 +52,42 @@ export function renderHome(container, ctx) {
                 </div>
             </div>
 
+            <div class="quick-links">
+                <h3>Snabb-navigation</h3>
+                <div class="links-grid">
+                    <a href="#/personal" class="quick-link">
+                        <span class="link-icon">👥</span>
+                        <span class="link-text">Personal</span>
+                        <span class="link-desc">Hantera personaldata</span>
+                    </a>
+                    <a href="#/calendar" class="quick-link">
+                        <span class="link-icon">📅</span>
+                        <span class="link-text">Kalender</span>
+                        <span class="link-desc">Redigera schema</span>
+                    </a>
+                    <a href="#/control" class="quick-link">
+                        <span class="link-icon">🔍</span>
+                        <span class="link-text">Kontroll</span>
+                        <span class="link-desc">Regelöversikt</span>
+                    </a>
+                    <a href="#/summary" class="quick-link">
+                        <span class="link-icon">📊</span>
+                        <span class="link-text">Sammanställning</span>
+                        <span class="link-desc">Timsummering</span>
+                    </a>
+                    <a href="#/rules" class="quick-link">
+                        <span class="link-icon">📋</span>
+                        <span class="link-text">Regler</span>
+                        <span class="link-desc">HRF-avtalsregler</span>
+                    </a>
+                    <a href="#/export" class="quick-link">
+                        <span class="link-icon">💾</span>
+                        <span class="link-text">Export/Import</span>
+                        <span class="link-desc">Säkerhetskopiering</span>
+                    </a>
+                </div>
+            </div>
+
             <div class="info-section">
                 <h3>ℹ️ Om Schema-Program</h3>
                 <div class="info-content">
