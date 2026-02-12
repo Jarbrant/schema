@@ -256,10 +256,14 @@ function loadGroupFiltersSafe() {
 }
 
 /* ========================================================================
-   BLOCK 4: AO-02D — GROUP SHIFTS (WORKING HOURS)
+   BLOCK 4: AO-02D — GROUP SHIFTS (REDESIGNED WITH TABLE & EDIT MODAL)
    ======================================================================== */
 
+/**
+ * AO-02D REDESIGN: Rendera grupp-pass-koppling som tabell (inspirerad av Grundpass)
+ */
 function renderGroupShiftsSection(state) {
+    /* AO-02D: Hämta grupper, pass och kopplingen */
     const groups = state.groups || {};
     const shifts = state.shifts || {};
     const groupShifts = state.groupShifts || {};
@@ -276,165 +280,267 @@ function renderGroupShiftsSection(state) {
         `;
     }
 
+    /* AO-02D REDESIGN: Tabell istället för checkboxar */
+    const tableRows = groupIds.map((groupId) => {
+        const group = groups[groupId];
+        const selectedShifts = groupShifts[groupId] || [];
+        
+        /* Skapa shift-badgar för denna grupp */
+        const shiftBadges = selectedShifts
+            .map((shiftId) => {
+                const shift = shifts[shiftId];
+                return `
+                    <span class="shift-badge" style="background: ${shift.color}; color: ${shift.color === '#95a5a6' ? '#000' : '#fff'};">
+                        ${shift.shortName}
+                    </span>
+                `;
+            })
+            .join('');
+
+        const noShiftsMsg = selectedShifts.length === 0 
+            ? '<span style="color: #999; font-style: italic;">Ingen pass vald</span>'
+            : '';
+
+        return `
+            <tr class="shift-row">
+                <td class="shift-group-name">
+                    <span class="shift-group-dot" style="background: ${group.color};"></span>
+                    <strong>${group.name}</strong>
+                </td>
+                <td class="shift-badges-cell">
+                    ${shiftBadges || noShiftsMsg}
+                </td>
+                <td class="shift-actions-cell">
+                    <button class="btn-shift-edit" data-group="${groupId}" title="Redigera">
+                        ✏️
+                    </button>
+                    <button class="btn-shift-delete" data-group="${groupId}" title="Radera">
+                        🗑️
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
     return `
         <section class="group-shifts-section">
-            <h3>⏰ Arbetstider per grupp (Pass)</h3>
+            <h3>⏰ Arbetstider per grupp</h3>
             <p class="section-desc">
-                Välj vilka pass varje grupp kan jobba. Du kan sedan välja specifikt pass när du planerar.
+                Välj vilka pass varje grupp kan jobba.
             </p>
 
             <div class="shifts-legend">
                 <h4>Tillgängliga pass:</h4>
                 <div class="shifts-legend-grid">
-                    ${shiftIds
-                        .map((shiftId) => {
-                            const shift = shifts[shiftId];
-                            const timeRange =
-                                shift?.startTime && shift?.endTime ? `${escapeHtml(shift.startTime)}–${escapeHtml(shift.endTime)}` : 'Flex (sätts per dag)';
-                            const color = typeof shift?.color === 'string' ? shift.color : '#777';
-                            const shortName = escapeHtml(shift?.shortName ?? '');
-                            const name = escapeHtml(shift?.name ?? shiftId);
-
-                            return `
-                                <div class="shift-legend-item">
-                                    <span class="shift-color-box" style="background: ${escapeHtml(color)};"></span>
-                                    <strong>${shortName}</strong> = ${name} (${timeRange})
-                                </div>
-                            `;
-                        })
-                        .join('')}
+                    ${shiftIds.map((shiftId) => {
+                        const shift = shifts[shiftId];
+                        const timeRange = shift.startTime && shift.endTime 
+                            ? `${shift.startTime}–${shift.endTime}`
+                            : 'Flex';
+                        return `
+                            <div class="shift-legend-item">
+                                <span class="shift-color-box" style="background: ${shift.color};"></span>
+                                <span>
+                                    <strong>${shift.shortName}</strong> = ${shift.name} (${timeRange})
+                                </span>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             </div>
 
+            <!-- AO-02D REDESIGN: Tabell istället för checkboxar -->
             <div class="group-shifts-table-wrapper">
                 <table class="group-shifts-table">
                     <thead>
                         <tr>
                             <th>Grupp</th>
-                            <th colspan="${shiftIds.length}" class="text-center">Pass (bocka de som gruppen kan jobba)</th>
+                            <th>Pass</th>
+                            <th style="width: 100px;">Åtgärder</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${groupIds
-                            .map((groupId) => {
-                                const group = groups[groupId];
-                                const selectedShifts = Array.isArray(groupShifts[groupId]) ? groupShifts[groupId] : [];
-
-                                const groupColor = typeof group?.color === 'string' ? group.color : '#777';
-                                const groupName = escapeHtml(group?.name ?? groupId);
-
-                                return `
-                                    <tr>
-                                        <td class="group-name-cell">
-                                            <span class="group-color-dot" style="background: ${escapeHtml(groupColor)}; border-color: ${escapeHtml(groupColor)};"></span>
-                                            <strong>${groupName}</strong>
-                                        </td>
-                                        ${shiftIds
-                                            .map((shiftId) => {
-                                                const shift = shifts[shiftId];
-                                                const isSelected = selectedShifts.includes(shiftId);
-                                                const shiftColor = typeof shift?.color === 'string' ? shift.color : '#777';
-                                                const shortName = escapeHtml(shift?.shortName ?? '');
-
-                                                return `
-                                                    <td class="text-center shift-checkbox-cell">
-                                                        <label class="shift-checkbox-label">
-                                                            <input
-                                                                type="checkbox"
-                                                                class="shift-checkbox"
-                                                                data-group="${escapeHtml(groupId)}"
-                                                                data-shift="${escapeHtml(shiftId)}"
-                                                                ${isSelected ? 'checked' : ''}
-                                                            >
-                                                            <span class="shift-checkbox-visual" style="background: ${escapeHtml(shiftColor)};"></span>
-                                                            <span class="shift-checkbox-text">${shortName}</span>
-                                                        </label>
-                                                    </td>
-                                                `;
-                                            })
-                                            .join('')}
-                                    </tr>
-                                `;
-                            })
-                            .join('')}
+                        ${tableRows}
                     </tbody>
                 </table>
             </div>
 
-            <div class="group-shifts-actions">
-                <button id="save-group-shifts-btn" class="btn btn-primary" type="button">
-                    💾 Spara arbetstider
-                </button>
-                <div id="group-shifts-result" class="group-shifts-result hidden"></div>
+            <div id="group-shifts-result" class="group-shifts-result hidden"></div>
+
+            <!-- AO-02D REDESIGN: Edit-modal -->
+            <div id="shift-edit-modal" class="shift-edit-modal hidden">
+                <div class="shift-edit-modal-content">
+                    <div class="shift-edit-modal-header">
+                        <h3 id="shift-edit-modal-title">Redigera arbetstider</h3>
+                        <button class="btn-close-modal" id="btn-close-modal">✕</button>
+                    </div>
+
+                    <div class="shift-edit-modal-body">
+                        <p id="shift-edit-group-name"></p>
+                        
+                        <div class="shift-edit-checkboxes">
+                            <!-- Fylla dynamiskt -->
+                        </div>
+                    </div>
+
+                    <div class="shift-edit-modal-footer">
+                        <button id="btn-save-shifts" class="btn btn-primary">Spara ändringar</button>
+                        <button id="btn-cancel-modal" class="btn btn-secondary">Avbryt</button>
+                    </div>
+
+                    <div id="shift-edit-error" class="shift-edit-error hidden"></div>
+                </div>
             </div>
+
+            <!-- AO-02D REDESIGN: Modal-overlay -->
+            <div id="shift-modal-overlay" class="shift-modal-overlay hidden"></div>
         </section>
     `;
 }
 
-function handleSaveGroupShifts(store, container, ctx) {
+/**
+ * AO-02D REDESIGN: Öppna edit-modal för grupp
+ */
+function openShiftEditModal(groupId, state) {
+    const groups = state.groups || {};
+    const shifts = state.shifts || {};
+    const groupShifts = state.groupShifts || {};
+
+    const group = groups[groupId];
+    const selectedShifts = groupShifts[groupId] || [];
+    const shiftIds = Object.keys(shifts).sort();
+
+    /* Fyll modal */
+    const modal = document.getElementById('shift-edit-modal');
+    const overlay = document.getElementById('shift-modal-overlay');
+    const title = document.getElementById('shift-edit-modal-title');
+    const groupName = document.getElementById('shift-edit-group-name');
+    const checkboxesDiv = document.querySelector('.shift-edit-checkboxes');
+
+    title.textContent = `Redigera arbetstider: ${group.name}`;
+    groupName.innerHTML = `
+        <span class="shift-group-dot" style="background: ${group.color};"></span>
+        <strong>${group.name}</strong>
+    `;
+
+    /* Skapa checkboxar för varje pass */
+    checkboxesDiv.innerHTML = shiftIds.map((shiftId) => {
+        const shift = shifts[shiftId];
+        const isChecked = selectedShifts.includes(shiftId);
+        const timeRange = shift.startTime && shift.endTime 
+            ? `${shift.startTime}–${shift.endTime}`
+            : 'Flex';
+
+        return `
+            <label class="shift-edit-checkbox-label">
+                <input 
+                    type="checkbox" 
+                    class="shift-edit-checkbox" 
+                    data-shift="${shiftId}"
+                    ${isChecked ? 'checked' : ''}
+                >
+                <span class="shift-edit-color-dot" style="background: ${shift.color};"></span>
+                <span>
+                    <strong>${shift.name}</strong> (${timeRange})
+                </span>
+            </label>
+        `;
+    }).join('');
+
+    /* Spara groupId för senare */
+    modal.dataset.groupId = groupId;
+
+    /* Visa modal */
+    modal.classList.remove('hidden');
+    overlay.classList.remove('hidden');
+
+    /* Lägg till event listeners */
+    const btnSave = document.getElementById('btn-save-shifts');
+    const btnCancel = document.getElementById('btn-cancel-modal');
+    const btnClose = document.getElementById('btn-close-modal');
+
+    btnSave.onclick = () => handleSaveShiftEdit(state);
+    btnCancel.onclick = () => closeShiftEditModal();
+    btnClose.onclick = () => closeShiftEditModal();
+    overlay.onclick = () => closeShiftEditModal();
+}
+
+/**
+ * AO-02D REDESIGN: Stäng edit-modal
+ */
+function closeShiftEditModal() {
+    const modal = document.getElementById('shift-edit-modal');
+    const overlay = document.getElementById('shift-modal-overlay');
+    modal.classList.add('hidden');
+    overlay.classList.add('hidden');
+}
+
+/**
+ * AO-02D REDESIGN: Spara ändringar från modal
+ */
+function handleSaveShiftEdit(store, state) {
     try {
-        const checkboxes = container.querySelectorAll('.shift-checkbox');
-        const groupShifts = {};
+        const modal = document.getElementById('shift-edit-modal');
+        const groupId = modal.dataset.groupId;
+        const checkboxes = document.querySelectorAll('.shift-edit-checkbox:checked');
+        const selectedShifts = Array.from(checkboxes).map((cb) => cb.dataset.shift);
 
-        checkboxes.forEach((cb) => {
-            const groupId = cb.dataset.group;
-            const shiftId = cb.dataset.shift;
-
-            if (!groupShifts[groupId]) groupShifts[groupId] = [];
-            if (cb.checked) groupShifts[groupId].push(shiftId);
-        });
-
-        const state = store.getState();
-        const groups = state.groups || {};
-        const selectedGroupIds = getSelectedGroupIds(container);
-        const validateGroupIds = selectedGroupIds.length > 0 ? selectedGroupIds : Object.keys(groups);
-
-        const errors = [];
-        validateGroupIds.forEach((groupId) => {
-            const selected = groupShifts[groupId] || [];
-            if (selected.length === 0) {
-                const group = groups[groupId];
-                errors.push(`${group?.name ?? groupId} måste ha minst ett pass`);
-            }
-        });
-
-        if (errors.length > 0) {
-            throw new Error(`Valideringfel:\n${errors.join('\n')}`);
+        if (selectedShifts.length === 0) {
+            const errorDiv = document.getElementById('shift-edit-error');
+            errorDiv.textContent = 'Du måste välja minst ett pass';
+            errorDiv.classList.remove('hidden');
+            return;
         }
 
+        /* Spara till store */
         store.update((s) => {
-            s.groupShifts = groupShifts;
+            if (!s.groupShifts) {
+                s.groupShifts = {};
+            }
+            s.groupShifts[groupId] = selectedShifts;
             s.meta.updatedAt = Date.now();
             return s;
         });
 
-        const resultDiv = container.querySelector('#group-shifts-result');
-        resultDiv.innerHTML = `
-            <div class="result-box success">
-                <h4>✓ Arbetstider sparade!</h4>
-                <p>Grupp-pass-koppling uppdaterad.</p>
-            </div>
-        `;
-        resultDiv.classList.remove('hidden');
-
-        setTimeout(() => resultDiv.classList.add('hidden'), 3000);
+        closeShiftEditModal();
+        console.log(`✓ Arbetstider uppdaterade för ${groupId}`);
     } catch (err) {
         console.error('Spara-fel:', err);
-        const resultDiv = container.querySelector('#group-shifts-result');
-        if (!resultDiv) return;
-
-        // XSS-safe: vi bygger HTML men escape:ar text och använder <br> explicit.
-        const msg = escapeHtml(String(err.message || 'Okänt fel')).replace(/\n/g, '<br>');
-        resultDiv.innerHTML = `
-            <div class="result-box error">
-                <h4>❌ Fel vid sparning</h4>
-                <p>${msg}</p>
-            </div>
-        `;
-        resultDiv.classList.remove('hidden');
+        const errorDiv = document.getElementById('shift-edit-error');
+        errorDiv.textContent = `Fel: ${err.message}`;
+        errorDiv.classList.remove('hidden');
     }
 }
 
+/**
+ * AO-02D REDESIGN: Delete shifts för grupp (med bekräftelse)
+ */
+function handleDeleteGroupShifts(groupId, store, state, container, ctx) {
+    const groups = state.groups || {};
+    const group = groups[groupId];
+
+    if (!confirm(`Radera alla pass för "${group.name}"? Du måste välja minst ett pass innan du kan spara igen.`)) {
+        return;
+    }
+
+    try {
+        store.update((s) => {
+            if (s.groupShifts) {
+                delete s.groupShifts[groupId];
+            }
+            s.meta.updatedAt = Date.now();
+            return s;
+        });
+
+        console.log(`✓ Pass raderade för ${groupId}`);
+        
+        /* Re-render för att uppdatera UI */
+        renderControl(container, ctx);
+    } catch (err) {
+        console.error('Delete-fel:', err);
+        alert(`Fel: ${err.message}`);
+    }
+}
 /* ========================================================================
    BLOCK 5: AO-02C — GROUP STAFFING DEMAND
    ======================================================================== */
