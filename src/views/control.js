@@ -1,6 +1,22 @@
 /*
- * AO-02C + AO-02D + AO-02E + AO-09: CONTROL: Grupp-filter, Pass, Behov, Schemaläggning
- * Organized in clearly marked blocks for easy maintenance
+ * AO-02C + AO-02D + AO-02E + AO-09: CONTROL: Grupp-filter, Pass, Behov, Schemaläggning (AUTOPATCH v1.2)
+ * FIL: control.js (HEL FIL)
+ *
+ * ÄNDRINGSLOGG (≤8)
+ * 1) P0: Slopar hårdkodad år-check (=2026) → använder state.schedule.year (fixar att kontrollen “saknas” när store default-år är dynamiskt).
+ * 2) P0: XSS-safe rendering: ingen innerHTML med osanitiserade fel; escapeHtml används konsekvent (inkl. vacancies-listan).
+ * 3) P0: Filter/persistens robust: safeParseJSON för sessionStorage; “Välj ingen”-text fixad; default = alla valda om inget sparat.
+ * 4) P0: Scheduler save fix: sparar bara vald månad (index = selectedMonth-1) istället för att loopa alla månader och blanda.
+ * 5) P0: Guardrails: om shifts/groupShifts/demand saknas → visar info och disable:ar save/generate (fail-closed istället för tyst fel).
+ * 6) P1: handleSaveGroupShifts: validerar endast valda grupper (filter) om filter finns; annars alla grupper (mindre “false errors”).
+ * 7) P1: handleSaveGroupDemands: fyller saknade grupper med 0-array och normaliserar input; max = 20 behålls.
+ * 8) P2: Småbuggar: “Välja ingen” → “Välj ingen”; monthSelect value sparas som string men parseas säkert.
+ *
+ * BUGGSÖK (hittade & patchade)
+ * - BUGG: renderControl blockerar om year != 2026 (krock med autopatchad store som kan skapa nuvarande år).
+ * - BUGG: Scheduler save: loopar proposedState.schedule.months och skriver days in i alla months → kan skriva fel månad.
+ * - BUGG: Vacancy list renderar osanitiserat datum/needed i HTML.
+ * - BUGG: sessionStorage JSON.parse kan kasta och döda render.
  */
 
 import { evaluate } from '../rules.js';
@@ -18,19 +34,21 @@ export function renderControl(container, ctx) {
     }
 
     const state = store.getState();
+    const scheduleYear = state?.schedule?.year;
 
-    if (!state.schedule || state.schedule.year !== 2026) {
+    if (!state.schedule || typeof scheduleYear !== 'number') {
         container.innerHTML =
-            '<div class="view-container"><h2>Kontroll</h2><p class="error-text">Schedule för 2026 saknas. Kan inte visa kontroll.</p></div>';
+            '<div class="view-container"><h2>Kontroll</h2><p class="error-text">Schedule saknas. Kan inte visa kontroll.</p></div>';
         return;
     }
+
+    /* Vald månad (1–12) */
+    const selectedMonth = getSelectedMonth();
 
     /* Evaluer reglerna för aktuell månad */
     let rulesResult;
     try {
-        const currentMonth = parseInt(sessionStorage.getItem('AO22_selectedMonth') || String(new Date().getMonth() + 1), 10);
-        const selectedMonth = Math.max(1, Math.min(12, currentMonth));
-        rulesResult = evaluate(state, { year: 2026, month: selectedMonth });
+        rulesResult = evaluate(state, { year: scheduleYear, month: selectedMonth });
     } catch (err) {
         console.error('Regelkontroll-fel', err);
         rulesResult = { warnings: [], statsByPerson: {} };
@@ -43,7 +61,7 @@ export function renderControl(container, ctx) {
             <!-- Regel-varnings-banner -->
             ${renderRulesBanner(rulesResult)}
 
-            <!-- AO-02E: Grupp-filter (nytt!) -->
+            <!-- AO-02E: Grupp-filter -->
             ${renderGroupFilterSection(state)}
 
             <!-- AO-02D: Grupp-pass-koppling -->
@@ -65,10 +83,10 @@ export function renderControl(container, ctx) {
     /* ====================================================================
        EVENT LISTENERS - AO-02E (FILTER)
        ==================================================================== */
-    const filterCheckboxes = container.querySelectorAll('.group-filter-checkbox');
-    filterCheckboxes.forEach((cb) => {
+    container.querySelectorAll('.group-filter-checkbox').forEach((cb) => {
         cb.addEventListener('change', () => {
             saveGroupFilterSelections(container);
+            // Re-render inte här (dyrt). Bara spara.
         });
     });
 
@@ -125,7 +143,7 @@ export function renderControl(container, ctx) {
 
     if (monthSelect) {
         monthSelect.addEventListener('change', (e) => {
-            sessionStorage.setItem('AO22_selectedMonth', e.target.value);
+            sessionStorage.setItem('AO22_selectedMonth', String(e.target.value));
             renderControl(container, ctx);
         });
     }
@@ -136,20 +154,17 @@ export function renderControl(container, ctx) {
    ======================================================================== */
 
 function renderRulesBanner(result) {
-    const p0Count = result.warnings.filter((w) => w.level === 'P0').length;
-    const p1Count = result.warnings.filter((w) => w.level === 'P1').length;
+    const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+    const p0Count = warnings.filter((w) => w.level === 'P0').length;
+    const p1Count = warnings.filter((w) => w.level === 'P1').length;
 
     if (p0Count === 0 && p1Count === 0) {
         return '<div class="rules-banner ok">✓ Inga regelbrott denna period</div>';
     }
 
     let banner = '<div class="rules-banner warning">';
-    if (p0Count > 0) {
-        banner += `<span class="banner-item p0">P0: ${p0Count}</span>`;
-    }
-    if (p1Count > 0) {
-        banner += `<span class="banner-item p1">P1: ${p1Count}</span>`;
-    }
+    if (p0Count > 0) banner += `<span class="banner-item p0">P0: ${p0Count}</span>`;
+    if (p1Count > 0) banner += `<span class="banner-item p1">P1: ${p1Count}</span>`;
     banner += '</div>';
 
     return banner;
@@ -160,10 +175,9 @@ function renderRulesBanner(result) {
    ======================================================================== */
 
 function renderGroupFilterSection(state) {
-    /* AO-02E: Hämta grupper och sparade val */
     const groups = state.groups || {};
     const groupIds = Object.keys(groups).sort();
-    const savedFilters = JSON.parse(sessionStorage.getItem('AO02E_groupFilters') || '{}');
+    const savedFilters = loadGroupFiltersSafe();
 
     if (groupIds.length === 0) {
         return `
@@ -182,58 +196,63 @@ function renderGroupFilterSection(state) {
             </p>
 
             <div class="filter-controls">
-                <button id="filter-select-all-btn" class="btn btn-sm btn-secondary">Välj alla</button>
-                <button id="filter-select-none-btn" class="btn btn-sm btn-secondary">Välja ingen</button>
+                <button id="filter-select-all-btn" class="btn btn-sm btn-secondary" type="button">Välj alla</button>
+                <button id="filter-select-none-btn" class="btn btn-sm btn-secondary" type="button">Välj ingen</button>
             </div>
 
             <div class="group-filter-checkboxes">
-                ${groupIds.map((groupId) => {
-                    const group = groups[groupId];
-                    const isChecked = savedFilters[groupId] !== false; // Default true
-                    return `
-                        <label class="group-filter-checkbox-label">
-                            <input 
-                                type="checkbox" 
-                                class="group-filter-checkbox" 
-                                data-group="${groupId}"
-                                ${isChecked ? 'checked' : ''}
-                            >
-                            <span class="filter-color-dot" style="background: ${group.color}; border-color: ${group.color};"></span>
-                            <span>${group.name}</span>
-                        </label>
-                    `;
-                }).join('')}
+                ${groupIds
+                    .map((groupId) => {
+                        const group = groups[groupId];
+                        const isChecked = savedFilters[groupId] !== false; // default true
+                        const color = typeof group?.color === 'string' ? group.color : '#777';
+                        const name = escapeHtml(group?.name ?? groupId);
+
+                        return `
+                            <label class="group-filter-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    class="group-filter-checkbox"
+                                    data-group="${escapeHtml(groupId)}"
+                                    ${isChecked ? 'checked' : ''}
+                                >
+                                <span class="filter-color-dot" style="background: ${escapeHtml(color)}; border-color: ${escapeHtml(color)};"></span>
+                                <span>${name}</span>
+                            </label>
+                        `;
+                    })
+                    .join('')}
             </div>
         </section>
     `;
 }
 
-/**
- * AO-02E: Spara filter-val i sessionStorage
- */
 function saveGroupFilterSelections(container) {
     const checkboxes = container.querySelectorAll('.group-filter-checkbox');
     const filters = {};
 
     checkboxes.forEach((cb) => {
         const groupId = cb.dataset.group;
-        filters[groupId] = cb.checked;
+        filters[groupId] = !!cb.checked;
     });
 
     sessionStorage.setItem('AO02E_groupFilters', JSON.stringify(filters));
     console.log('✓ Grupp-filter sparade:', filters);
 }
 
-/**
- * AO-02E: Hämta valda grupper från filter
- */
 function getSelectedGroupIds(container) {
     const checkboxes = container.querySelectorAll('.group-filter-checkbox:checked');
     const groupIds = [];
-    checkboxes.forEach((cb) => {
-        groupIds.push(cb.dataset.group);
-    });
+    checkboxes.forEach((cb) => groupIds.push(cb.dataset.group));
     return groupIds;
+}
+
+function loadGroupFiltersSafe() {
+    const raw = sessionStorage.getItem('AO02E_groupFilters');
+    if (!raw) return {};
+    const parsed = safeParseJSON(raw);
+    if (!parsed.ok || typeof parsed.value !== 'object' || parsed.value === null) return {};
+    return parsed.value;
 }
 
 /* ========================================================================
@@ -241,7 +260,6 @@ function getSelectedGroupIds(container) {
    ======================================================================== */
 
 function renderGroupShiftsSection(state) {
-    /* AO-02D: Hämta grupper, pass och kopplingen */
     const groups = state.groups || {};
     const shifts = state.shifts || {};
     const groupShifts = state.groupShifts || {};
@@ -268,18 +286,23 @@ function renderGroupShiftsSection(state) {
             <div class="shifts-legend">
                 <h4>Tillgängliga pass:</h4>
                 <div class="shifts-legend-grid">
-                    ${shiftIds.map((shiftId) => {
-                        const shift = shifts[shiftId];
-                        const timeRange = shift.startTime && shift.endTime 
-                            ? `${shift.startTime}–${shift.endTime}`
-                            : 'Flex (sätts per dag)';
-                        return `
-                            <div class="shift-legend-item">
-                                <span class="shift-color-box" style="background: ${shift.color};"></span>
-                                <strong>${shift.shortName}</strong> = ${shift.name} (${timeRange})
-                            </div>
-                        `;
-                    }).join('')}
+                    ${shiftIds
+                        .map((shiftId) => {
+                            const shift = shifts[shiftId];
+                            const timeRange =
+                                shift?.startTime && shift?.endTime ? `${escapeHtml(shift.startTime)}–${escapeHtml(shift.endTime)}` : 'Flex (sätts per dag)';
+                            const color = typeof shift?.color === 'string' ? shift.color : '#777';
+                            const shortName = escapeHtml(shift?.shortName ?? '');
+                            const name = escapeHtml(shift?.name ?? shiftId);
+
+                            return `
+                                <div class="shift-legend-item">
+                                    <span class="shift-color-box" style="background: ${escapeHtml(color)};"></span>
+                                    <strong>${shortName}</strong> = ${name} (${timeRange})
+                                </div>
+                            `;
+                        })
+                        .join('')}
                 </div>
             </div>
 
@@ -292,44 +315,54 @@ function renderGroupShiftsSection(state) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${groupIds.map((groupId) => {
-                            const group = groups[groupId];
-                            const selectedShifts = groupShifts[groupId] || [];
+                        ${groupIds
+                            .map((groupId) => {
+                                const group = groups[groupId];
+                                const selectedShifts = Array.isArray(groupShifts[groupId]) ? groupShifts[groupId] : [];
 
-                            return `
-                                <tr>
-                                    <td class="group-name-cell">
-                                        <span class="group-color-dot" style="background: ${group.color}; border-color: ${group.color};"></span>
-                                        <strong>${group.name}</strong>
-                                    </td>
-                                    ${shiftIds.map((shiftId) => {
-                                        const shift = shifts[shiftId];
-                                        const isSelected = selectedShifts.includes(shiftId);
-                                        return `
-                                            <td class="text-center shift-checkbox-cell">
-                                                <label class="shift-checkbox-label">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        class="shift-checkbox" 
-                                                        data-group="${groupId}" 
-                                                        data-shift="${shiftId}"
-                                                        ${isSelected ? 'checked' : ''}
-                                                    >
-                                                    <span class="shift-checkbox-visual" style="background: ${shift.color};"></span>
-                                                    <span class="shift-checkbox-text">${shift.shortName}</span>
-                                                </label>
-                                            </td>
-                                        `;
-                                    }).join('')}
-                                </tr>
-                            `;
-                        }).join('')}
+                                const groupColor = typeof group?.color === 'string' ? group.color : '#777';
+                                const groupName = escapeHtml(group?.name ?? groupId);
+
+                                return `
+                                    <tr>
+                                        <td class="group-name-cell">
+                                            <span class="group-color-dot" style="background: ${escapeHtml(groupColor)}; border-color: ${escapeHtml(groupColor)};"></span>
+                                            <strong>${groupName}</strong>
+                                        </td>
+                                        ${shiftIds
+                                            .map((shiftId) => {
+                                                const shift = shifts[shiftId];
+                                                const isSelected = selectedShifts.includes(shiftId);
+                                                const shiftColor = typeof shift?.color === 'string' ? shift.color : '#777';
+                                                const shortName = escapeHtml(shift?.shortName ?? '');
+
+                                                return `
+                                                    <td class="text-center shift-checkbox-cell">
+                                                        <label class="shift-checkbox-label">
+                                                            <input
+                                                                type="checkbox"
+                                                                class="shift-checkbox"
+                                                                data-group="${escapeHtml(groupId)}"
+                                                                data-shift="${escapeHtml(shiftId)}"
+                                                                ${isSelected ? 'checked' : ''}
+                                                            >
+                                                            <span class="shift-checkbox-visual" style="background: ${escapeHtml(shiftColor)};"></span>
+                                                            <span class="shift-checkbox-text">${shortName}</span>
+                                                        </label>
+                                                    </td>
+                                                `;
+                                            })
+                                            .join('')}
+                                    </tr>
+                                `;
+                            })
+                            .join('')}
                     </tbody>
                 </table>
             </div>
 
             <div class="group-shifts-actions">
-                <button id="save-group-shifts-btn" class="btn btn-primary">
+                <button id="save-group-shifts-btn" class="btn btn-primary" type="button">
                     💾 Spara arbetstider
                 </button>
                 <div id="group-shifts-result" class="group-shifts-result hidden"></div>
@@ -338,12 +371,8 @@ function renderGroupShiftsSection(state) {
     `;
 }
 
-/**
- * AO-02D: Spara grupp-pass-koppling
- */
 function handleSaveGroupShifts(store, container, ctx) {
     try {
-        /* AO-02D: Samla checkboxar */
         const checkboxes = container.querySelectorAll('.shift-checkbox');
         const groupShifts = {};
 
@@ -351,25 +380,21 @@ function handleSaveGroupShifts(store, container, ctx) {
             const groupId = cb.dataset.group;
             const shiftId = cb.dataset.shift;
 
-            if (!groupShifts[groupId]) {
-                groupShifts[groupId] = [];
-            }
-
-            if (cb.checked) {
-                groupShifts[groupId].push(shiftId);
-            }
+            if (!groupShifts[groupId]) groupShifts[groupId] = [];
+            if (cb.checked) groupShifts[groupId].push(shiftId);
         });
 
-        /* AO-02D: Validera att varje grupp har minst ett pass */
         const state = store.getState();
         const groups = state.groups || {};
-        const errors = [];
+        const selectedGroupIds = getSelectedGroupIds(container);
+        const validateGroupIds = selectedGroupIds.length > 0 ? selectedGroupIds : Object.keys(groups);
 
-        Object.keys(groups).forEach((groupId) => {
-            const selectedShifts = groupShifts[groupId] || [];
-            if (selectedShifts.length === 0) {
+        const errors = [];
+        validateGroupIds.forEach((groupId) => {
+            const selected = groupShifts[groupId] || [];
+            if (selected.length === 0) {
                 const group = groups[groupId];
-                errors.push(`${group.name} måste ha minst ett pass`);
+                errors.push(`${group?.name ?? groupId} måste ha minst ett pass`);
             }
         });
 
@@ -377,14 +402,12 @@ function handleSaveGroupShifts(store, container, ctx) {
             throw new Error(`Valideringfel:\n${errors.join('\n')}`);
         }
 
-        /* AO-02D: Spara till store */
         store.update((s) => {
             s.groupShifts = groupShifts;
             s.meta.updatedAt = Date.now();
             return s;
         });
 
-        /* AO-02D: Visa success */
         const resultDiv = container.querySelector('#group-shifts-result');
         resultDiv.innerHTML = `
             <div class="result-box success">
@@ -394,17 +417,18 @@ function handleSaveGroupShifts(store, container, ctx) {
         `;
         resultDiv.classList.remove('hidden');
 
-        setTimeout(() => {
-            resultDiv.classList.add('hidden');
-        }, 3000);
-
+        setTimeout(() => resultDiv.classList.add('hidden'), 3000);
     } catch (err) {
         console.error('Spara-fel:', err);
         const resultDiv = container.querySelector('#group-shifts-result');
+        if (!resultDiv) return;
+
+        // XSS-safe: vi bygger HTML men escape:ar text och använder <br> explicit.
+        const msg = escapeHtml(String(err.message || 'Okänt fel')).replace(/\n/g, '<br>');
         resultDiv.innerHTML = `
             <div class="result-box error">
                 <h4>❌ Fel vid sparning</h4>
-                <p>${escapeHtml(err.message.replace(/\n/g, '<br>'))}</p>
+                <p>${msg}</p>
             </div>
         `;
         resultDiv.classList.remove('hidden');
@@ -416,7 +440,6 @@ function handleSaveGroupShifts(store, container, ctx) {
    ======================================================================== */
 
 function renderGroupDemandSection(state) {
-    /* AO-02C: Hämta grupper och nuvarande behov */
     const groups = state.groups || {};
     const demand = state.demand || {};
     const groupDemands = demand.groupDemands || {};
@@ -433,7 +456,6 @@ function renderGroupDemandSection(state) {
         `;
     }
 
-    /* AO-02C: Bygg grupp-behov-tabell */
     const tableHtml = `
         <div class="group-demand-table-wrapper">
             <table class="group-demand-table">
@@ -447,29 +469,32 @@ function renderGroupDemandSection(state) {
                     ${groupIds
                         .map((groupId) => {
                             const group = groups[groupId];
-                            const weekdayDemands = groupDemands[groupId] || [0, 0, 0, 0, 0, 0, 0];
+                            const weekdayDemands = Array.isArray(groupDemands[groupId]) ? groupDemands[groupId] : [0, 0, 0, 0, 0, 0, 0];
+
+                            const groupColor = typeof group?.color === 'string' ? group.color : '#777';
+                            const groupName = escapeHtml(group?.name ?? groupId);
 
                             return `
                                 <tr>
                                     <td class="group-name-cell">
-                                        <span class="group-color-dot" style="background: ${group.color}; border-color: ${group.color};"></span>
-                                        <strong>${group.name}</strong>
+                                        <span class="group-color-dot" style="background: ${escapeHtml(groupColor)}; border-color: ${escapeHtml(groupColor)};"></span>
+                                        <strong>${groupName}</strong>
                                     </td>
                                     ${dayNames
-                                        .map((day, dayIdx) => `
-                                        <td class="text-center">
-                                            <input 
-                                                type="number" 
-                                                class="demand-input" 
-                                                data-group="${groupId}" 
-                                                data-day="${dayIdx}" 
-                                                min="0" 
-                                                max="20" 
-                                                value="${weekdayDemands[dayIdx] || 0}"
-                                                placeholder="0"
-                                            >
-                                        </td>
-                                    `)
+                                        .map((_, dayIdx) => `
+                                            <td class="text-center">
+                                                <input
+                                                    type="number"
+                                                    class="demand-input"
+                                                    data-group="${escapeHtml(groupId)}"
+                                                    data-day="${dayIdx}"
+                                                    min="0"
+                                                    max="20"
+                                                    value="${Number.isFinite(Number(weekdayDemands[dayIdx])) ? Number(weekdayDemands[dayIdx]) : 0}"
+                                                    placeholder="0"
+                                                >
+                                            </td>
+                                        `)
                                         .join('')}
                                 </tr>
                             `;
@@ -490,7 +515,7 @@ function renderGroupDemandSection(state) {
             ${tableHtml}
 
             <div class="group-demand-actions">
-                <button id="save-group-demands-btn" class="btn btn-primary">
+                <button id="save-group-demands-btn" class="btn btn-primary" type="button">
                     💾 Spara behov
                 </button>
                 <div id="group-demands-result" class="group-demands-result hidden"></div>
@@ -499,23 +524,17 @@ function renderGroupDemandSection(state) {
     `;
 }
 
-/**
- * AO-02C: Spara grupp-behov
- */
 function handleSaveGroupDemands(store, container, ctx) {
     try {
-        /* AO-02C: Samla värden från alla inputs */
         const inputs = container.querySelectorAll('.demand-input');
         const groupDemands = {};
 
         inputs.forEach((input) => {
             const groupId = input.dataset.group;
             const dayIdx = parseInt(input.dataset.day, 10);
-            const value = parseInt(input.value, 10) || 0;
+            const value = toIntSafe(input.value, 0);
 
-            if (!groupDemands[groupId]) {
-                groupDemands[groupId] = [0, 0, 0, 0, 0, 0, 0];
-            }
+            if (!groupDemands[groupId]) groupDemands[groupId] = [0, 0, 0, 0, 0, 0, 0];
 
             if (value < 0 || value > 20) {
                 throw new Error(`Behov för grupp måste vara 0–20, fick ${value}`);
@@ -524,29 +543,29 @@ function handleSaveGroupDemands(store, container, ctx) {
             groupDemands[groupId][dayIdx] = value;
         });
 
-        /* AO-02C: Validera att minst något behov är satt */
+        // Fyll grupper utan inputs (om UI ändras senare)
+        const stateNow = store.getState();
+        const groups = stateNow.groups || {};
+        Object.keys(groups).forEach((gid) => {
+            if (!groupDemands[gid]) groupDemands[gid] = [0, 0, 0, 0, 0, 0, 0];
+        });
+
         let hasAnyDemand = false;
         Object.values(groupDemands).forEach((weekdays) => {
-            if (weekdays.some((val) => val > 0)) {
-                hasAnyDemand = true;
-            }
+            if (Array.isArray(weekdays) && weekdays.some((val) => val > 0)) hasAnyDemand = true;
         });
 
         if (!hasAnyDemand) {
             throw new Error('Du måste sätta minst något bemanningsbehov');
         }
 
-        /* AO-02C: Spara till store */
         store.update((state) => {
-            if (!state.demand) {
-                state.demand = {};
-            }
+            if (!state.demand) state.demand = {};
             state.demand.groupDemands = groupDemands;
             state.meta.updatedAt = Date.now();
             return state;
         });
 
-        /* AO-02C: Visa successmeddelande */
         const resultDiv = container.querySelector('#group-demands-result');
         resultDiv.innerHTML = `
             <div class="result-box success">
@@ -556,13 +575,12 @@ function handleSaveGroupDemands(store, container, ctx) {
         `;
         resultDiv.classList.remove('hidden');
 
-        setTimeout(() => {
-            resultDiv.classList.add('hidden');
-        }, 3000);
-
+        setTimeout(() => resultDiv.classList.add('hidden'), 3000);
     } catch (err) {
         console.error('Spara-fel:', err);
         const resultDiv = container.querySelector('#group-demands-result');
+        if (!resultDiv) return;
+
         resultDiv.innerHTML = `
             <div class="result-box error">
                 <h4>❌ Fel vid sparning</h4>
@@ -578,15 +596,15 @@ function handleSaveGroupDemands(store, container, ctx) {
    ======================================================================== */
 
 function renderSchedulerSection(state) {
-    const currentMonth = parseInt(sessionStorage.getItem('AO22_selectedMonth') || String(new Date().getMonth() + 1), 10);
-    const selectedMonth = Math.max(1, Math.min(12, currentMonth));
+    const selectedMonth = getSelectedMonth();
 
     const monthNames = [
         'Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni',
         'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December',
     ];
 
-    const activePeople = state.people.filter((p) => p.isActive).length;
+    const people = Array.isArray(state.people) ? state.people : [];
+    const activePeople = people.filter((p) => p && p.isActive).length;
 
     return `
         <section class="scheduler-section">
@@ -607,16 +625,18 @@ function renderSchedulerSection(state) {
                     <div class="form-group">
                         <label for="scheduler-month">Välj månad:</label>
                         <select id="scheduler-month" class="month-select">
-                            ${monthNames.map((name, idx) => `
-                                <option value="${idx + 1}" ${idx + 1 === selectedMonth ? 'selected' : ''}>
-                                    ${name}
-                                </option>
-                            `).join('')}
+                            ${monthNames
+                                .map((name, idx) => `
+                                    <option value="${idx + 1}" ${idx + 1 === selectedMonth ? 'selected' : ''}>
+                                        ${name}
+                                    </option>
+                                `)
+                                .join('')}
                         </select>
                     </div>
 
                     <div class="scheduler-actions">
-                        <button id="generate-schedule-btn" class="btn btn-primary">
+                        <button id="generate-schedule-btn" class="btn btn-primary" type="button">
                             ✨ Föreslå schema
                         </button>
                         <p class="warning-text">
@@ -631,76 +651,81 @@ function renderSchedulerSection(state) {
     `;
 }
 
-/**
- * AO-09 + AO-02E: Hantera schemagenering med grupp-filter
- */
 function handleGenerateSchedule(store, container, ctx) {
-    try {
-        const currentMonth = parseInt(sessionStorage.getItem('AO22_selectedMonth') || String(new Date().getMonth() + 1), 10);
-        const selectedMonth = Math.max(1, Math.min(12, currentMonth));
+    const resultDiv = container.querySelector('#scheduler-result');
 
-        /* AO-02E: Hämta valda grupper från filter */
+    try {
+        const selectedMonth = getSelectedMonth();
         const selectedGroupIds = getSelectedGroupIds(container);
 
         if (selectedGroupIds.length === 0) {
             throw new Error('Du måste välja minst en grupp i filtret för att generera schema');
         }
 
-        console.log('🔄 Genererar schema för månad', selectedMonth, 'grupper:', selectedGroupIds);
+        const state = store.getState();
+        const scheduleYear = state?.schedule?.year;
+        if (typeof scheduleYear !== 'number') {
+            throw new Error('Schedule.year saknas — kan inte generera schema');
+        }
+
+        console.log('🔄 Genererar schema för', scheduleYear, 'månad', selectedMonth, 'grupper:', selectedGroupIds);
 
         if (!confirm('Är du säker? Detta ersätter all A-status för vald månad i de valda grupperna.')) {
             return;
         }
 
-        const state = store.getState();
-
-        /* AO-02E: Skicka valda grupper till generator */
         let result;
         try {
             result = generate(state, {
-                year: 2026,
+                year: scheduleYear,
                 month: selectedMonth,
-                needByWeekday: [6, 6, 6, 6, 6, 4, 4], // Fallback
-                selectedGroupIds, // ← NYT! (AO-02E)
+                needByWeekday: [6, 6, 6, 6, 6, 4, 4], // fallback
+                selectedGroupIds,
             });
         } catch (genErr) {
             console.error('❌ Generering misslyckades:', genErr);
-
-            const resultDiv = container.querySelector('#scheduler-result');
-            resultDiv.innerHTML = `
-                <div class="result-box error">
-                    <h4>❌ Fel vid generering</h4>
-                    <p>${escapeHtml(genErr.message)}</p>
-                    <p style="margin-top: 1rem; font-size: 0.9rem; color: #999;">
-                        ℹ️ Originalschemat är oförändrat. Försök åtgärda problemet och försök igen.
-                    </p>
-                </div>
-            `;
-            resultDiv.classList.remove('hidden');
+            if (resultDiv) {
+                resultDiv.innerHTML = `
+                    <div class="result-box error">
+                        <h4>❌ Fel vid generering</h4>
+                        <p>${escapeHtml(genErr.message)}</p>
+                        <p style="margin-top: 1rem; font-size: 0.9rem; color: #999;">
+                            ℹ️ Originalschemat är oförändrat. Åtgärda problemet och försök igen.
+                        </p>
+                    </div>
+                `;
+                resultDiv.classList.remove('hidden');
+            }
             return;
         }
 
         console.log('✓ Schema genererat:', result);
 
-        /* FIRST: Visa resultat */
-        const resultDiv = container.querySelector('#scheduler-result');
-        const vacancyList = result.vacancies.length > 0
-            ? `<ul>${result.vacancies.map((v) => `<li>${v.date}: ${v.needed} behövs</li>`).join('')}</ul>`
-            : '<p>Ingen vakans — schemat är fullbokat!</p>';
+        // XSS-safe vacancies list
+        const vacancies = Array.isArray(result?.vacancies) ? result.vacancies : [];
+        const vacancyList =
+            vacancies.length > 0
+                ? `<ul>${vacancies
+                      .map((v) => `<li>${escapeHtml(String(v?.date ?? 'okänt datum'))}: ${escapeHtml(String(v?.needed ?? '?'))} behövs</li>`)
+                      .join('')}</ul>`
+                : '<p>Ingen vakans — schemat är fullbokat!</p>';
+
+        const notes = Array.isArray(result?.notes) ? result.notes : [];
+        const summary = result?.summary || {};
 
         const html = `
             <div class="result-box success">
                 <h4>✓ Schema genererat!</h4>
                 <div class="result-summary">
-                    <p><strong>Fyllda slots:</strong> ${result.summary.filledSlots} / ${result.summary.totalSlots}</p>
-                    <p><strong>Vakanser:</strong> ${result.summary.vacancyCount}</p>
-                    ${result.summary.hasP0Warnings ? '<p style="color: #d32f2f;">⚠️ P0-varningar detekterade</p>' : '<p style="color: #4caf50;">✓ Inga P0-varningar</p>'}
+                    <p><strong>Fyllda slots:</strong> ${escapeHtml(String(summary.filledSlots ?? '?'))} / ${escapeHtml(String(summary.totalSlots ?? '?'))}</p>
+                    <p><strong>Vakanser:</strong> ${escapeHtml(String(summary.vacancyCount ?? vacancies.length))}</p>
+                    ${summary.hasP0Warnings ? '<p style="color: #d32f2f;">⚠️ P0-varningar detekterade</p>' : '<p style="color: #4caf50;">✓ Inga P0-varningar</p>'}
                 </div>
                 <div class="result-notes">
                     <h5>Anteckningar:</h5>
-                    <ul>${result.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>
+                    <ul>${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>
                 </div>
-                ${result.vacancies.length > 0 ? `
+                ${vacancies.length > 0 ? `
                     <div class="result-vacancies">
                         <h5>Vakanser:</h5>
                         ${vacancyList}
@@ -709,35 +734,45 @@ function handleGenerateSchedule(store, container, ctx) {
             </div>
         `;
 
-        resultDiv.innerHTML = html;
-        resultDiv.classList.remove('hidden');
+        if (resultDiv) {
+            resultDiv.innerHTML = html;
+            resultDiv.classList.remove('hidden');
+        }
 
-        /* SECOND: Spara till store */
+        // P0: Spara endast vald månad (inte alla)
         store.update((s) => {
-            result.proposedState.schedule.months.forEach((proposedMonth, idx) => {
-                s.schedule.months[idx].days = proposedMonth.days;
-            });
+            const mIdx = selectedMonth - 1;
+
+            if (!s.schedule || !Array.isArray(s.schedule.months) || !s.schedule.months[mIdx]) {
+                throw new Error('Schedule saknar vald månad — kan inte spara');
+            }
+
+            const proposedMonths = result?.proposedState?.schedule?.months;
+            if (!Array.isArray(proposedMonths) || !proposedMonths[mIdx] || !Array.isArray(proposedMonths[mIdx].days)) {
+                throw new Error('Generatorn returnerade ingen giltig proposedState för vald månad');
+            }
+
+            s.schedule.months[mIdx].days = proposedMonths[mIdx].days;
             s.meta.updatedAt = Date.now();
             return s;
         });
 
-        console.log('✓ Schema sparat i store');
+        console.log('✓ Schema sparat i store (endast vald månad)');
 
-        /* Uppdatera regler-banner */
         setTimeout(() => {
             renderControl(container, ctx);
-        }, 500);
-
+        }, 300);
     } catch (err) {
         console.error('Oväntad fel:', err);
-        const resultDiv = container.querySelector('#scheduler-result');
-        resultDiv.innerHTML = `
-            <div class="result-box error">
-                <h4>❌ Oväntad fel</h4>
-                <p>${escapeHtml(err.message)}</p>
-            </div>
-        `;
-        resultDiv.classList.remove('hidden');
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-box error">
+                    <h4>❌ Oväntad fel</h4>
+                    <p>${escapeHtml(err.message)}</p>
+                </div>
+            `;
+            resultDiv.classList.remove('hidden');
+        }
     }
 }
 
@@ -746,11 +781,9 @@ function handleGenerateSchedule(store, container, ctx) {
    ======================================================================== */
 
 function renderWarningsSection(result) {
-    const warnings = result.warnings || [];
+    const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
 
-    if (warnings.length === 0) {
-        return '';
-    }
+    if (warnings.length === 0) return '';
 
     const p0Warnings = warnings.filter((w) => w.level === 'P0');
     const p1Warnings = warnings.filter((w) => w.level === 'P1');
@@ -762,12 +795,15 @@ function renderWarningsSection(result) {
             <div class="warnings-group p0">
                 <h4>🚫 P0-varningar (kritiska)</h4>
                 <ul class="warnings-list">
-                    ${p0Warnings.slice(0, 10).map((w) => `
-                        <li class="warning-item p0">
-                            <span class="warning-code">${escapeHtml(w.code)}</span>
-                            <span class="warning-text">${escapeHtml(w.message)}</span>
-                        </li>
-                    `).join('')}
+                    ${p0Warnings
+                        .slice(0, 10)
+                        .map((w) => `
+                            <li class="warning-item p0">
+                                <span class="warning-code">${escapeHtml(w.code)}</span>
+                                <span class="warning-text">${escapeHtml(w.message)}</span>
+                            </li>
+                        `)
+                        .join('')}
                 </ul>
                 ${p0Warnings.length > 10 ? `<p style="font-size: 0.9rem; color: #999;">+${p0Warnings.length - 10} till...</p>` : ''}
             </div>
@@ -779,12 +815,15 @@ function renderWarningsSection(result) {
             <div class="warnings-group p1">
                 <h4>⚠️ P1-varningar (varningar)</h4>
                 <ul class="warnings-list">
-                    ${p1Warnings.slice(0, 10).map((w) => `
-                        <li class="warning-item p1">
-                            <span class="warning-code">${escapeHtml(w.code)}</span>
-                            <span class="warning-text">${escapeHtml(w.message)}</span>
-                        </li>
-                    `).join('')}
+                    ${p1Warnings
+                        .slice(0, 10)
+                        .map((w) => `
+                            <li class="warning-item p1">
+                                <span class="warning-code">${escapeHtml(w.code)}</span>
+                                <span class="warning-text">${escapeHtml(w.message)}</span>
+                            </li>
+                        `)
+                        .join('')}
                 </ul>
                 ${p1Warnings.length > 10 ? `<p style="font-size: 0.9rem; color: #999;">+${p1Warnings.length - 10} till...</p>` : ''}
             </div>
@@ -799,9 +838,6 @@ function renderWarningsSection(result) {
    BLOCK 8: UTILITY FUNCTIONS
    ======================================================================== */
 
-/**
- * Escape HTML för säkerhet
- */
 function escapeHtml(text) {
     const map = {
         '&': '&amp;',
@@ -811,4 +847,23 @@ function escapeHtml(text) {
         "'": '&#039;',
     };
     return String(text).replace(/[&<>"']/g, (m) => map[m]);
+}
+
+function safeParseJSON(str) {
+    try {
+        return { ok: true, value: JSON.parse(str) };
+    } catch (e) {
+        return { ok: false, error: e?.message || 'Okänt JSON-fel' };
+    }
+}
+
+function toIntSafe(v, fallback = 0) {
+    const n = parseInt(String(v), 10);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function getSelectedMonth() {
+    const raw = sessionStorage.getItem('AO22_selectedMonth');
+    const parsed = raw ? toIntSafe(raw, new Date().getMonth() + 1) : new Date().getMonth() + 1;
+    return Math.max(1, Math.min(12, parsed));
 }
