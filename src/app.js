@@ -1,5 +1,7 @@
 /*
- * AO-02 — APP: Huvudapplikation med router (DEBUG VERSION)
+ * AO-02 — APP: Huvudapplikation med router (AUTOPATCH v1)
+ * P0-FIX: Router måste initieras även när användaren inte är inloggad,
+ * annars renderas aldrig login-vyn och #container förblir tom.
  */
 
 import { initRouter } from './router.js';
@@ -18,7 +20,7 @@ class SchemaApp {
         console.log('ErrorPanel:', this.errorPanel);
         console.log('Navbar:', this.navbar);
 
-        if (!this.container || !this.navbar) {
+        if (!this.container || !this.navbar || !this.errorPanel) {
             console.error('❌ Kritiska DOM-element saknas');
             return;
         }
@@ -39,24 +41,36 @@ class SchemaApp {
             const loggedIn = isLoggedIn();
             console.log('✓ Inloggad:', loggedIn);
 
-            if (!loggedIn) {
-                console.log('📍 Inte inloggad → visar login-sidan');
-                window.location.hash = '#/login';
-                return;
+            // Navbar: endast om inloggad
+            if (loggedIn) {
+                console.log('✓ Inloggad → visar navbar');
+                renderNavbar(this.navbar);
+            } else {
+                console.log('📍 Inte inloggad → navbar göms');
+                this.navbar.innerHTML = '';
             }
 
-            console.log('✓ Inloggad → visar navbar och router');
-            renderNavbar(this.navbar);
-
+            // Auth-context till router (router/vyer avgör vad som får visas)
             const ctx = {
                 store,
                 auth: {
                     isLoggedIn: loggedIn,
                 },
             };
+
+            // P0: Om inte inloggad, se till att vi är på login-route
+            // MEN starta fortfarande routern så vyn faktiskt renderas.
+            if (!loggedIn) {
+                const h = window.location.hash || '';
+                if (!h.startsWith('#/login')) {
+                    window.location.hash = '#/login';
+                }
+            }
+
+            console.log('🧭 Initierar router');
             initRouter(this.container, this.errorPanel, ctx);
 
-            console.log('✓ Appen initialiserad (inloggad)');
+            console.log('✓ Appen initialiserad');
         } catch (err) {
             console.error('❌ Init-fel:', err);
             this.showError(err);
