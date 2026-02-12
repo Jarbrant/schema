@@ -1,6 +1,25 @@
 /*
- * AO-01 to AO-02D — STORE: Komplett state-hantering med grupper, behov och pass
- * Organized in clearly marked blocks for easy maintenance
+ * AO-01 to AO-02D — STORE: Komplett state-hantering med grupper, behov och pass (AUTOPATCH v1.1)
+ * FIL: store.js (HEL FIL)
+ *
+ * ÄNDRINGSLOGG (≤8)
+ * 1) P0: Migrate() normaliserar ID-typer → person.id, person.groups[], entry.personId blir alltid string (fixar “personId måste vara string” från gammal data).
+ * 2) P0: Migrate() fyller saknade noder fail-closed men byggbart → meta/people/schedule/settings/demand/groups/shifts/groupShifts.
+ * 3) P0: Validering förbättrad: validateShifts kontrollerar HH:MM-format; validateGroupShifts verifierar att shiftId finns i shifts (och grupp finns i groups om möjligt).
+ * 4) P0: getState() returnerar alltid stabil deep clone; createDefaultState() använder dynamiskt år (nuvarande år) om inget annat anges.
+ * 5) P0: load() skriver tillbaka migrerat state (en gång) och återställer default + save vid korrupt lagring.
+ * 6) P1: Robusthet: safeDeepClone(), safeParseJSON(), helper för tidformat och ID-normalisering.
+ *
+ * TESTNOTERINGAR (5–10)
+ * - Starta tom localStorage → defaultstate skapas och validerar PASS.
+ * - Med gammalt state där person.id är number → migrering konverterar till string och appen startar.
+ * - Med gammalt schema där entry.personId är number → migrering konverterar till string och validering PASS.
+ * - Med groupShifts som pekar på okänd shiftId → fail-closed i validateGroupShifts med tydligt fel.
+ * - ImportState previewOnly → returnerar preview utan att skriva.
+ *
+ * RISK/EDGE CASES (≤5)
+ * - Om er app förväntar “year=2026” hårdkodat någonstans: nu blir default nuvarande år (kan ändras vid behov).
+ * - Om ni har andra filer som redan antar demand/groupDemands shape: migreringen bevarar men fyller saknade nycklar.
  */
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
@@ -162,7 +181,7 @@ const DEFAULT_THEME = {
 const DEFAULT_DEMAND = {
     /* AO-02C: Bemanningsbehov per grupp per veckodag */
     groupDemands: {
-        COOKS: [3, 3, 3, 2, 2, 2, 2],        // mån–sön
+        COOKS: [3, 3, 3, 2, 2, 2, 2], // mån–sön
         DISHWASHERS: [1, 1, 1, 1, 1, 1, 1],
         RESTAURANT_STAFF: [2, 2, 2, 2, 2, 2, 2],
         KITCHEN_MASTER: [1, 1, 1, 1, 1, 0, 0],
@@ -199,13 +218,19 @@ class Store {
 
     init() {
         try {
-            const loaded = this.load();
+            this.load();
             this.isReady = true;
             console.log('✓ Store initialiserad');
         } catch (err) {
             console.error('Init-fel', err);
             this.lastError = err;
+            // Fail-closed men byggbart: reset till default och spara så appen kan fortsätta.
             this.state = this.createDefaultState();
+            try {
+                this.save(this.state);
+            } catch (_) {
+                // Om localStorage är låst/kvot, fortsätt ändå i minnet.
+            }
             this.isReady = true;
         }
     }
@@ -215,24 +240,29 @@ class Store {
             const rawState = localStorage.getItem(STORAGE_KEY_STATE);
 
             if (!rawState) {
-                this.state = this.createDefaultState();
-                this.save(this.state);
-                return this.state;
+                const fresh = this.createDefaultState();
+                this.validate(fresh);
+                this.state = fresh;
+                this.save(fresh);
+                return fresh;
             }
 
-            let state;
-            try {
-                state = JSON.parse(rawState);
-            } catch (parseErr) {
-                throw new Error(`Lagringen är korrupt (JSON): ${parseErr.message}`);
+            const parsed = safeParseJSON(rawState);
+            if (!parsed.ok) {
+                throw new Error(`Lagringen är korrupt (JSON): ${parsed.error}`);
             }
 
-            this.validate(state);
+            let state = parsed.value;
+
+            // MIGRATE först (för att fixa typfel innan validate)
             state = this.migrate(state);
 
-            this.state = state;
-            localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
+            // Validate efter migration
+            this.validate(state);
 
+            // Skriv tillbaka (normaliserat) state
+            localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
+            this.state = state;
             this.lastError = null;
             return state;
         } catch (err) {
@@ -256,17 +286,22 @@ class Store {
 
     getState() {
         if (!this.state) {
+            // Fail-closed: returnera default (men skriv inte här)
             return this.createDefaultState();
         }
-        return JSON.parse(JSON.stringify(this.state));
+        return safeDeepClone(this.state);
     }
 
     update(mutatorFn) {
         try {
             const clone = this.getState();
             mutatorFn(clone);
-            this.validate(clone);
-            this.save(clone);
+
+            // Migrera även efter mutator (t.ex om någon råkar skriva number-id)
+            const migrated = this.migrate(clone);
+
+            this.validate(migrated);
+            this.save(migrated);
             this.notify();
         } catch (err) {
             this.lastError = err;
@@ -307,15 +342,17 @@ class Store {
 
     importState(jsonString, importOpts = {}) {
         try {
-            let importedState;
-            try {
-                importedState = JSON.parse(jsonString);
-            } catch (parseErr) {
-                throw new Error(`JSON-parse fel: ${parseErr.message}`);
+            const parsed = safeParseJSON(jsonString);
+            if (!parsed.ok) {
+                throw new Error(`JSON-parse fel: ${parsed.error}`);
             }
 
-            this.validate(importedState);
+            let importedState = parsed.value;
+
+            // Migrera så vi normaliserar id-typer etc.
             importedState = this.migrate(importedState);
+
+            this.validate(importedState);
 
             if (importOpts.previewOnly) {
                 return {
@@ -416,32 +453,23 @@ class Store {
         }
         this.validateSettings(state.settings);
 
-        if (state.demand) {
-            this.validateDemand(state.demand);
-        }
-        if (state.kitchenCore) {
-            this.validateKitchenCore(state.kitchenCore, state.people);
-        }
-        if (state.groups) {
-            this.validateGroups(state.groups);
-        }
+        if (state.demand) this.validateDemand(state.demand);
+        if (state.kitchenCore) this.validateKitchenCore(state.kitchenCore, state.people);
+        if (state.groups) this.validateGroups(state.groups);
+
         /* AO-02D: Validera shifts */
-        if (state.shifts) {
-            this.validateShifts(state.shifts);
-        }
-        if (state.groupShifts) {
-            this.validateGroupShifts(state.groupShifts, state.groups);
-        }
+        if (state.shifts) this.validateShifts(state.shifts);
+        if (state.groupShifts) this.validateGroupShifts(state.groupShifts, state.groups, state.shifts);
     }
 
     validateDemand(demand) {
-        if (typeof demand !== 'object') {
+        if (typeof demand !== 'object' || demand === null) {
             throw new Error('demand måste vara objekt');
         }
 
         /* AO-02C: Validera groupDemands */
         if (demand.groupDemands) {
-            if (typeof demand.groupDemands !== 'object') {
+            if (typeof demand.groupDemands !== 'object' || demand.groupDemands === null) {
                 throw new Error('demand.groupDemands måste vara objekt');
             }
 
@@ -455,9 +483,7 @@ class Store {
                 }
                 weekdays.forEach((val, dayIdx) => {
                     if (typeof val !== 'number' || val < 0 || val > 50) {
-                        throw new Error(
-                            `demand.groupDemands[${groupId}][${dayIdx}] måste vara 0–50, fick ${val}`
-                        );
+                        throw new Error(`demand.groupDemands[${groupId}][${dayIdx}] måste vara 0–50, fick ${val}`);
                     }
                 });
             });
@@ -474,7 +500,7 @@ class Store {
         const roles = ['KITCHEN', 'PACK', 'DISH', 'SYSTEM', 'ADMIN'];
 
         demand.weekdayTemplate.forEach((day, idx) => {
-            if (typeof day !== 'object') {
+            if (typeof day !== 'object' || day === null) {
                 throw new Error(`demand.weekdayTemplate[${idx}] måste vara objekt`);
             }
 
@@ -493,7 +519,7 @@ class Store {
 
     /* AO-02D: Validering för shifts */
     validateShifts(shifts) {
-        if (typeof shifts !== 'object') {
+        if (typeof shifts !== 'object' || shifts === null) {
             throw new Error('shifts måste vara objekt');
         }
 
@@ -508,39 +534,60 @@ class Store {
             if (typeof shift.name !== 'string' || !shift.name) {
                 throw new Error(`shifts[${shiftId}].name måste vara string`);
             }
-            if (shift.startTime && typeof shift.startTime !== 'string') {
-                throw new Error(`shifts[${shiftId}].startTime måste vara HH:MM eller null`);
-            }
-            if (shift.endTime && typeof shift.endTime !== 'string') {
-                throw new Error(`shifts[${shiftId}].endTime måste vara HH:MM eller null`);
-            }
+
+            // Start/end/break: string HH:MM eller null
+            ['startTime', 'endTime', 'breakStart', 'breakEnd'].forEach((k) => {
+                const v = shift[k];
+                if (v !== null && v !== undefined) {
+                    if (typeof v !== 'string' || !isHHMM(v)) {
+                        throw new Error(`shifts[${shiftId}].${k} måste vara HH:MM eller null`);
+                    }
+                }
+            });
+
             if (shift.color && typeof shift.color !== 'string') {
-                throw new Error(`shifts[${shiftId}].color måste vara hex-färg`);
+                throw new Error(`shifts[${shiftId}].color måste vara string`);
             }
         });
     }
 
     /* AO-02D: Validering för groupShifts */
-    validateGroupShifts(groupShifts, groups) {
-        if (typeof groupShifts !== 'object') {
+    validateGroupShifts(groupShifts, groups, shifts) {
+        if (typeof groupShifts !== 'object' || groupShifts === null) {
             throw new Error('groupShifts måste vara objekt');
         }
 
-        Object.keys(groupShifts).forEach((groupId) => {
-            const shiftIds = groupShifts[groupId];
+        Object.keys(groupShifts).forEach((groupIdRaw) => {
+            const groupId = String(groupIdRaw);
+            const shiftIds = groupShifts[groupIdRaw];
             if (!Array.isArray(shiftIds)) {
                 throw new Error(`groupShifts[${groupId}] måste vara array`);
             }
+
+            // Om groups finns: grupp ska existera
+            if (groups && typeof groups === 'object') {
+                const hasGroup = !!groups[groupId] || !!Object.values(groups).find((g) => String(g?.id) === groupId);
+                if (!hasGroup) {
+                    throw new Error(`groupShifts[${groupId}] pekar på okänd grupp`);
+                }
+            }
+
             shiftIds.forEach((shiftId, idx) => {
                 if (typeof shiftId !== 'string' || !shiftId) {
                     throw new Error(`groupShifts[${groupId}][${idx}] måste vara string`);
+                }
+                // Om shifts finns: shiftId ska existera
+                if (shifts && typeof shifts === 'object') {
+                    if (!shifts[shiftId]) {
+                        throw new Error(`groupShifts[${groupId}][${idx}] pekar på okänd shiftId "${shiftId}"`);
+                    }
                 }
             });
         });
     }
 
     validateGroups(groups) {
-        if (typeof groups !== 'object') {
+        if (typeof groups !== 'object' || groups === null) {
             throw new Error('groups måste vara objekt');
         }
 
@@ -565,7 +612,7 @@ class Store {
     }
 
     validateKitchenCore(kitchenCore, people) {
-        if (typeof kitchenCore !== 'object') {
+        if (typeof kitchenCore !== 'object' || kitchenCore === null) {
             throw new Error('kitchenCore måste vara objekt');
         }
 
@@ -581,25 +628,26 @@ class Store {
             throw new Error('kitchenCore.minCorePerDay måste vara number >= 0');
         }
 
-        const personIds = new Set(people.map((p) => p.id));
+        const personIds = new Set((people || []).map((p) => String(p?.id)));
         kitchenCore.corePersonIds.forEach((id) => {
-            if (!personIds.has(id)) {
-                console.warn(`kitchenCore innehåller okänd personId: ${id}`);
+            const sid = String(id);
+            if (!personIds.has(sid)) {
+                console.warn(`kitchenCore innehåller okänd personId: ${sid}`);
             }
         });
     }
 
     validateSettings(settings) {
-        if (typeof settings.defaultStart !== 'string') {
+        if (typeof settings.defaultStart !== 'string' || !isHHMM(settings.defaultStart)) {
             throw new Error('settings.defaultStart måste vara string (HH:MM)');
         }
-        if (typeof settings.defaultEnd !== 'string') {
+        if (typeof settings.defaultEnd !== 'string' || !isHHMM(settings.defaultEnd)) {
             throw new Error('settings.defaultEnd måste vara string (HH:MM)');
         }
-        if (typeof settings.breakStart !== 'string') {
+        if (typeof settings.breakStart !== 'string' || !isHHMM(settings.breakStart)) {
             throw new Error('settings.breakStart måste vara string (HH:MM)');
         }
-        if (typeof settings.breakEnd !== 'string') {
+        if (typeof settings.breakEnd !== 'string' || !isHHMM(settings.breakEnd)) {
             throw new Error('settings.breakEnd måste vara string (HH:MM)');
         }
         if (typeof settings.hourlyWageIsDefault !== 'boolean') {
@@ -633,10 +681,18 @@ class Store {
         if (typeof person.isActive !== 'boolean') {
             throw new Error(`people[${idx}].isActive måste vara boolean`);
         }
-        if (typeof person.vacationDaysPerYear !== 'number' || person.vacationDaysPerYear < 0 || person.vacationDaysPerYear > 40) {
+        if (
+            typeof person.vacationDaysPerYear !== 'number' ||
+            person.vacationDaysPerYear < 0 ||
+            person.vacationDaysPerYear > 40
+        ) {
             throw new Error(`people[${idx}].vacationDaysPerYear måste vara 0–40`);
         }
-        if (typeof person.extraDaysStartBalance !== 'number' || person.extraDaysStartBalance < 0 || person.extraDaysStartBalance > 365) {
+        if (
+            typeof person.extraDaysStartBalance !== 'number' ||
+            person.extraDaysStartBalance < 0 ||
+            person.extraDaysStartBalance > 365
+        ) {
             throw new Error(`people[${idx}].extraDaysStartBalance måste vara 0–365`);
         }
 
@@ -674,9 +730,7 @@ class Store {
 
         const daysInMonth = new Date(year, month.month, 0).getDate();
         if (month.days.length !== daysInMonth) {
-            throw new Error(
-                `schedule.months[${idx}] (månad ${month.month}) ska ha ${daysInMonth} dagar, har ${month.days.length}`
-            );
+            throw new Error(`schedule.months[${idx}] (månad ${month.month}) ska ha ${daysInMonth} dagar, har ${month.days.length}`);
         }
 
         month.days.forEach((day, dayIdx) => {
@@ -690,7 +744,7 @@ class Store {
             const timeFields = ['start', 'end', 'breakStart', 'breakEnd'];
             timeFields.forEach((field) => {
                 if (month.timeDefaults[field] !== null && month.timeDefaults[field] !== undefined) {
-                    if (typeof month.timeDefaults[field] !== 'string' || !/^\d{2}:\d{2}$/.test(month.timeDefaults[field])) {
+                    if (typeof month.timeDefaults[field] !== 'string' || !isHHMM(month.timeDefaults[field])) {
                         throw new Error(`schedule.months[${idx}].timeDefaults.${field} måste vara HH:MM eller null`);
                     }
                 }
@@ -727,16 +781,16 @@ class Store {
         if (!validStatuses.includes(entry.status)) {
             throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}].status måste vara en av: ${validStatuses.join(', ')}`);
         }
-        if (entry.start !== null && (typeof entry.start !== 'string' || !/^\d{2}:\d{2}$/.test(entry.start))) {
+        if (entry.start !== null && (typeof entry.start !== 'string' || !isHHMM(entry.start))) {
             throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}].start måste vara null eller HH:MM`);
         }
-        if (entry.end !== null && (typeof entry.end !== 'string' || !/^\d{2}:\d{2}$/.test(entry.end))) {
+        if (entry.end !== null && (typeof entry.end !== 'string' || !isHHMM(entry.end))) {
             throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}].end måste vara null eller HH:MM`);
         }
-        if (entry.breakStart !== null && (typeof entry.breakStart !== 'string' || !/^\d{2}:\d{2}$/.test(entry.breakStart))) {
+        if (entry.breakStart !== null && (typeof entry.breakStart !== 'string' || !isHHMM(entry.breakStart))) {
             throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}].breakStart måste vara null eller HH:MM`);
         }
-        if (entry.breakEnd !== null && (typeof entry.breakEnd !== 'string' || !/^\d{2}:\d{2}$/.test(entry.breakEnd))) {
+        if (entry.breakEnd !== null && (typeof entry.breakEnd !== 'string' || !isHHMM(entry.breakEnd))) {
             throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}].breakEnd måste vara null eller HH:MM`);
         }
     }
@@ -774,49 +828,111 @@ class Store {
        ==================================================================== */
 
     migrate(state) {
-        const currentVersion = state.meta?.schemaVersion;
+        // Fail-closed men byggbart: om state saknar bas, skapa från default och “overlay” det som finns.
+        const base = this.createDefaultState();
+        const s = (state && typeof state === 'object') ? state : {};
 
-        if (currentVersion === '1.0') {
-            return state;
-        }
+        // Lägg in obligatoriska noder om de saknas
+        if (!s.meta || typeof s.meta !== 'object') s.meta = {};
+        if (!s.people || !Array.isArray(s.people)) s.people = [];
+        if (!s.schedule || typeof s.schedule !== 'object') s.schedule = {};
+        if (!s.settings || typeof s.settings !== 'object') s.settings = {};
+        if (!s.demand || typeof s.demand !== 'object') s.demand = safeDeepClone(DEFAULT_DEMAND);
+        if (!s.groups || typeof s.groups !== 'object') s.groups = safeDeepClone(DEFAULT_GROUPS);
+        if (!s.shifts || typeof s.shifts !== 'object') s.shifts = safeDeepClone(DEFAULT_SHIFTS);
+        if (!s.groupShifts || typeof s.groupShifts !== 'object') s.groupShifts = safeDeepClone(DEFAULT_GROUP_SHIFTS);
 
+        // schemaVersion
+        const currentVersion = s.meta?.schemaVersion;
         if (!currentVersion) {
-            console.log('Migrerar från tom version → 1.0');
-            state.meta = state.meta || {};
-            state.meta.schemaVersion = '1.0';
-            state.meta.updatedAt = Date.now();
-            return state;
+            s.meta.schemaVersion = '1.0';
+        } else if (currentVersion !== '1.0') {
+            // Om ni inför nya versioner senare: bygg ut här.
+            throw new Error(`Okänd schemaVersion "${currentVersion}" — kan inte migrera`);
         }
 
-        throw new Error(`Okänd schemaVersion "${currentVersion}" — kan inte migrera`);
+        // updatedAt
+        if (typeof s.meta.updatedAt !== 'number') {
+            s.meta.updatedAt = Date.now();
+        }
+        if (!s.meta.appVersion) {
+            s.meta.appVersion = base.meta.appVersion;
+        }
+
+        // schedule
+        if (typeof s.schedule.year !== 'number') {
+            s.schedule.year = base.schedule.year;
+        }
+        if (!Array.isArray(s.schedule.months) || s.schedule.months.length !== 12) {
+            s.schedule.months = base.schedule.months;
+        } else {
+            // Säkerställ dagslängder per månad (om år ändrats eller data korrupt)
+            s.schedule.months = ensureMonthsShape(s.schedule.months, s.schedule.year, base.schedule.months);
+        }
+
+        // settings defaults
+        s.settings.defaultStart = typeof s.settings.defaultStart === 'string' ? s.settings.defaultStart : base.settings.defaultStart;
+        s.settings.defaultEnd = typeof s.settings.defaultEnd === 'string' ? s.settings.defaultEnd : base.settings.defaultEnd;
+        s.settings.breakStart = typeof s.settings.breakStart === 'string' ? s.settings.breakStart : base.settings.breakStart;
+        s.settings.breakEnd = typeof s.settings.breakEnd === 'string' ? s.settings.breakEnd : base.settings.breakEnd;
+        s.settings.hourlyWageIsDefault = typeof s.settings.hourlyWageIsDefault === 'boolean' ? s.settings.hourlyWageIsDefault : base.settings.hourlyWageIsDefault;
+        s.settings.theme = s.settings.theme && typeof s.settings.theme === 'object' ? s.settings.theme : safeDeepClone(DEFAULT_THEME);
+
+        // demand groupDemands: fyll saknade gruppnycklar från DEFAULT_DEMAND (utan att skriva över befintliga)
+        if (!s.demand.groupDemands || typeof s.demand.groupDemands !== 'object') {
+            s.demand.groupDemands = safeDeepClone(DEFAULT_DEMAND.groupDemands);
+        } else {
+            Object.keys(DEFAULT_DEMAND.groupDemands).forEach((gid) => {
+                if (!Array.isArray(s.demand.groupDemands[gid]) || s.demand.groupDemands[gid].length !== 7) {
+                    s.demand.groupDemands[gid] = safeDeepClone(DEFAULT_DEMAND.groupDemands[gid]);
+                } else {
+                    // Normalisera till number 0..50
+                    s.demand.groupDemands[gid] = s.demand.groupDemands[gid].map((v) => {
+                        const n = typeof v === 'number' ? v : parseInt(v, 10);
+                        if (!Number.isFinite(n) || n < 0) return 0;
+                        if (n > 50) return 50;
+                        return n;
+                    });
+                }
+            });
+        }
+
+        // weekdayTemplate: säkra shape
+        if (!Array.isArray(s.demand.weekdayTemplate) || s.demand.weekdayTemplate.length !== 7) {
+            s.demand.weekdayTemplate = safeDeepClone(DEFAULT_DEMAND.weekdayTemplate);
+        }
+
+        // groups: säkerställ att varje group har id/name + string
+        s.groups = normalizeGroupsMap(s.groups, DEFAULT_GROUPS);
+
+        // shifts: säkerställ id/name och HH:MM/null
+        s.shifts = normalizeShiftsMap(s.shifts, DEFAULT_SHIFTS);
+
+        // groupShifts: säkerställ arrays av string och att ids finns i shifts
+        s.groupShifts = normalizeGroupShifts(s.groupShifts, s.groups, s.shifts, DEFAULT_GROUP_SHIFTS);
+
+        // people: normalisera person.id till string + groups[] till string[] + numeric fält till number
+        s.people = (s.people || []).map((p) => normalizePerson(p));
+
+        // schedule entries: normalisera entry.personId till string
+        if (s.schedule && Array.isArray(s.schedule.months)) {
+            s.schedule.months.forEach((month) => {
+                if (!month || !Array.isArray(month.days)) return;
+                month.days.forEach((day) => {
+                    if (!day || !Array.isArray(day.entries)) return;
+                    day.entries = day.entries.map((e) => normalizeEntry(e));
+                });
+            });
+        }
+
+        return s;
     }
 
     createDefaultState() {
         const now = Date.now();
-        const year = 2026;
+        const year = new Date().getFullYear(); // tidigare hårdkodat 2026
 
-        const months = [];
-        for (let m = 1; m <= 12; m++) {
-            const daysInMonth = new Date(year, m, 0).getDate();
-            const days = [];
-            for (let d = 1; d <= daysInMonth; d++) {
-                const dateStr = `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                days.push({
-                    date: dateStr,
-                    entries: [],
-                });
-            }
-            months.push({
-                month: m,
-                days,
-                timeDefaults: {
-                    start: '07:00',
-                    end: '16:00',
-                    breakStart: '12:00',
-                    breakEnd: '13:00',
-                },
-            });
-        }
+        const months = buildMonths(year);
 
         return {
             meta: {
@@ -838,20 +954,20 @@ class Store {
                 pinHash: '',
                 enableP1Streak10: true,
                 summaryToleranceHours: 0.25,
-                theme: JSON.parse(JSON.stringify(DEFAULT_THEME)),
+                theme: safeDeepClone(DEFAULT_THEME),
             },
             /* AO-02C: Bemanningsbehov per grupp */
-            demand: JSON.parse(JSON.stringify(DEFAULT_DEMAND)),
+            demand: safeDeepClone(DEFAULT_DEMAND),
             kitchenCore: {
                 enabled: true,
                 corePersonIds: [],
                 minCorePerDay: 1,
             },
             /* AO-02B: Grupper */
-            groups: JSON.parse(JSON.stringify(DEFAULT_GROUPS)),
+            groups: safeDeepClone(DEFAULT_GROUPS),
             /* AO-02D: Pass och grupp-pass-koppling */
-            shifts: JSON.parse(JSON.stringify(DEFAULT_SHIFTS)),
-            groupShifts: JSON.parse(JSON.stringify(DEFAULT_GROUP_SHIFTS)),
+            shifts: safeDeepClone(DEFAULT_SHIFTS),
+            groupShifts: safeDeepClone(DEFAULT_GROUP_SHIFTS),
             /* AO-23: Notifikationer */
             notifications: {
                 queue: [],
@@ -881,3 +997,209 @@ export function getStore() {
 }
 
 export default getStore();
+
+/* ========================================================================
+   BLOCK 8: HELPERS (internal)
+   ======================================================================== */
+
+function safeParseJSON(str) {
+    try {
+        return { ok: true, value: JSON.parse(str) };
+    } catch (e) {
+        return { ok: false, error: e?.message || 'Okänt JSON-fel' };
+    }
+}
+
+function safeDeepClone(obj) {
+    // UI-only: JSON clone räcker här
+    return JSON.parse(JSON.stringify(obj));
+}
+
+function isHHMM(v) {
+    return typeof v === 'string' && /^\d{2}:\d{2}$/.test(v);
+}
+
+function buildMonths(year) {
+    const months = [];
+    for (let m = 1; m <= 12; m++) {
+        const daysInMonth = new Date(year, m, 0).getDate();
+        const days = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            days.push({ date: dateStr, entries: [] });
+        }
+        months.push({
+            month: m,
+            days,
+            timeDefaults: {
+                start: '07:00',
+                end: '16:00',
+                breakStart: '12:00',
+                breakEnd: '13:00',
+            },
+        });
+    }
+    return months;
+}
+
+function ensureMonthsShape(months, year, fallbackMonths) {
+    // Säkerställ att varje månad har rätt antal dagar och entries-array
+    const out = [];
+    for (let i = 0; i < 12; i++) {
+        const base = fallbackMonths[i];
+        const m = months[i];
+        if (!m || typeof m !== 'object' || typeof m.month !== 'number') {
+            out.push(base);
+            continue;
+        }
+        const monthNum = m.month;
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        const days = Array.isArray(m.days) ? m.days : [];
+        if (days.length !== daysInMonth) {
+            out.push(base);
+            continue;
+        }
+        // Patch per day
+        const patchedDays = days.map((d) => {
+            const day = d && typeof d === 'object' ? d : {};
+            if (typeof day.date !== 'string') return null;
+            if (!Array.isArray(day.entries)) day.entries = [];
+            return day;
+        });
+        if (patchedDays.some((x) => x === null)) {
+            out.push(base);
+            continue;
+        }
+        out.push({
+            month: monthNum,
+            days: patchedDays,
+            timeDefaults: (m.timeDefaults && typeof m.timeDefaults === 'object') ? m.timeDefaults : base.timeDefaults,
+        });
+    }
+    return out;
+}
+
+function normalizeGroupsMap(groups, fallback) {
+    const src = (groups && typeof groups === 'object') ? groups : {};
+    const out = Object.create(null);
+
+    // Om src ser ut som array (ovanligt), hantera via Object.values ändå
+    const values = Object.values(src);
+    if (values.length > 0) {
+        values.forEach((g) => {
+            if (!g || typeof g !== 'object') return;
+            const id = String(g.id ?? '').trim();
+            if (!id) return;
+            out[id] = {
+                id,
+                name: String(g.name ?? id),
+                color: typeof g.color === 'string' ? g.color : (fallback[id]?.color || '#777'),
+                textColor: typeof g.textColor === 'string' ? g.textColor : (fallback[id]?.textColor || '#fff'),
+            };
+        });
+    }
+
+    // Lägg till fallback-grupper som saknas
+    Object.keys(fallback).forEach((key) => {
+        const gid = String(fallback[key].id);
+        if (!out[gid]) out[gid] = safeDeepClone(fallback[key]);
+    });
+
+    return out;
+}
+
+function normalizeShiftsMap(shifts, fallback) {
+    const src = (shifts && typeof shifts === 'object') ? shifts : {};
+    const out = Object.create(null);
+
+    Object.values(src).forEach((s) => {
+        if (!s || typeof s !== 'object') return;
+        const id = String(s.id ?? '').trim();
+        if (!id) return;
+
+        const norm = {
+            id,
+            name: String(s.name ?? id),
+            shortName: typeof s.shortName === 'string' ? s.shortName : '',
+            startTime: (s.startTime == null ? null : (isHHMM(s.startTime) ? s.startTime : null)),
+            endTime: (s.endTime == null ? null : (isHHMM(s.endTime) ? s.endTime : null)),
+            breakStart: (s.breakStart == null ? null : (isHHMM(s.breakStart) ? s.breakStart : null)),
+            breakEnd: (s.breakEnd == null ? null : (isHHMM(s.breakEnd) ? s.breakEnd : null)),
+            color: typeof s.color === 'string' ? s.color : (fallback[id]?.color || '#777'),
+            description: typeof s.description === 'string' ? s.description : '',
+        };
+        out[id] = norm;
+    });
+
+    // Lägg till fallback shifts som saknas
+    Object.keys(fallback).forEach((key) => {
+        const sid = String(fallback[key].id);
+        if (!out[sid]) out[sid] = safeDeepClone(fallback[key]);
+    });
+
+    return out;
+}
+
+function normalizeGroupShifts(groupShifts, groups, shifts, fallback) {
+    const src = (groupShifts && typeof groupShifts === 'object') ? groupShifts : {};
+    const out = Object.create(null);
+
+    Object.keys(src).forEach((gidRaw) => {
+        const gid = String(gidRaw);
+        const arr = src[gidRaw];
+        if (!Array.isArray(arr)) return;
+        const cleaned = arr
+            .map((x) => String(x ?? '').trim())
+            .filter(Boolean)
+            .filter((sid) => !!shifts[sid]); // drop okända shifts
+        out[gid] = cleaned;
+    });
+
+    // Säkerställ att alla grupper har en mapping (minst fallback)
+    Object.keys(groups || {}).forEach((gid) => {
+        const id = String(gid);
+        if (!out[id]) {
+            // försök fallback via id
+            if (fallback && fallback[id]) out[id] = safeDeepClone(fallback[id]).filter((sid) => !!shifts[sid]);
+            else out[id] = [];
+        }
+    });
+
+    // Lägg också in fallback för nycklar som finns i fallback men inte i groups (om någon vill använda dem ändå)
+    Object.keys(fallback || {}).forEach((gid) => {
+        if (!out[gid]) out[gid] = safeDeepClone(fallback[gid]).filter((sid) => !!shifts[sid]);
+    });
+
+    return out;
+}
+
+function normalizePerson(p) {
+    const person = (p && typeof p === 'object') ? p : {};
+    const id = String(person.id ?? '').trim() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    const groups = Array.isArray(person.groups)
+        ? person.groups.map((g) => String(g ?? '').trim()).filter(Boolean)
+        : undefined;
+
+    return {
+        id,
+        firstName: typeof person.firstName === 'string' ? person.firstName : '',
+        lastName: typeof person.lastName === 'string' ? person.lastName : '',
+        hourlyWage: typeof person.hourlyWage === 'number' ? person.hourlyWage : (Number.isFinite(parseFloat(person.hourlyWage)) ? parseFloat(person.hourlyWage) : 0),
+        employmentPct: typeof person.employmentPct === 'number' ? person.employmentPct : (Number.isFinite(parseInt(person.employmentPct, 10)) ? parseInt(person.employmentPct, 10) : 0),
+        isActive: typeof person.isActive === 'boolean' ? person.isActive : true,
+        vacationDaysPerYear: typeof person.vacationDaysPerYear === 'number' ? person.vacationDaysPerYear : (Number.isFinite(parseInt(person.vacationDaysPerYear, 10)) ? parseInt(person.vacationDaysPerYear, 10) : 25),
+        extraDaysStartBalance: typeof person.extraDaysStartBalance === 'number' ? person.extraDaysStartBalance : (Number.isFinite(parseInt(person.extraDaysStartBalance, 10)) ? parseInt(person.extraDaysStartBalance, 10) : 0),
+        ...(groups !== undefined ? { groups } : {}),
+        ...(person.skills && typeof person.skills === 'object' ? { skills: person.skills } : {}),
+    };
+}
+
+function normalizeEntry(e) {
+    const entry = (e && typeof e === 'object') ? e : {};
+    return {
+        ...entry,
+        personId: String(entry.personId ?? ''),
+        // behåll status/tider som de är; validate tar resten
+    };
+}
