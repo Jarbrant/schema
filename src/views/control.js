@@ -1,5 +1,6 @@
 /*
- * AO-09 + AO-02A: CONTROL: Kontroll & Schemaläggning (FIXED)
+ * AO-02C + AO-09: CONTROL: Kontroll & Grupp-baserat bemanningsbehov
+ * /* AO-02C */ marks group demand UI changes
  */
 
 import { evaluate } from '../rules.js';
@@ -37,6 +38,9 @@ export function renderControl(container, ctx) {
             <!-- Regel-varnings-banner -->
             ${renderRulesBanner(rulesResult)}
 
+            <!-- AO-02C: Grupp-baserat bemanningsbehov (nytt!) -->
+            ${renderGroupDemandSection(state)}
+
             <!-- AO-09: Schemaläggnings-panel -->
             ${renderSchedulerSection(state)}
 
@@ -46,6 +50,14 @@ export function renderControl(container, ctx) {
     `;
 
     container.innerHTML = html;
+
+    /* AO-02C: Event listeners för grupp-behov */
+    const saveDemandBtn = container.querySelector('#save-group-demands-btn');
+    if (saveDemandBtn) {
+        saveDemandBtn.addEventListener('click', () => {
+            handleSaveGroupDemands(store, container, ctx);
+        });
+    }
 
     // AO-09 Event listeners
     const generateBtn = container.querySelector('#generate-schedule-btn');
@@ -89,6 +101,168 @@ function renderRulesBanner(result) {
 }
 
 /**
+ * AO-02C: Rendera grupp-baserat bemanningsbehov
+ */
+function renderGroupDemandSection(state) {
+    /* AO-02C: Hämta grupper och nuvarande behov */
+    const groups = state.groups || {};
+    const demand = state.demand || {};
+    const groupDemands = demand.groupDemands || {};
+
+    const dayNames = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
+    const groupIds = Object.keys(groups).sort();
+
+    if (groupIds.length === 0) {
+        return `
+            <div class="alert alert-info">
+                <h4>ℹ️ Inga grupper definierade</h4>
+                <p>Lägg till personalgrupper först för att kunna sätta bemanningsbehov.</p>
+            </div>
+        `;
+    }
+
+    /* AO-02C: Bygg grupp-behov-tabell */
+    const tableHtml = `
+        <div class="group-demand-table-wrapper">
+            <table class="group-demand-table">
+                <thead>
+                    <tr>
+                        <th>Grupp</th>
+                        ${dayNames.map((day) => `<th class="text-center">${day}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${groupIds
+                        .map((groupId) => {
+                            const group = groups[groupId];
+                            const weekdayDemands = groupDemands[groupId] || [0, 0, 0, 0, 0, 0, 0];
+
+                            return `
+                                <tr>
+                                    <td class="group-name-cell">
+                                        <span class="group-color-dot" style="background: ${group.color}; border-color: ${group.color};"></span>
+                                        <strong>${group.name}</strong>
+                                    </td>
+                                    ${dayNames
+                                        .map((day, dayIdx) => `
+                                        <td class="text-center">
+                                            <input 
+                                                type="number" 
+                                                class="demand-input" 
+                                                data-group="${groupId}" 
+                                                data-day="${dayIdx}" 
+                                                min="0" 
+                                                max="20" 
+                                                value="${weekdayDemands[dayIdx] || 0}"
+                                                placeholder="0"
+                                            >
+                                        </td>
+                                    `)
+                                        .join('')}
+                                </tr>
+                            `;
+                        })
+                        .join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    return `
+        <section class="group-demand-section">
+            <h3>📊 Bemanningsbehov per grupp & veckodag</h3>
+            <p class="section-desc">
+                Ange hur många personer från varje grupp som behövs per veckodag.
+            </p>
+
+            ${tableHtml}
+
+            <div class="group-demand-actions">
+                <button id="save-group-demands-btn" class="btn btn-primary">
+                    💾 Spara behov
+                </button>
+                <div id="group-demands-result" class="group-demands-result hidden"></div>
+            </div>
+        </section>
+    `;
+}
+
+/**
+ * AO-02C: Spara grupp-behov
+ */
+function handleSaveGroupDemands(store, container, ctx) {
+    try {
+        /* AO-02C: Samla värden från alla inputs */
+        const inputs = container.querySelectorAll('.demand-input');
+        const groupDemands = {};
+
+        inputs.forEach((input) => {
+            const groupId = input.dataset.group;
+            const dayIdx = parseInt(input.dataset.day, 10);
+            const value = parseInt(input.value, 10) || 0;
+
+            if (!groupDemands[groupId]) {
+                groupDemands[groupId] = [0, 0, 0, 0, 0, 0, 0];
+            }
+
+            if (value < 0 || value > 20) {
+                throw new Error(`Behov för grupp måste vara 0–20, fick ${value}`);
+            }
+
+            groupDemands[groupId][dayIdx] = value;
+        });
+
+        /* AO-02C: Validera att minst något behov är satt */
+        let hasAnyDemand = false;
+        Object.values(groupDemands).forEach((weekdays) => {
+            if (weekdays.some((val) => val > 0)) {
+                hasAnyDemand = true;
+            }
+        });
+
+        if (!hasAnyDemand) {
+            throw new Error('Du måste sätta minst något bemanningsbehov');
+        }
+
+        /* AO-02C: Spara till store */
+        store.update((state) => {
+            if (!state.demand) {
+                state.demand = {};
+            }
+            state.demand.groupDemands = groupDemands;
+            state.meta.updatedAt = Date.now();
+            return state;
+        });
+
+        /* AO-02C: Visa successmeddelande */
+        const resultDiv = container.querySelector('#group-demands-result');
+        resultDiv.innerHTML = `
+            <div class="result-box success">
+                <h4>✓ Bemanningsbehov sparade!</h4>
+                <p>Grupp-behov uppdaterade för alla veckodagar.</p>
+            </div>
+        `;
+        resultDiv.classList.remove('hidden');
+
+        // Dölj efter 3 sekunder
+        setTimeout(() => {
+            resultDiv.classList.add('hidden');
+        }, 3000);
+
+    } catch (err) {
+        console.error('Spara-fel:', err);
+        const resultDiv = container.querySelector('#group-demands-result');
+        resultDiv.innerHTML = `
+            <div class="result-box error">
+                <h4>❌ Fel vid sparning</h4>
+                <p>${escapeHtml(err.message)}</p>
+            </div>
+        `;
+        resultDiv.classList.remove('hidden');
+    }
+}
+
+/**
  * AO-09: Rendera schemaläggnings-panel
  */
 function renderSchedulerSection(state) {
@@ -129,27 +303,6 @@ function renderSchedulerSection(state) {
                         </select>
                     </div>
 
-                    <div class="need-inputs">
-                        <h4>Bemanningsbehov per veckodag (antal A):</h4>
-                        <div class="need-grid">
-                            ${['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön']
-                                .map((day, idx) => `
-                                <div class="need-input-group">
-                                    <label for="need-${idx}">${day}:</label>
-                                    <input 
-                                        type="number" 
-                                        id="need-${idx}" 
-                                        class="need-input"
-                                        min="0"
-                                        max="20"
-                                        value="${idx < 5 ? '6' : '4'}"
-                                        placeholder="0"
-                                    >
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-
                     <div class="scheduler-actions">
                         <button id="generate-schedule-btn" class="btn btn-primary">
                             ✨ Föreslå schema
@@ -167,27 +320,14 @@ function renderSchedulerSection(state) {
 }
 
 /**
- * AO-02A + AO-09: Hantera schemagenering med FAIL-CLOSED
+ * AO-09: Hantera schemagenering med FAIL-CLOSED
  */
 function handleGenerateSchedule(store, container, ctx) {
     try {
         const currentMonth = parseInt(sessionStorage.getItem('AO22_selectedMonth') || String(new Date().getMonth() + 1), 10);
         const selectedMonth = Math.max(1, Math.min(12, currentMonth));
 
-        // Samla behov från inputs
-        const needByWeekday = [];
-        for (let i = 0; i < 7; i++) {
-            const input = container.querySelector(`#need-${i}`);
-            const value = parseInt(input.value, 10) || 0;
-            
-            if (value < 0 || value > 20) {
-                throw new Error(`Dag ${i + 1}: Behov måste vara mellan 0–20`);
-            }
-            
-            needByWeekday.push(value);
-        }
-
-        console.log('🔄 Genererar schema för månad', selectedMonth, 'med behov:', needByWeekday);
+        console.log('🔄 Genererar schema för månad', selectedMonth);
 
         if (!confirm('Är du säker? Detta ersätter all A-status för vald månad. Originaldata kan inte återställas.')) {
             return;
@@ -201,12 +341,11 @@ function handleGenerateSchedule(store, container, ctx) {
             result = generate(state, {
                 year: 2026,
                 month: selectedMonth,
-                needByWeekday,
+                needByWeekday: [6, 6, 6, 6, 6, 4, 4], // Fallback (kommer från grupp-behov senare)
             });
         } catch (genErr) {
             console.error('❌ Generering misslyckades:', genErr);
-            
-            // FAIL-CLOSED: Visa fel utan att ändra något
+
             const resultDiv = container.querySelector('#scheduler-result');
             resultDiv.innerHTML = `
                 <div class="result-box error">
@@ -218,7 +357,7 @@ function handleGenerateSchedule(store, container, ctx) {
                 </div>
             `;
             resultDiv.classList.remove('hidden');
-            return; // STOPPA här, spara INGENTING
+            return;
         }
 
         console.log('✓ Schema genererat:', result);
@@ -255,7 +394,6 @@ function handleGenerateSchedule(store, container, ctx) {
 
         // SECOND: Spara till store (EFTER validering passerad)
         store.update((s) => {
-            // Kopiera över entries från proposedState
             result.proposedState.schedule.months.forEach((proposedMonth, idx) => {
                 s.schedule.months[idx].days = proposedMonth.days;
             });
