@@ -1,8 +1,60 @@
 /*
- * AO-22 — STORE: Komplett state-hantering med alla AO
+ * AO-02B — STORE: Komplett state-hantering med personalgrupper + färger
  */
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
+
+// AO-02B: Fördefinierade grupper med färger
+const DEFAULT_GROUPS = {
+    SYSTEM_ADMIN: {
+        id: 'SYSTEM_ADMIN',
+        name: 'SYSTEM_ADMIN',
+        color: '#FF6B6B',
+        textColor: '#FFFFFF',
+    },
+    ADMIN: {
+        id: 'ADMIN',
+        name: 'Admin',
+        color: '#4ECDC4',
+        textColor: '#FFFFFF',
+    },
+    KITCHEN_MASTER: {
+        id: 'KITCHEN_MASTER',
+        name: 'Köksmästare',
+        color: '#FFD93D',
+        textColor: '#000000',
+    },
+    COOKS: {
+        id: 'COOKS',
+        name: 'Kockar',
+        color: '#FF8C42',
+        textColor: '#FFFFFF',
+    },
+    RESTAURANT_STAFF: {
+        id: 'RESTAURANT_STAFF',
+        name: 'Restaurangpersonal',
+        color: '#A29BFE',
+        textColor: '#FFFFFF',
+    },
+    DISHWASHERS: {
+        id: 'DISHWASHERS',
+        name: 'Diskare',
+        color: '#6C5CE7',
+        textColor: '#FFFFFF',
+    },
+    WAREHOUSE: {
+        id: 'WAREHOUSE',
+        name: 'Lagerarbetare',
+        color: '#00B894',
+        textColor: '#FFFFFF',
+    },
+    DRIVERS: {
+        id: 'DRIVERS',
+        name: 'Chaufförer',
+        color: '#0984E3',
+        textColor: '#FFFFFF',
+    },
+};
 
 const DEFAULT_THEME = {
     statusColors: {
@@ -28,16 +80,7 @@ const DEFAULT_THEME = {
         EXTRA: '#ffeb3b',
     },
 };
-const DEFAULT_NOTIFICATIONS = {
-    queue: [],
-    settings: {
-        enabled: false,
-        provider: 'mock', // 'mock' eller 'twilio'
-        twilioAccountSid: '',
-        twilioAuthToken: '',
-        twilioFromNumber: '',
-    },
-};
+
 const DEFAULT_DEMAND = {
     weekdayTemplate: [
         { KITCHEN: 4, PACK: 6, DISH: 1, SYSTEM: 1, ADMIN: 1, notes: '' },
@@ -64,7 +107,7 @@ class Store {
         try {
             const loaded = this.load();
             this.isReady = true;
-            console.log('Store initialiserad');
+            console.log('✓ Store initialiserad');
         } catch (err) {
             console.error('Init-fel', err);
             this.lastError = err;
@@ -281,6 +324,37 @@ class Store {
         if (state.kitchenCore) {
             this.validateKitchenCore(state.kitchenCore, state.people);
         }
+
+        // AO-02B: Validera grupper
+        if (state.groups) {
+            this.validateGroups(state.groups);
+        }
+    }
+
+    // AO-02B: Validera grupper
+    validateGroups(groups) {
+        if (typeof groups !== 'object') {
+            throw new Error('groups måste vara objekt');
+        }
+
+        Object.keys(groups).forEach((groupId) => {
+            const group = groups[groupId];
+            if (!group || typeof group !== 'object') {
+                throw new Error(`groups[${groupId}] måste vara objekt`);
+            }
+            if (typeof group.id !== 'string' || !group.id) {
+                throw new Error(`groups[${groupId}].id måste vara non-empty string`);
+            }
+            if (typeof group.name !== 'string' || !group.name) {
+                throw new Error(`groups[${groupId}].name måste vara non-empty string`);
+            }
+            if (group.color && typeof group.color !== 'string') {
+                throw new Error(`groups[${groupId}].color måste vara string`);
+            }
+            if (group.textColor && typeof group.textColor !== 'string') {
+                throw new Error(`groups[${groupId}].textColor måste vara string`);
+            }
+        });
     }
 
     validateSettings(settings) {
@@ -392,6 +466,18 @@ class Store {
             throw new Error(`people[${idx}].extraDaysStartBalance måste vara 0–365`);
         }
 
+        // AO-02B: Validera groups
+        if (person.groups !== undefined) {
+            if (!Array.isArray(person.groups)) {
+                throw new Error(`people[${idx}].groups måste vara array`);
+            }
+            person.groups.forEach((groupId, groupIdx) => {
+                if (typeof groupId !== 'string' || !groupId) {
+                    throw new Error(`people[${idx}].groups[${groupIdx}] måste vara non-empty string`);
+                }
+            });
+        }
+
         if (person.skills && typeof person.skills === 'object') {
             const skillNames = ['KITCHEN', 'PACK', 'DISH', 'SYSTEM', 'ADMIN'];
             skillNames.forEach((skill) => {
@@ -464,7 +550,7 @@ class Store {
         if (typeof entry.personId !== 'string') {
             throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}].personId måste vara string`);
         }
-        const validStatuses = ['A', 'L', 'X', 'SEM', 'SJ', 'VAB', 'PERM', 'UTB'];
+        const validStatuses = ['A', 'L', 'X', 'SEM', 'SJ', 'VAB', 'PERM', 'UTB', 'EXTRA'];
         if (!validStatuses.includes(entry.status)) {
             throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}].status måste vara en av: ${validStatuses.join(', ')}`);
         }
@@ -582,6 +668,18 @@ class Store {
                 enabled: true,
                 corePersonIds: [],
                 minCorePerDay: 1,
+            },
+            // AO-02B: Lägg till grupper
+            groups: JSON.parse(JSON.stringify(DEFAULT_GROUPS)),
+            notifications: {
+                queue: [],
+                settings: {
+                    enabled: false,
+                    provider: 'mock',
+                    twilioAccountSid: '',
+                    twilioAuthToken: '',
+                    twilioFromNumber: '',
+                },
             },
         };
     }
