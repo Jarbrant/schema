@@ -1,10 +1,10 @@
 /*
- * AO-02B — STORE: Komplett state-hantering med personalgrupper + färger
+ * AO-02C — STORE: Bemanningsbehov per grupp + veckodag
+ * Lines marked with /* AO-02C */ show group-based demand changes
  */
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
 
-// AO-02B: Fördefinierade grupper med färger
 const DEFAULT_GROUPS = {
     SYSTEM_ADMIN: {
         id: 'SYSTEM_ADMIN',
@@ -81,7 +81,20 @@ const DEFAULT_THEME = {
     },
 };
 
+/* AO-02C: Bemanningsbehov per grupp per veckodag */
 const DEFAULT_DEMAND = {
+    /* AO-02C: struktur ändrad från weekdayTemplate till groupDemands */
+    groupDemands: {
+        COOKS: [3, 3, 3, 2, 2, 2, 2],        // mån–sön
+        DISHWASHERS: [1, 1, 1, 1, 1, 1, 1],
+        RESTAURANT_STAFF: [2, 2, 2, 2, 2, 2, 2],
+        KITCHEN_MASTER: [1, 1, 1, 1, 1, 0, 0],
+        WAREHOUSE: [0, 0, 1, 0, 1, 0, 0],
+        DRIVERS: [0, 0, 0, 1, 0, 0, 0],
+        ADMIN: [1, 1, 1, 1, 1, 0, 0],
+        SYSTEM_ADMIN: [0, 0, 0, 0, 0, 0, 0],
+    },
+    /* AO-02C: Behål gammal struktur för bakåtkompatibilitet */
     weekdayTemplate: [
         { KITCHEN: 4, PACK: 6, DISH: 1, SYSTEM: 1, ADMIN: 1, notes: '' },
         { KITCHEN: 4, PACK: 6, DISH: 2, SYSTEM: 1, ADMIN: 1, notes: '' },
@@ -318,6 +331,7 @@ class Store {
         }
         this.validateSettings(state.settings);
 
+        /* AO-02C: Validera grupp-behov */
         if (state.demand) {
             this.validateDemand(state.demand);
         }
@@ -325,65 +339,42 @@ class Store {
             this.validateKitchenCore(state.kitchenCore, state.people);
         }
 
-        // AO-02B: Validera grupper
         if (state.groups) {
             this.validateGroups(state.groups);
         }
     }
 
-    // AO-02B: Validera grupper
-    validateGroups(groups) {
-        if (typeof groups !== 'object') {
-            throw new Error('groups måste vara objekt');
-        }
-
-        Object.keys(groups).forEach((groupId) => {
-            const group = groups[groupId];
-            if (!group || typeof group !== 'object') {
-                throw new Error(`groups[${groupId}] måste vara objekt`);
-            }
-            if (typeof group.id !== 'string' || !group.id) {
-                throw new Error(`groups[${groupId}].id måste vara non-empty string`);
-            }
-            if (typeof group.name !== 'string' || !group.name) {
-                throw new Error(`groups[${groupId}].name måste vara non-empty string`);
-            }
-            if (group.color && typeof group.color !== 'string') {
-                throw new Error(`groups[${groupId}].color måste vara string`);
-            }
-            if (group.textColor && typeof group.textColor !== 'string') {
-                throw new Error(`groups[${groupId}].textColor måste vara string`);
-            }
-        });
-    }
-
-    validateSettings(settings) {
-        if (typeof settings.defaultStart !== 'string') {
-            throw new Error('settings.defaultStart måste vara string (HH:MM)');
-        }
-        if (typeof settings.defaultEnd !== 'string') {
-            throw new Error('settings.defaultEnd måste vara string (HH:MM)');
-        }
-        if (typeof settings.breakStart !== 'string') {
-            throw new Error('settings.breakStart måste vara string (HH:MM)');
-        }
-        if (typeof settings.breakEnd !== 'string') {
-            throw new Error('settings.breakEnd måste vara string (HH:MM)');
-        }
-        if (typeof settings.hourlyWageIsDefault !== 'boolean') {
-            throw new Error('settings.hourlyWageIsDefault måste vara boolean');
-        }
-
-        if (settings.theme) {
-            this.validateTheme(settings.theme);
-        }
-    }
-
+    /* AO-02C: Validering för grupp-behov */
     validateDemand(demand) {
         if (typeof demand !== 'object') {
             throw new Error('demand måste vara objekt');
         }
 
+        /* AO-02C: Validera groupDemands */
+        if (demand.groupDemands) {
+            if (typeof demand.groupDemands !== 'object') {
+                throw new Error('demand.groupDemands måste vara objekt');
+            }
+
+            Object.keys(demand.groupDemands).forEach((groupId) => {
+                const weekdays = demand.groupDemands[groupId];
+                if (!Array.isArray(weekdays)) {
+                    throw new Error(`demand.groupDemands[${groupId}] måste vara array`);
+                }
+                if (weekdays.length !== 7) {
+                    throw new Error(`demand.groupDemands[${groupId}] måste ha 7 värden (mån–sön)`);
+                }
+                weekdays.forEach((val, dayIdx) => {
+                    if (typeof val !== 'number' || val < 0 || val > 50) {
+                        throw new Error(
+                            `demand.groupDemands[${groupId}][${dayIdx}] måste vara 0–50, fick ${val}`
+                        );
+                    }
+                });
+            });
+        }
+
+        /* AO-02C: Behål gammal validering för bakåtkompatibilitet */
         if (!Array.isArray(demand.weekdayTemplate)) {
             throw new Error('demand.weekdayTemplate måste vara array');
         }
@@ -437,6 +428,53 @@ class Store {
         });
     }
 
+    validateGroups(groups) {
+        if (typeof groups !== 'object') {
+            throw new Error('groups måste vara objekt');
+        }
+
+        Object.keys(groups).forEach((groupId) => {
+            const group = groups[groupId];
+            if (!group || typeof group !== 'object') {
+                throw new Error(`groups[${groupId}] måste vara objekt`);
+            }
+            if (typeof group.id !== 'string' || !group.id) {
+                throw new Error(`groups[${groupId}].id måste vara non-empty string`);
+            }
+            if (typeof group.name !== 'string' || !group.name) {
+                throw new Error(`groups[${groupId}].name måste vara non-empty string`);
+            }
+            if (group.color && typeof group.color !== 'string') {
+                throw new Error(`groups[${groupId}].color måste vara string`);
+            }
+            if (group.textColor && typeof group.textColor !== 'string') {
+                throw new Error(`groups[${groupId}].textColor måste vara string`);
+            }
+        });
+    }
+
+    validateSettings(settings) {
+        if (typeof settings.defaultStart !== 'string') {
+            throw new Error('settings.defaultStart måste vara string (HH:MM)');
+        }
+        if (typeof settings.defaultEnd !== 'string') {
+            throw new Error('settings.defaultEnd måste vara string (HH:MM)');
+        }
+        if (typeof settings.breakStart !== 'string') {
+            throw new Error('settings.breakStart måste vara string (HH:MM)');
+        }
+        if (typeof settings.breakEnd !== 'string') {
+            throw new Error('settings.breakEnd måste vara string (HH:MM)');
+        }
+        if (typeof settings.hourlyWageIsDefault !== 'boolean') {
+            throw new Error('settings.hourlyWageIsDefault måste vara boolean');
+        }
+
+        if (settings.theme) {
+            this.validateTheme(settings.theme);
+        }
+    }
+
     validatePerson(person, idx) {
         if (!person || typeof person !== 'object') {
             throw new Error(`people[${idx}] måste vara objekt`);
@@ -466,7 +504,6 @@ class Store {
             throw new Error(`people[${idx}].extraDaysStartBalance måste vara 0–365`);
         }
 
-        // AO-02B: Validera groups
         if (person.groups !== undefined) {
             if (!Array.isArray(person.groups)) {
                 throw new Error(`people[${idx}].groups måste vara array`);
@@ -663,13 +700,13 @@ class Store {
                 summaryToleranceHours: 0.25,
                 theme: JSON.parse(JSON.stringify(DEFAULT_THEME)),
             },
+            /* AO-02C: Uppdaterad demand-struktur */
             demand: JSON.parse(JSON.stringify(DEFAULT_DEMAND)),
             kitchenCore: {
                 enabled: true,
                 corePersonIds: [],
                 minCorePerDay: 1,
             },
-            // AO-02B: Lägg till grupper
             groups: JSON.parse(JSON.stringify(DEFAULT_GROUPS)),
             notifications: {
                 queue: [],
