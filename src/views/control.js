@@ -1,10 +1,14 @@
 /*
- * AO-02C + AO-09: CONTROL: Kontroll & Grupp-baserat bemanningsbehov
- * /* AO-02C */ marks group demand UI changes
+ * AO-02C + AO-02D + AO-09: CONTROL: Grupp-behov, Pass, och Schemaläggning
+ * Organized in clearly marked blocks for easy maintenance
  */
 
 import { evaluate } from '../rules.js';
 import { generate } from '../scheduler/engine.js';
+
+/* ========================================================================
+   BLOCK 1: MAIN RENDER FUNCTION
+   ======================================================================== */
 
 export function renderControl(container, ctx) {
     const store = ctx?.store;
@@ -21,6 +25,7 @@ export function renderControl(container, ctx) {
         return;
     }
 
+    /* Evaluer reglerna för aktuell månad */
     let rulesResult;
     try {
         const currentMonth = parseInt(sessionStorage.getItem('AO22_selectedMonth') || String(new Date().getMonth() + 1), 10);
@@ -38,7 +43,10 @@ export function renderControl(container, ctx) {
             <!-- Regel-varnings-banner -->
             ${renderRulesBanner(rulesResult)}
 
-            <!-- AO-02C: Grupp-baserat bemanningsbehov (nytt!) -->
+            <!-- AO-02D: Grupp-pass-koppling -->
+            ${renderGroupShiftsSection(state)}
+
+            <!-- AO-02C: Grupp-baserat bemanningsbehov -->
             ${renderGroupDemandSection(state)}
 
             <!-- AO-09: Schemaläggnings-panel -->
@@ -51,7 +59,19 @@ export function renderControl(container, ctx) {
 
     container.innerHTML = html;
 
-    /* AO-02C: Event listeners för grupp-behov */
+    /* ====================================================================
+       EVENT LISTENERS - AO-02D
+       ==================================================================== */
+    const saveShiftsBtn = container.querySelector('#save-group-shifts-btn');
+    if (saveShiftsBtn) {
+        saveShiftsBtn.addEventListener('click', () => {
+            handleSaveGroupShifts(store, container, ctx);
+        });
+    }
+
+    /* ====================================================================
+       EVENT LISTENERS - AO-02C
+       ==================================================================== */
     const saveDemandBtn = container.querySelector('#save-group-demands-btn');
     if (saveDemandBtn) {
         saveDemandBtn.addEventListener('click', () => {
@@ -59,7 +79,9 @@ export function renderControl(container, ctx) {
         });
     }
 
-    // AO-09 Event listeners
+    /* ====================================================================
+       EVENT LISTENERS - AO-09
+       ==================================================================== */
     const generateBtn = container.querySelector('#generate-schedule-btn');
     const monthSelect = container.querySelector('#scheduler-month');
 
@@ -77,9 +99,10 @@ export function renderControl(container, ctx) {
     }
 }
 
-/**
- * Rendera regel-varnings-banner
- */
+/* ========================================================================
+   BLOCK 2: RULE WARNINGS BANNER
+   ======================================================================== */
+
 function renderRulesBanner(result) {
     const p0Count = result.warnings.filter((w) => w.level === 'P0').length;
     const p1Count = result.warnings.filter((w) => w.level === 'P1').length;
@@ -100,9 +123,185 @@ function renderRulesBanner(result) {
     return banner;
 }
 
+/* ========================================================================
+   BLOCK 3: AO-02D — GROUP SHIFTS (WORKING HOURS)
+   ======================================================================== */
+
+function renderGroupShiftsSection(state) {
+    /* AO-02D: Hämta grupper, pass och kopplingen */
+    const groups = state.groups || {};
+    const shifts = state.shifts || {};
+    const groupShifts = state.groupShifts || {};
+
+    const groupIds = Object.keys(groups).sort();
+    const shiftIds = Object.keys(shifts).sort();
+
+    if (groupIds.length === 0 || shiftIds.length === 0) {
+        return `
+            <div class="alert alert-info">
+                <h4>ℹ️ Pass eller grupper saknas</h4>
+                <p>Systemet behöver både grupper och pass för att kunna ange arbetstider.</p>
+            </div>
+        `;
+    }
+
+    return `
+        <section class="group-shifts-section">
+            <h3>⏰ Arbetstider per grupp (Pass)</h3>
+            <p class="section-desc">
+                Välj vilka pass varje grupp kan jobba. Du kan sedan välja specifikt pass när du planerar.
+            </p>
+
+            <div class="shifts-legend">
+                <h4>Tillgängliga pass:</h4>
+                <div class="shifts-legend-grid">
+                    ${shiftIds.map((shiftId) => {
+                        const shift = shifts[shiftId];
+                        const timeRange = shift.startTime && shift.endTime 
+                            ? `${shift.startTime}–${shift.endTime}`
+                            : 'Flex (sätts per dag)';
+                        return `
+                            <div class="shift-legend-item">
+                                <span class="shift-color-box" style="background: ${shift.color};"></span>
+                                <strong>${shift.shortName}</strong> = ${shift.name} (${timeRange})
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+
+            <div class="group-shifts-table-wrapper">
+                <table class="group-shifts-table">
+                    <thead>
+                        <tr>
+                            <th>Grupp</th>
+                            <th colspan="${shiftIds.length}" class="text-center">Pass (bocka de som gruppen kan jobba)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${groupIds.map((groupId) => {
+                            const group = groups[groupId];
+                            const selectedShifts = groupShifts[groupId] || [];
+
+                            return `
+                                <tr>
+                                    <td class="group-name-cell">
+                                        <span class="group-color-dot" style="background: ${group.color}; border-color: ${group.color};"></span>
+                                        <strong>${group.name}</strong>
+                                    </td>
+                                    ${shiftIds.map((shiftId) => {
+                                        const shift = shifts[shiftId];
+                                        const isSelected = selectedShifts.includes(shiftId);
+                                        return `
+                                            <td class="text-center shift-checkbox-cell">
+                                                <label class="shift-checkbox-label">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        class="shift-checkbox" 
+                                                        data-group="${groupId}" 
+                                                        data-shift="${shiftId}"
+                                                        ${isSelected ? 'checked' : ''}
+                                                    >
+                                                    <span class="shift-checkbox-visual" style="background: ${shift.color};"></span>
+                                                    <span class="shift-checkbox-text">${shift.shortName}</span>
+                                                </label>
+                                            </td>
+                                        `;
+                                    }).join('')}
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="group-shifts-actions">
+                <button id="save-group-shifts-btn" class="btn btn-primary">
+                    💾 Spara arbetstider
+                </button>
+                <div id="group-shifts-result" class="group-shifts-result hidden"></div>
+            </div>
+        </section>
+    `;
+}
+
 /**
- * AO-02C: Rendera grupp-baserat bemanningsbehov
+ * AO-02D: Spara grupp-pass-koppling
  */
+function handleSaveGroupShifts(store, container, ctx) {
+    try {
+        /* AO-02D: Samla checkboxar */
+        const checkboxes = container.querySelectorAll('.shift-checkbox');
+        const groupShifts = {};
+
+        checkboxes.forEach((cb) => {
+            const groupId = cb.dataset.group;
+            const shiftId = cb.dataset.shift;
+
+            if (!groupShifts[groupId]) {
+                groupShifts[groupId] = [];
+            }
+
+            if (cb.checked) {
+                groupShifts[groupId].push(shiftId);
+            }
+        });
+
+        /* AO-02D: Validera att varje grupp har minst ett pass */
+        const state = store.getState();
+        const groups = state.groups || {};
+        const errors = [];
+
+        Object.keys(groups).forEach((groupId) => {
+            const selectedShifts = groupShifts[groupId] || [];
+            if (selectedShifts.length === 0) {
+                const group = groups[groupId];
+                errors.push(`${group.name} måste ha minst ett pass`);
+            }
+        });
+
+        if (errors.length > 0) {
+            throw new Error(`Valideringfel:\n${errors.join('\n')}`);
+        }
+
+        /* AO-02D: Spara till store */
+        store.update((s) => {
+            s.groupShifts = groupShifts;
+            s.meta.updatedAt = Date.now();
+            return s;
+        });
+
+        /* AO-02D: Visa success */
+        const resultDiv = container.querySelector('#group-shifts-result');
+        resultDiv.innerHTML = `
+            <div class="result-box success">
+                <h4>✓ Arbetstider sparade!</h4>
+                <p>Grupp-pass-koppling uppdaterad.</p>
+            </div>
+        `;
+        resultDiv.classList.remove('hidden');
+
+        setTimeout(() => {
+            resultDiv.classList.add('hidden');
+        }, 3000);
+
+    } catch (err) {
+        console.error('Spara-fel:', err);
+        const resultDiv = container.querySelector('#group-shifts-result');
+        resultDiv.innerHTML = `
+            <div class="result-box error">
+                <h4>❌ Fel vid sparning</h4>
+                <p>${escapeHtml(err.message.replace(/\n/g, '<br>'))}</p>
+            </div>
+        `;
+        resultDiv.classList.remove('hidden');
+    }
+}
+
+/* ========================================================================
+   BLOCK 4: AO-02C — GROUP STAFFING DEMAND
+   ======================================================================== */
+
 function renderGroupDemandSection(state) {
     /* AO-02C: Hämta grupper och nuvarande behov */
     const groups = state.groups || {};
@@ -262,9 +461,10 @@ function handleSaveGroupDemands(store, container, ctx) {
     }
 }
 
-/**
- * AO-09: Rendera schemaläggnings-panel
- */
+/* ========================================================================
+   BLOCK 5: AO-09 — SCHEDULER (SCHEMA GENERATION)
+   ======================================================================== */
+
 function renderSchedulerSection(state) {
     const currentMonth = parseInt(sessionStorage.getItem('AO22_selectedMonth') || String(new Date().getMonth() + 1), 10);
     const selectedMonth = Math.max(1, Math.min(12, currentMonth));
@@ -421,23 +621,10 @@ function handleGenerateSchedule(store, container, ctx) {
     }
 }
 
-/**
- * Escape HTML för säkerhet
- */
-function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;',
-    };
-    return String(text).replace(/[&<>"']/g, (m) => map[m]);
-}
+/* ========================================================================
+   BLOCK 6: WARNINGS SECTION
+   ======================================================================== */
 
-/**
- * Rendera varnings-detaljer
- */
 function renderWarningsSection(result) {
     const warnings = result.warnings || [];
 
@@ -486,4 +673,22 @@ function renderWarningsSection(result) {
 
     html += '</div>';
     return html;
+}
+
+/* ========================================================================
+   BLOCK 7: UTILITY FUNCTIONS
+   ======================================================================== */
+
+/**
+ * Escape HTML för säkerhet
+ */
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    };
+    return String(text).replace(/[&<>"']/g, (m) => map[m]);
 }
