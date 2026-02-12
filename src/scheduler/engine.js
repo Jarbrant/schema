@@ -13,6 +13,7 @@ import { evaluate } from '../rules.js';
 export function generate(state, input) {
     const { year, month, needByWeekday } = input;
 
+    // VALIDERING: Input
     if (!state.schedule || state.schedule.year !== year) {
         throw new Error(`Schedule för år ${year} saknas`);
     }
@@ -25,18 +26,34 @@ export function generate(state, input) {
         throw new Error('needByWeekday måste ha 7 värden (mån–sön)');
     }
 
-    // Deep clone state för att inte ändra original
-    const proposedState = JSON.parse(JSON.stringify(state));
-    const monthData = proposedState.schedule.months[month - 1];
-    const days = monthData.days || [];
-    const activePeople = proposedState.people.filter((p) => p.isActive);
+    // VALIDERING: Personal data
+    const activePeople = state.people.filter((p) => p.isActive);
+    
+    for (let i = 0; i < activePeople.length; i++) {
+        const person = activePeople[i];
+        if (!person.id || typeof person.id !== 'string') {
+            throw new Error(
+                `Person ${i + 1} har felaktig id: "${person.id}" (måste vara non-empty string). ` +
+                `Kontrollera persondata i "Personal"-vyn.`
+            );
+        }
+        if (typeof person.employmentPct !== 'number' || person.employmentPct < 1 || person.employmentPct > 100) {
+            throw new Error(`Person "${person.firstName}" har felaktig employmentPct: ${person.employmentPct}`);
+        }
+    }
 
-    const vacancies = [];
-    const notes = [];
+    if (activePeople.length === 0) {
+        throw new Error('Ingen aktiv personal. Lägg till personal först i "Personal"-vyn.');
+    }
 
     console.log(`🔄 AO-09: Generera schema för ${month}/2026`);
     console.log(`  Behov: mån=${needByWeekday[0]}, tis=${needByWeekday[1]}, ... sön=${needByWeekday[6]}`);
     console.log(`  Personal: ${activePeople.length} aktiva`);
+
+    // Deep clone state för att inte ändra original vid fel
+    let proposedState = JSON.parse(JSON.stringify(state));
+    const monthData = proposedState.schedule.months[month - 1];
+    const days = monthData.days || [];
 
     // Beräkna total A-dagar behövs
     let totalNeedDays = 0;
@@ -69,6 +86,9 @@ export function generate(state, input) {
         day.entries = day.entries.filter((e) => e.status !== 'A');
     });
 
+    const vacancies = [];
+    const notes = [];
+
     // Iterera genom varje dag och fyll behov
     days.forEach((dayData, dayIdx) => {
         const date = new Date(year, month - 1, dayIdx + 1);
@@ -82,15 +102,24 @@ export function generate(state, input) {
             const candidate = findBestCandidate(personTargets, dayIdx, days, proposedState);
 
             if (candidate) {
-                // Lägg till A-entry
+                // AO-02A: Validera att personId är string innan vi skapar entry
+                if (!candidate.id || typeof candidate.id !== 'string') {
+                    throw new Error(
+                        `INTERNAL ERROR: Candidate person har felaktig id: "${candidate.id}". ` +
+                        `Detta bör inte hända — kontakta support.`
+                    );
+                }
+
+                // Skapa entry med STRING personId
                 const entry = {
-                    personId: candidate.id,
+                    personId: String(candidate.id),  // SÄKRA att det är string
                     status: 'A',
                     start: null,
                     end: null,
                     breakStart: null,
                     breakEnd: null,
                 };
+
                 dayData.entries.push(entry);
                 personTargets[candidate.id].current++;
 
@@ -123,16 +152,60 @@ export function generate(state, input) {
                 console.log(`    ⚠️  EXTRA PERSONAL behövs`);
             }
         }
-
-        // Validera denna dag mot P0-regler
-        const dayRuleCheck = validateDay(dayData, proposedState, year, month);
-        if (dayRuleCheck.hasP0) {
-            console.log(`    ❌ P0-varning: ${dayRuleCheck.message}`);
-            // Här kunde vi backa och prova igen, men för v1 accepterar vi det
-        }
     });
 
-    // Slut-validering av hela förslaget
+    // AO-02A: Validera hela förslaget innan vi sparar
+    console.log('🔍 Validerar genererat schema...');
+    try {
+        proposedState.schedule.months.forEach((month, monthIdx) => {
+            month.days.forEach((day, dayIdx) => {
+                day.entries.forEach((entry, entryIdx) => {
+                    // Validera entry-struktur
+                    if (!entry || typeof entry !== 'object') {
+                        throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}] är inte ett objekt`);
+                    }
+
+                    // Validera personId för A-entries
+                    if (entry.status === 'A') {
+                        if (typeof entry.personId !== 'string' || !entry.personId) {
+                            throw new Error(
+                                `Entry [${monthIdx}][${dayIdx}][${entryIdx}].personId måste vara non-empty string, ` +
+                                `fick: "${entry.personId}" (typ: ${typeof entry.personId})`
+                            );
+                        }
+
+                        // Validera att personId faktiskt finns i people
+                        const personExists = state.people.some((p) => p.id === entry.personId);
+                        if (!personExists) {
+                            throw new Error(
+                                `Entry [${monthIdx}][${dayIdx}][${entryIdx}] refererar till okänd personId: "${entry.personId}"`
+                            );
+                        }
+                    }
+
+                    // Validera status
+                    const validStatuses = ['A', 'L', 'X', 'SEM', 'SJ', 'VAB', 'PERM', 'UTB', 'EXTRA'];
+                    if (!validStatuses.includes(entry.status)) {
+                        throw new Error(
+                            `Entry [${monthIdx}][${dayIdx}][${entryIdx}].status = "${entry.status}" ` +
+                            `är inte giltig. Måste vara en av: ${validStatuses.join(', ')}`
+                        );
+                    }
+                });
+            });
+        });
+    } catch (validationErr) {
+        console.error('❌ Validering misslyckades:', validationErr);
+        // FAIL-CLOSED: Returnera felmeddelande, ändra INGENTING
+        throw new Error(
+            `Schemavalideringen misslyckades (data korrupt). ` +
+            `Originalschemat är oförändrat.\n\n${validationErr.message}`
+        );
+    }
+
+    console.log('✓ Validering passerad');
+
+    // Slut-validering av hela förslaget mot regler
     let hasP0 = false;
     try {
         const fullEvaluation = evaluate(proposedState, { year, month });
@@ -143,8 +216,8 @@ export function generate(state, input) {
             notes.push(`⚠️  ${p0Warnings.length} P0-varning(ar) vid slutlig kontroll`);
         }
     } catch (err) {
-        console.warn('Slutlig validering misslyckades:', err);
-        notes.push(`Validering misslyckades: ${err.message}`);
+        console.warn('Slutlig regelvalidering misslyckades:', err);
+        notes.push(`Regelvalidering varning: ${err.message}`);
     }
 
     // Sammanfatta vakanser
@@ -221,22 +294,4 @@ function findBestCandidate(personTargets, dayIdx, days, state) {
     // Returnera top-kandidat
     const chosen = candidates[0];
     return chosen.person;
-}
-
-/**
- * Validera en enskild dag mot P0-regler
- */
-function validateDay(dayData, state, year, month) {
-    // Mycket enkel validering för v1 — bara check om vi har för många på en dag
-    const aCount = dayData.entries.filter((e) => e.status === 'A').length;
-
-    // T.ex. max 10 personer per dag (godtyckligt)
-    if (aCount > 15) {
-        return {
-            hasP0: true,
-            message: `För många personer på dagen (${aCount} > 15)`,
-        };
-    }
-
-    return { hasP0: false };
 }
