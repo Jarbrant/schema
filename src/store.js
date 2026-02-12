@@ -47,6 +47,7 @@ class Store {
         this.subscribers = [];
         this.lastError = null;
         this.isReady = false;
+
         this.init();
     }
 
