@@ -1,17 +1,26 @@
 /*
- * AO-09 — SCHEDULER ENGINE v1: Heuristisk schemaläggning med P0-validering
+ * AO-02E + AO-09 — SCHEDULER ENGINE v1: Heuristisk schemaläggning med grupp-filter
+ * Organized in clearly marked blocks for easy maintenance
  */
 
 import { evaluate } from '../rules.js';
 
+/* ========================================================================
+   BLOCK 1: MAIN GENERATE FUNCTION
+   ======================================================================== */
+
 /**
  * Huvudfunktion: Generera schemaförslag för en månad
  * @param {object} state - Store state
- * @param {object} input - { year, month, needByWeekday: [6,7,7,7,6,4,4] }
+ * @param {object} input - { year, month, needByWeekday, selectedGroupIds }
  * @returns { proposedState, vacancies: [], notes: [] }
  */
 export function generate(state, input) {
-    const { year, month, needByWeekday } = input;
+    const { year, month, needByWeekday, selectedGroupIds } = input;
+
+    /* ====================================================================
+       BLOCK 2: INPUT VALIDATION
+       ==================================================================== */
 
     // VALIDERING: Input
     if (!state.schedule || state.schedule.year !== year) {
@@ -26,9 +35,28 @@ export function generate(state, input) {
         throw new Error('needByWeekday måste ha 7 värden (mån–sön)');
     }
 
-    // VALIDERING: Personal data
-    const activePeople = state.people.filter((p) => p.isActive);
-    
+    /* ====================================================================
+       BLOCK 3: AO-02E — GROUP FILTERING
+       ==================================================================== */
+
+    // AO-02E: Filtrera personal baserat på valda grupper
+    let activePeople = state.people.filter((p) => p.isActive);
+
+    if (selectedGroupIds && selectedGroupIds.length > 0) {
+        console.log(`🔍 Filtrerar personal för grupper: ${selectedGroupIds.join(', ')}`);
+        
+        activePeople = activePeople.filter((person) => {
+            const personGroups = person.groups || [];
+            return personGroups.some((groupId) => selectedGroupIds.includes(groupId));
+        });
+
+        console.log(`✓ ${activePeople.length} personer matches valda grupper`);
+    }
+
+    /* ====================================================================
+       BLOCK 4: PERSONAL DATA VALIDATION
+       ==================================================================== */
+
     for (let i = 0; i < activePeople.length; i++) {
         const person = activePeople[i];
         if (!person.id || typeof person.id !== 'string') {
@@ -43,12 +71,21 @@ export function generate(state, input) {
     }
 
     if (activePeople.length === 0) {
+        if (selectedGroupIds && selectedGroupIds.length > 0) {
+            throw new Error(
+                'Ingen personal hör till de valda grupperna. Välj fler grupper eller lägg till personal.'
+            );
+        }
         throw new Error('Ingen aktiv personal. Lägg till personal först i "Personal"-vyn.');
     }
 
     console.log(`🔄 AO-09: Generera schema för ${month}/2026`);
     console.log(`  Behov: mån=${needByWeekday[0]}, tis=${needByWeekday[1]}, ... sön=${needByWeekday[6]}`);
     console.log(`  Personal: ${activePeople.length} aktiva`);
+
+    /* ====================================================================
+       BLOCK 5: STATE CLONING & BASIC CALCULATIONS
+       ==================================================================== */
 
     // Deep clone state för att inte ändra original vid fel
     let proposedState = JSON.parse(JSON.stringify(state));
@@ -64,6 +101,10 @@ export function generate(state, input) {
     });
 
     console.log(`  Total A-dagar behövs: ${totalNeedDays}`);
+
+    /* ====================================================================
+       BLOCK 6: TARGET CALCULATION
+       ==================================================================== */
 
     // Beräkna targetDays per person
     const personTargets = {};
@@ -81,6 +122,10 @@ export function generate(state, input) {
         };
     });
 
+    /* ====================================================================
+       BLOCK 7: CLEAN OLD ENTRIES
+       ==================================================================== */
+
     // Rensa gamla A-entries (behåll alla andra statuser)
     days.forEach((day) => {
         day.entries = day.entries.filter((e) => e.status !== 'A');
@@ -88,6 +133,10 @@ export function generate(state, input) {
 
     const vacancies = [];
     const notes = [];
+
+    /* ====================================================================
+       BLOCK 8: MAIN SCHEDULING LOOP
+       ==================================================================== */
 
     // Iterera genom varje dag och fyll behov
     days.forEach((dayData, dayIdx) => {
@@ -154,6 +203,10 @@ export function generate(state, input) {
         }
     });
 
+    /* ====================================================================
+       BLOCK 9: GENERATED SCHEMA VALIDATION
+       ==================================================================== */
+
     // AO-02A: Validera hela förslaget innan vi sparar
     console.log('🔍 Validerar genererat schema...');
     try {
@@ -205,6 +258,10 @@ export function generate(state, input) {
 
     console.log('✓ Validering passerad');
 
+    /* ====================================================================
+       BLOCK 10: RULES VALIDATION
+       ==================================================================== */
+
     // Slut-validering av hela förslaget mot regler
     let hasP0 = false;
     try {
@@ -220,6 +277,10 @@ export function generate(state, input) {
         notes.push(`Regelvalidering varning: ${err.message}`);
     }
 
+    /* ====================================================================
+       BLOCK 11: VACANCY SUMMARY & FINAL NOTES
+       ==================================================================== */
+
     // Sammanfatta vakanser
     if (vacancies.length > 0) {
         const uniqueDates = new Set(vacancies.map((v) => v.date));
@@ -229,6 +290,10 @@ export function generate(state, input) {
     notes.push(`Förslag genererat: ${Object.values(personTargets).reduce((sum, t) => sum + t.current, 0)} A-dagar utlagda`);
 
     proposedState.meta.updatedAt = Date.now();
+
+    /* ====================================================================
+       BLOCK 12: RETURN RESULT
+       ==================================================================== */
 
     return {
         proposedState,
@@ -242,6 +307,10 @@ export function generate(state, input) {
         },
     };
 }
+
+/* ========================================================================
+   BLOCK 13: CANDIDATE SELECTION LOGIC
+   ======================================================================== */
 
 /**
  * Hitta bästa kandidat för nästa slot (heuristik)
