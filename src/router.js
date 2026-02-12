@@ -61,6 +61,7 @@ async function renderRoute(routeName) {
             throw new Error(`Route "${routeName}" inte hittat`);
         }
 
+        console.log(`📍 Renderar route: ${routeName}`);
         container.innerHTML = '';
         renderFn(container, appCtx);
 
@@ -101,5 +102,6 @@ export function initRouter(containerEl, errorPanelEl, ctx) {
     window.addEventListener('hashchange', onHashChange);
 
     const initialRoute = parseRoute();
+    console.log(`🔄 Initial route: ${initialRoute}`);
     renderRoute(initialRoute);
 }
