@@ -1,5 +1,5 @@
 /*
- * AO-22 — PERSONAL: Personalsida v2 med kompetens + vacation + extra start
+ * AO-08 — PERSONAL: Personalsida v2 med kompetens
  */
 
 export function renderPersonal(container, ctx) {
@@ -15,14 +15,13 @@ export function renderPersonal(container, ctx) {
     const activePeople = people.filter((p) => p.isActive).sort(sortByLastFirst);
     const inactivePeople = people.filter((p) => !p.isActive).sort(sortByLastFirst);
 
-    const editingId = sessionStorage.getItem('AO18_editingPersonId') || null;
+    const editingId = sessionStorage.getItem('AO08_editingPersonId') || null;
     const editingPerson = editingId ? people.find((p) => p.id === editingId) : null;
 
     const html = `
         <div class="view-container">
             <h2>Personal</h2>
 
-            <!-- FORM: Lägg till / Redigera -->
             <section class="personal-form-section">
                 <h3>${editingPerson ? 'Redigera person' : 'Lägg till ny person'}</h3>
                 <form id="personal-form" class="personal-form">
@@ -120,13 +119,11 @@ export function renderPersonal(container, ctx) {
                 </form>
             </section>
 
-            <!-- LIST: Aktiva personal -->
             <section class="personal-list-section">
                 <h3>Aktiva (${activePeople.length})</h3>
                 ${renderPersonTable(activePeople, 'active')}
             </section>
 
-            <!-- ARCHIVE: Inaktiva personal -->
             ${
                 inactivePeople.length > 0
                     ? `
@@ -148,12 +145,12 @@ export function renderPersonal(container, ctx) {
 
     form.addEventListener('submit', (e) => {
         e.preventDefault();
-        handleFormSubmit(form, formError, store, editingId);
+        handleFormSubmit(form, formError, store, container, ctx);
     });
 
     if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
-            sessionStorage.removeItem('AO18_editingPersonId');
+            sessionStorage.removeItem('AO08_editingPersonId');
             renderPersonal(container, ctx);
         });
     }
@@ -168,7 +165,7 @@ export function renderPersonal(container, ctx) {
     container.querySelectorAll('.btn-edit').forEach((btn) => {
         btn.addEventListener('click', () => {
             const personId = btn.dataset.personId;
-            sessionStorage.setItem('AO18_editingPersonId', personId);
+            sessionStorage.setItem('AO08_editingPersonId', personId);
             renderPersonal(container, ctx);
         });
     });
@@ -226,7 +223,7 @@ function renderPersonTable(people, type) {
     `;
 }
 
-function handleFormSubmit(form, errorDiv, store, editingId) {
+function handleFormSubmit(form, errorDiv, store, container, ctx) {
     try {
         errorDiv.classList.add('hidden');
         errorDiv.textContent = '';
@@ -264,6 +261,8 @@ function handleFormSubmit(form, errorDiv, store, editingId) {
             return;
         }
 
+        const editingId = sessionStorage.getItem('AO08_editingPersonId');
+
         store.update((state) => {
             if (editingId) {
                 const person = state.people.find((p) => p.id === editingId);
@@ -299,11 +298,10 @@ function handleFormSubmit(form, errorDiv, store, editingId) {
             return state;
         });
 
-        sessionStorage.removeItem('AO18_editingPersonId');
+        sessionStorage.removeItem('AO08_editingPersonId');
         form.reset();
 
-        const container = form.closest('.view-container').parentElement;
-        renderPersonal(container, { store });
+        renderPersonal(container, ctx);
     } catch (err) {
         console.error('Form-fel', err);
         errorDiv.textContent = `Fel: ${err.message}`;
