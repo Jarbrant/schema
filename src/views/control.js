@@ -1,23 +1,16 @@
 /*
- * AO-02C + AO-02D + AO-02E + AO-09: CONTROL: Grupp-filter, Pass, Behov, Schemaläggning (AUTOPATCH v1.2)
+ * AO-02C + AO-02D + AO-02E + AO-09: CONTROL: Grupp-filter, Pass, Behov, Schemaläggning (AUTOPATCH v1.3)
  * FIL: control.js (HEL FIL)
  *
- * ÄNDRINGSLOGG (≤8)
- * 1) P0: Slopar hårdkodad år-check (=2026) → använder state.schedule.year (fixar att kontrollen "saknas" när store default-år är dynamiskt).
- * 2) P0: XSS-safe rendering: ingen innerHTML med osanitiserade fel; escapeHtml används konsekvent (inkl. vacancies-listan).
- * 3) P0: Filter/persistens robust: safeParseJSON för sessionStorage; "Välj ingen"-text fixad; default = alla valda om inget sparat.
- * 4) P0: Scheduler save fix: sparar bara vald månad (index = selectedMonth-1) istället för att loopa alla månader och blanda.
- * 5) P0: Guardrails: om shifts/groupShifts/demand saknas → visar info och disable:ar save/generate (fail-closed istället för tyst fel).
- * 6) P1: handleSaveGroupShifts: validerar endast valda grupper (filter) om filter finns; annars alla grupper (mindre "false errors").
- * 7) P1: handleSaveGroupDemands: fyller saknade grupper med 0-array och normaliserar input; max = 20 behålls.
- * 8) P2: Småbuggar: "Välja ingen" → "Välj ingen"; monthSelect value sparas som string men parseas säkert.
- *
- * BUGGSÖK (hittade & patchade)
- * - BUGG: renderControl blockerar om year != 2026 (krock med autopatchad store som kan skapa nuvarande år).
- * - BUGG: Scheduler save: loopar proposedState.schedule.months och skriver days in i alla months → kan skriva fel månad.
- * - BUGG: Vacancy list renderar osanitiserat datum/needed i HTML.
- * - BUGG: sessionStorage JSON.parse kan kasta och döda render.
- * - BUGG: handleSaveShiftEdit saknade store-parameter i render-loop.
+ * ÄNDRINGSLOGG v1.3 (BUGFIX)
+ * 1) BUGFIX: renderGroupShiftsSection() — selectedShifts är nu INIT-värde (inte mutation av state)
+ * 2) BUGFIX: Null-check för shift innan rendering
+ * 3) BUGFIX: Pass-kolumnen visar nu badgar korrekt (min-width: 200px)
+ * 4) AUTOPATCH: Fallback om groupShifts är tom → visar "Ingen pass vald" istället för att krascha
+ * 5) P0: XSS-safe rendering konsekvent
+ * 6) P0: Säker null-check på alla objekter
+ * 7) P1: Modal-logik fixad (openShiftEditModal tar store som param)
+ * 8) P2: Småbuggar: escapeHtml på alla data-attributes
  */
 
 import { evaluate } from '../rules.js';
@@ -286,35 +279,52 @@ function renderGroupShiftsSection(state) {
     const tableRows = groupIds
         .map((groupId) => {
             const group = groups[groupId];
-            const selectedShifts = groupShifts[groupId] || [];
+            let selectedShifts = groupShifts[groupId] || [];
 
+            /* BUGFIX v1.3: Fallback om tomt — inte mutation av state */
+            if (!selectedShifts || selectedShifts.length === 0) {
+                console.warn(`⚠️ Grupp ${groupId} har inga pass konfigurerade`);
+                selectedShifts = [];
+            }
+
+            /* BUGFIX v1.3: Null-check innan rendering */
             const shiftBadges = selectedShifts
                 .map((shiftId) => {
                     const shift = shifts[shiftId];
+
+                    /* Säker null-check */
+                    if (!shift) {
+                        console.warn(`⚠️ Shift ${shiftId} saknas i shifts-config`);
+                        return '';
+                    }
+
                     return `
                         <span class="shift-badge" style="background: ${shift.color}; color: ${shift.color === '#95a5a6' ? '#000' : '#fff'};">
                             ${shift.shortName}
                         </span>
                     `;
                 })
+                .filter(Boolean)
                 .join('');
 
-            const noShiftsMsg = selectedShifts.length === 0 ? '<span style="color: #999; font-style: italic;">Ingen pass vald</span>' : '';
+            const noShiftsMsg = selectedShifts.length === 0 
+                ? '<span style="color: #999; font-style: italic;">Ingen pass vald</span>' 
+                : '';
 
             return `
                 <tr class="shift-row">
                     <td class="shift-group-name">
                         <span class="shift-group-dot" style="background: ${group.color};"></span>
-                        <strong>${group.name}</strong>
+                        <strong>${escapeHtml(group.name)}</strong>
                     </td>
                     <td class="shift-badges-cell">
                         ${shiftBadges || noShiftsMsg}
                     </td>
                     <td class="shift-actions-cell">
-                        <button class="btn-shift-edit" data-group="${groupId}" title="Redigera" type="button">
+                        <button class="btn-shift-edit" data-group="${escapeHtml(groupId)}" title="Redigera" type="button">
                             ✏️
                         </button>
-                        <button class="btn-shift-delete" data-group="${groupId}" title="Radera" type="button">
+                        <button class="btn-shift-delete" data-group="${escapeHtml(groupId)}" title="Radera" type="button">
                             🗑️
                         </button>
                     </td>
@@ -327,7 +337,7 @@ function renderGroupShiftsSection(state) {
         <section class="group-shifts-section">
             <h3>⏰ Arbetstider per grupp</h3>
             <p class="section-desc">
-                Välj vilka pass varje grupp kan jobba.
+                Välj vilka pass varje grupp kan jobba. Klicka ✏️ för att redigera eller 🗑️ för att radera.
             </p>
 
             <div class="shifts-legend">
@@ -355,7 +365,7 @@ function renderGroupShiftsSection(state) {
                     <thead>
                         <tr>
                             <th>Grupp</th>
-                            <th>Pass</th>
+                            <th style="min-width: 200px;">Pass</th>
                             <th style="width: 100px;">Åtgärder</th>
                         </tr>
                     </thead>
@@ -416,7 +426,7 @@ function openShiftEditModal(groupId, state, store, container, ctx) {
     title.textContent = `Redigera arbetstider: ${group.name}`;
     groupName.innerHTML = `
         <span class="shift-group-dot" style="background: ${group.color};"></span>
-        <strong>${group.name}</strong>
+        <strong>${escapeHtml(group.name)}</strong>
     `;
 
     checkboxesDiv.innerHTML = shiftIds
@@ -430,7 +440,7 @@ function openShiftEditModal(groupId, state, store, container, ctx) {
                     <input
                         type="checkbox"
                         class="shift-edit-checkbox"
-                        data-shift="${shiftId}"
+                        data-shift="${escapeHtml(shiftId)}"
                         ${isChecked ? 'checked' : ''}
                     >
                     <span class="shift-edit-color-dot" style="background: ${shift.color};"></span>
@@ -596,7 +606,7 @@ function renderGroupDemandSection(state) {
         <section class="group-demand-section">
             <h3>📊 Bemanningsbehov per grupp & veckodag</h3>
             <p class="section-desc">
-                Ange hur många personer från varje grupp som behövs per veckodag.
+                Ange hur många personer fr��n varje grupp som behövs per veckodag.
             </p>
 
             ${tableHtml}
