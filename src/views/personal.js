@@ -1,5 +1,5 @@
 /*
- * AO-08 — PERSONAL: Personalsida v2 med kompetens
+ * AO-02B — PERSONAL: Personalsida v3 med grupper + färger
  */
 
 export function renderPersonal(container, ctx) {
@@ -11,6 +11,7 @@ export function renderPersonal(container, ctx) {
 
     const state = store.getState();
     const people = state.people || [];
+    const groups = state.groups || {};
 
     const activePeople = people.filter((p) => p.isActive).sort(sortByLastFirst);
     const inactivePeople = people.filter((p) => !p.isActive).sort(sortByLastFirst);
@@ -108,20 +109,45 @@ export function renderPersonal(container, ctx) {
                         >
                     </div>
 
-                    <div class="form-actions">
+                    <!-- AO-02B: Personalgrupper -->
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label>Arbetsgrupper (välj en eller flera):</label>
+                        <div class="groups-checkboxes">
+                            ${Object.values(groups)
+                                .map((group) => {
+                                    const isChecked = editingPerson?.groups?.includes(group.id) || false;
+                                    return `
+                                        <label class="group-checkbox-label">
+                                            <input 
+                                                type="checkbox" 
+                                                name="groups" 
+                                                value="${group.id}"
+                                                class="group-checkbox"
+                                                ${isChecked ? 'checked' : ''}
+                                            >
+                                            <span class="group-color-dot" style="background: ${group.color}; border-color: ${group.color};"></span>
+                                            <span>${group.name}</span>
+                                        </label>
+                                    `;
+                                })
+                                .join('')}
+                        </div>
+                    </div>
+
+                    <div class="form-actions" style="grid-column: 1 / -1;">
                         <button type="submit" class="btn btn-primary">
                             ${editingPerson ? 'Uppdatera' : 'Lägg till'}
                         </button>
                         ${editingPerson ? '<button type="button" id="cancel-edit" class="btn btn-secondary">Avbryt</button>' : ''}
                     </div>
 
-                    <div id="form-error" class="form-error hidden"></div>
+                    <div id="form-error" class="form-error hidden" style="grid-column: 1 / -1;"></div>
                 </form>
             </section>
 
             <section class="personal-list-section">
                 <h3>Aktiva (${activePeople.length})</h3>
-                ${renderPersonTable(activePeople, 'active')}
+                ${renderPersonTable(activePeople, 'active', groups)}
             </section>
 
             ${
@@ -129,7 +155,7 @@ export function renderPersonal(container, ctx) {
                     ? `
                 <section class="personal-archive-section">
                     <h3>Arkiv — Inaktiva (${inactivePeople.length})</h3>
-                    ${renderPersonTable(inactivePeople, 'inactive')}
+                    ${renderPersonTable(inactivePeople, 'inactive', groups)}
                 </section>
             `
                     : ''
@@ -178,7 +204,7 @@ export function renderPersonal(container, ctx) {
     });
 }
 
-function renderPersonTable(people, type) {
+function renderPersonTable(people, type, groups) {
     if (people.length === 0) {
         return '<p class="empty-state">Ingen personal.</p>';
     }
@@ -191,6 +217,21 @@ function renderPersonTable(people, type) {
 
             const actionBtn = type === 'active' ? `${editBtn} ${deleteBtn}` : reactivateBtn;
 
+            // AO-02B: Visa grupper med färger
+            const groupTags = person.groups && person.groups.length > 0
+                ? person.groups
+                    .map((groupId) => {
+                        const group = groups[groupId];
+                        if (!group) return '';
+                        return `
+                            <span class="group-tag" style="background: ${group.color}; color: ${group.textColor};">
+                                ${group.name}
+                            </span>
+                        `;
+                    })
+                    .join('')
+                : '<span style="color: #ccc; font-style: italic;">Ingen grupp</span>';
+
             return `
                 <tr>
                     <td>${person.lastName}, ${person.firstName}</td>
@@ -198,6 +239,7 @@ function renderPersonTable(people, type) {
                     <td class="text-right">${person.hourlyWage.toFixed(2)} kr/h</td>
                     <td class="text-center">${person.vacationDaysPerYear}</td>
                     <td class="text-center">${person.extraDaysStartBalance}</td>
+                    <td class="groups-cell">${groupTags}</td>
                     <td class="text-center">${actionBtn}</td>
                 </tr>
             `;
@@ -213,6 +255,7 @@ function renderPersonTable(people, type) {
                     <th class="text-right">Timlön</th>
                     <th class="text-center" title="Semesterdagar/år">Semester/år</th>
                     <th class="text-center" title="Extra ledighet start-saldo">Extra start</th>
+                    <th>Grupper</th>
                     <th class="text-center">Åtgärder</th>
                 </tr>
             </thead>
@@ -234,6 +277,11 @@ function handleFormSubmit(form, errorDiv, store, container, ctx) {
         const employmentPct = parseInt(form.querySelector('#employmentPct').value, 10);
         const vacationDaysPerYear = parseInt(form.querySelector('#vacationDaysPerYear').value, 10);
         const extraDaysStartBalance = parseInt(form.querySelector('#extraDaysStartBalance').value, 10);
+
+        // AO-02B: Samla valda grupper
+        const selectedGroups = Array.from(form.querySelectorAll('input[name="groups"]:checked')).map(
+            (cb) => cb.value
+        );
 
         const errors = [];
         if (!firstName || firstName.length === 0) {
@@ -273,6 +321,8 @@ function handleFormSubmit(form, errorDiv, store, container, ctx) {
                     person.employmentPct = employmentPct;
                     person.vacationDaysPerYear = vacationDaysPerYear;
                     person.extraDaysStartBalance = extraDaysStartBalance;
+                    // AO-02B: Spara grupper
+                    person.groups = selectedGroups;
                 }
             } else {
                 const newPerson = {
@@ -284,6 +334,8 @@ function handleFormSubmit(form, errorDiv, store, container, ctx) {
                     vacationDaysPerYear,
                     extraDaysStartBalance,
                     isActive: true,
+                    // AO-02B: Lägg till grupper
+                    groups: selectedGroups,
                     skills: {
                         KITCHEN: false,
                         PACK: false,
