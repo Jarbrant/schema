@@ -28,7 +28,16 @@ const DEFAULT_THEME = {
         EXTRA: '#ffeb3b',
     },
 };
-
+const DEFAULT_NOTIFICATIONS = {
+    queue: [],
+    settings: {
+        enabled: false,
+        provider: 'mock', // 'mock' eller 'twilio'
+        twilioAccountSid: '',
+        twilioAuthToken: '',
+        twilioFromNumber: '',
+    },
+};
 const DEFAULT_DEMAND = {
     weekdayTemplate: [
         { KITCHEN: 4, PACK: 6, DISH: 1, SYSTEM: 1, ADMIN: 1, notes: '' },
