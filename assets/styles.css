@@ -737,6 +737,89 @@ table tbody tr:hover {
     margin-bottom: 0;
 }
 /* ========================================================================
+   BLOCK 11.3: AO-02E — GROUP FILTER
+   ======================================================================== */
+
+.group-filter-section {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.group-filter-section h3 {
+    margin-top: 0;
+}
+
+.filter-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.filter-controls .btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+}
+
+.group-filter-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+    background: #f9f9f9;
+    border-radius: 4px;
+}
+
+.group-filter-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+    font-size: 0.95rem;
+    user-select: none;
+    padding: 0.6rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.group-filter-checkbox-label:hover {
+    background: white;
+    border-color: #667eea;
+}
+
+.group-filter-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #667eea;
+}
+
+.filter-color-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid;
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    .group-filter-checkboxes {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    }
+
+    .filter-controls {
+        flex-wrap: wrap;
+    }
+
+    .filter-controls .btn {
+        flex: 1;
+        min-width: 100px;
+    }
+}
+/* ========================================================================
    BLOCK 11.5: AO-02C — GROUP-BASED STAFFING DEMAND
    ======================================================================== */
 
