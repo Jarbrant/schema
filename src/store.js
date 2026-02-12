@@ -1,9 +1,13 @@
 /*
- * AO-02C — STORE: Bemanningsbehov per grupp + veckodag
- * Lines marked with /* AO-02C */ show group-based demand changes
+ * AO-01 to AO-02D — STORE: Komplett state-hantering med grupper, behov och pass
+ * Organized in clearly marked blocks for easy maintenance
  */
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
+
+/* ========================================================================
+   BLOCK 1: DEFAULT GROUPS (AO-02B)
+   ======================================================================== */
 
 const DEFAULT_GROUPS = {
     SYSTEM_ADMIN: {
@@ -56,6 +60,76 @@ const DEFAULT_GROUPS = {
     },
 };
 
+/* ========================================================================
+   BLOCK 2: DEFAULT SHIFTS (AO-02D)
+   ======================================================================== */
+
+const DEFAULT_SHIFTS = {
+    MORNING: {
+        id: 'MORNING',
+        name: 'Dag',
+        shortName: 'D',
+        startTime: '07:00',
+        endTime: '16:00',
+        breakStart: '12:00',
+        breakEnd: '13:00',
+        color: '#FFD93D',
+        description: 'Dagtid 07:00–16:00 med lunch 12:00–13:00',
+    },
+    AFTERNOON: {
+        id: 'AFTERNOON',
+        name: 'Kväll',
+        shortName: 'K',
+        startTime: '16:00',
+        endTime: '23:00',
+        breakStart: '19:00',
+        breakEnd: '19:30',
+        color: '#FF8C42',
+        description: 'Kvällstid 16:00–23:00 med kort paus 19:00–19:30',
+    },
+    NIGHT: {
+        id: 'NIGHT',
+        name: 'Natt',
+        shortName: 'N',
+        startTime: '23:00',
+        endTime: '07:00',
+        breakStart: '03:00',
+        breakEnd: '03:30',
+        color: '#4ECDC4',
+        description: 'Nattid 23:00–07:00 med kort paus 03:00–03:30',
+    },
+    FLEX: {
+        id: 'FLEX',
+        name: 'Flex',
+        shortName: 'F',
+        startTime: null,
+        endTime: null,
+        breakStart: null,
+        breakEnd: null,
+        color: '#95a5a6',
+        description: 'Flexibel tid — sätts per dag',
+    },
+};
+
+/* ========================================================================
+   BLOCK 3: DEFAULT GROUP SHIFTS (AO-02D)
+   ======================================================================== */
+
+const DEFAULT_GROUP_SHIFTS = {
+    COOKS: ['MORNING', 'AFTERNOON'],
+    DISHWASHERS: ['MORNING', 'AFTERNOON', 'NIGHT'],
+    RESTAURANT_STAFF: ['MORNING', 'AFTERNOON', 'FLEX'],
+    KITCHEN_MASTER: ['MORNING'],
+    WAREHOUSE: ['MORNING'],
+    DRIVERS: ['MORNING', 'AFTERNOON'],
+    ADMIN: ['MORNING'],
+    SYSTEM_ADMIN: ['MORNING', 'FLEX'],
+};
+
+/* ========================================================================
+   BLOCK 4: DEFAULT THEME
+   ======================================================================== */
+
 const DEFAULT_THEME = {
     statusColors: {
         A: '#c8e6c9',
@@ -81,9 +155,12 @@ const DEFAULT_THEME = {
     },
 };
 
-/* AO-02C: Bemanningsbehov per grupp per veckodag */
+/* ========================================================================
+   BLOCK 5: DEFAULT DEMAND (AO-02C)
+   ======================================================================== */
+
 const DEFAULT_DEMAND = {
-    /* AO-02C: struktur ändrad från weekdayTemplate till groupDemands */
+    /* AO-02C: Bemanningsbehov per grupp per veckodag */
     groupDemands: {
         COOKS: [3, 3, 3, 2, 2, 2, 2],        // mån–sön
         DISHWASHERS: [1, 1, 1, 1, 1, 1, 1],
@@ -94,7 +171,7 @@ const DEFAULT_DEMAND = {
         ADMIN: [1, 1, 1, 1, 1, 0, 0],
         SYSTEM_ADMIN: [0, 0, 0, 0, 0, 0, 0],
     },
-    /* AO-02C: Behål gammal struktur för bakåtkompatibilitet */
+    /* Bakåtkompatibilitet */
     weekdayTemplate: [
         { KITCHEN: 4, PACK: 6, DISH: 1, SYSTEM: 1, ADMIN: 1, notes: '' },
         { KITCHEN: 4, PACK: 6, DISH: 2, SYSTEM: 1, ADMIN: 1, notes: '' },
@@ -105,6 +182,10 @@ const DEFAULT_DEMAND = {
         { KITCHEN: 4, PACK: 6, DISH: 1, SYSTEM: 1, ADMIN: 0, notes: '' },
     ],
 };
+
+/* ========================================================================
+   BLOCK 6: STORE CLASS
+   ======================================================================== */
 
 class Store {
     constructor() {
@@ -288,6 +369,10 @@ class Store {
         };
     }
 
+    /* ====================================================================
+       VALIDATION METHODS
+       ==================================================================== */
+
     validate(state) {
         if (!state || typeof state !== 'object') {
             throw new Error('State måste vara ett objekt');
@@ -331,20 +416,24 @@ class Store {
         }
         this.validateSettings(state.settings);
 
-        /* AO-02C: Validera grupp-behov */
         if (state.demand) {
             this.validateDemand(state.demand);
         }
         if (state.kitchenCore) {
             this.validateKitchenCore(state.kitchenCore, state.people);
         }
-
         if (state.groups) {
             this.validateGroups(state.groups);
         }
+        /* AO-02D: Validera shifts */
+        if (state.shifts) {
+            this.validateShifts(state.shifts);
+        }
+        if (state.groupShifts) {
+            this.validateGroupShifts(state.groupShifts, state.groups);
+        }
     }
 
-    /* AO-02C: Validering för grupp-behov */
     validateDemand(demand) {
         if (typeof demand !== 'object') {
             throw new Error('demand måste vara objekt');
@@ -374,7 +463,6 @@ class Store {
             });
         }
 
-        /* AO-02C: Behål gammal validering för bakåtkompatibilitet */
         if (!Array.isArray(demand.weekdayTemplate)) {
             throw new Error('demand.weekdayTemplate måste vara array');
         }
@@ -403,28 +491,51 @@ class Store {
         });
     }
 
-    validateKitchenCore(kitchenCore, people) {
-        if (typeof kitchenCore !== 'object') {
-            throw new Error('kitchenCore måste vara objekt');
+    /* AO-02D: Validering för shifts */
+    validateShifts(shifts) {
+        if (typeof shifts !== 'object') {
+            throw new Error('shifts måste vara objekt');
         }
 
-        if (typeof kitchenCore.enabled !== 'boolean') {
-            throw new Error('kitchenCore.enabled måste vara boolean');
-        }
-
-        if (!Array.isArray(kitchenCore.corePersonIds)) {
-            throw new Error('kitchenCore.corePersonIds måste vara array');
-        }
-
-        if (typeof kitchenCore.minCorePerDay !== 'number' || kitchenCore.minCorePerDay < 0) {
-            throw new Error('kitchenCore.minCorePerDay måste vara number >= 0');
-        }
-
-        const personIds = new Set(people.map((p) => p.id));
-        kitchenCore.corePersonIds.forEach((id) => {
-            if (!personIds.has(id)) {
-                console.warn(`kitchenCore innehåller okänd personId: ${id}`);
+        Object.keys(shifts).forEach((shiftId) => {
+            const shift = shifts[shiftId];
+            if (!shift || typeof shift !== 'object') {
+                throw new Error(`shifts[${shiftId}] måste vara objekt`);
             }
+            if (typeof shift.id !== 'string' || !shift.id) {
+                throw new Error(`shifts[${shiftId}].id måste vara non-empty string`);
+            }
+            if (typeof shift.name !== 'string' || !shift.name) {
+                throw new Error(`shifts[${shiftId}].name måste vara string`);
+            }
+            if (shift.startTime && typeof shift.startTime !== 'string') {
+                throw new Error(`shifts[${shiftId}].startTime måste vara HH:MM eller null`);
+            }
+            if (shift.endTime && typeof shift.endTime !== 'string') {
+                throw new Error(`shifts[${shiftId}].endTime måste vara HH:MM eller null`);
+            }
+            if (shift.color && typeof shift.color !== 'string') {
+                throw new Error(`shifts[${shiftId}].color måste vara hex-färg`);
+            }
+        });
+    }
+
+    /* AO-02D: Validering för groupShifts */
+    validateGroupShifts(groupShifts, groups) {
+        if (typeof groupShifts !== 'object') {
+            throw new Error('groupShifts måste vara objekt');
+        }
+
+        Object.keys(groupShifts).forEach((groupId) => {
+            const shiftIds = groupShifts[groupId];
+            if (!Array.isArray(shiftIds)) {
+                throw new Error(`groupShifts[${groupId}] måste vara array`);
+            }
+            shiftIds.forEach((shiftId, idx) => {
+                if (typeof shiftId !== 'string' || !shiftId) {
+                    throw new Error(`groupShifts[${groupId}][${idx}] måste vara string`);
+                }
+            });
         });
     }
 
@@ -449,6 +560,31 @@ class Store {
             }
             if (group.textColor && typeof group.textColor !== 'string') {
                 throw new Error(`groups[${groupId}].textColor måste vara string`);
+            }
+        });
+    }
+
+    validateKitchenCore(kitchenCore, people) {
+        if (typeof kitchenCore !== 'object') {
+            throw new Error('kitchenCore måste vara objekt');
+        }
+
+        if (typeof kitchenCore.enabled !== 'boolean') {
+            throw new Error('kitchenCore.enabled måste vara boolean');
+        }
+
+        if (!Array.isArray(kitchenCore.corePersonIds)) {
+            throw new Error('kitchenCore.corePersonIds måste vara array');
+        }
+
+        if (typeof kitchenCore.minCorePerDay !== 'number' || kitchenCore.minCorePerDay < 0) {
+            throw new Error('kitchenCore.minCorePerDay måste vara number >= 0');
+        }
+
+        const personIds = new Set(people.map((p) => p.id));
+        kitchenCore.corePersonIds.forEach((id) => {
+            if (!personIds.has(id)) {
+                console.warn(`kitchenCore innehåller okänd personId: ${id}`);
             }
         });
     }
@@ -633,6 +769,10 @@ class Store {
         return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color);
     }
 
+    /* ====================================================================
+       MIGRATION & DEFAULT STATE
+       ==================================================================== */
+
     migrate(state) {
         const currentVersion = state.meta?.schemaVersion;
 
@@ -700,14 +840,19 @@ class Store {
                 summaryToleranceHours: 0.25,
                 theme: JSON.parse(JSON.stringify(DEFAULT_THEME)),
             },
-            /* AO-02C: Uppdaterad demand-struktur */
+            /* AO-02C: Bemanningsbehov per grupp */
             demand: JSON.parse(JSON.stringify(DEFAULT_DEMAND)),
             kitchenCore: {
                 enabled: true,
                 corePersonIds: [],
                 minCorePerDay: 1,
             },
+            /* AO-02B: Grupper */
             groups: JSON.parse(JSON.stringify(DEFAULT_GROUPS)),
+            /* AO-02D: Pass och grupp-pass-koppling */
+            shifts: JSON.parse(JSON.stringify(DEFAULT_SHIFTS)),
+            groupShifts: JSON.parse(JSON.stringify(DEFAULT_GROUP_SHIFTS)),
+            /* AO-23: Notifikationer */
             notifications: {
                 queue: [],
                 settings: {
@@ -721,6 +866,10 @@ class Store {
         };
     }
 }
+
+/* ========================================================================
+   BLOCK 7: SINGLETON INSTANCE & EXPORT
+   ======================================================================== */
 
 let storeInstance = null;
 
