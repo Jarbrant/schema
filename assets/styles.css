@@ -1,6 +1,11 @@
 /*
  * AO-01 to AO-24 — SCHEMA-PROGRAM: Komplett stilmall
+ * Organized in clearly marked blocks for easy maintenance
  */
+
+/* ========================================================================
+   BLOCK 1: GLOBAL & RESET
+   ======================================================================== */
 
 * {
     margin: 0;
@@ -20,6 +25,10 @@ body {
     color: #333;
     line-height: 1.6;
 }
+
+/* ========================================================================
+   BLOCK 2: NAVBAR
+   ======================================================================== */
 
 #navbar {
     background: linear-gradient(90deg, #2c3e50, #34495e);
@@ -71,6 +80,10 @@ body {
     background: #c0392b;
 }
 
+/* ========================================================================
+   BLOCK 3: LAYOUT CONTAINERS
+   ======================================================================== */
+
 #container {
     max-width: 1400px;
     margin: 2rem auto;
@@ -106,7 +119,10 @@ body {
     margin-bottom: 0.5rem;
 }
 
-/* LOGIN */
+/* ========================================================================
+   BLOCK 4: LOGIN PAGE
+   ======================================================================== */
+
 .login-page {
     display: flex;
     justify-content: center;
@@ -150,6 +166,36 @@ body {
     gap: 1rem;
 }
 
+.login-footer {
+    text-align: center;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+    color: #999;
+    font-size: 0.85rem;
+}
+
+.logged-in-section {
+    text-align: center;
+}
+
+.logged-in-text {
+    margin: 1.5rem 0;
+    font-size: 1.1rem;
+    color: #27ae60;
+}
+
+.empty-state {
+    text-align: center;
+    color: #999;
+    font-style: italic;
+    padding: 2rem;
+}
+
+/* ========================================================================
+   BLOCK 5: FORMS & INPUTS
+   ======================================================================== */
+
 .form-group {
     display: flex;
     flex-direction: column;
@@ -176,6 +222,36 @@ body {
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
+
+.form-error {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+    padding: 0.8rem;
+    border-radius: 4px;
+    margin-top: 1rem;
+}
+
+.form-error.hidden {
+    display: none;
+}
+
+.login-error {
+    background: #ffcdd2;
+    color: #c62828;
+    padding: 0.8rem;
+    border-radius: 4px;
+    margin-top: 1rem;
+    border-left: 4px solid #c62828;
+}
+
+.login-error.hidden {
+    display: none;
+}
+
+/* ========================================================================
+   BLOCK 6: BUTTONS
+   ======================================================================== */
 
 .btn {
     padding: 0.8rem 1.5rem;
@@ -207,6 +283,56 @@ body {
     background: #7f8c8d;
 }
 
+.btn-info {
+    background: #3498db;
+    color: white;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+}
+
+.btn-info:hover {
+    background: #2980b9;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+
+.btn-success {
+    background: #27ae60;
+    color: white;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+}
+
+.btn-success:hover {
+    background: #229954;
+}
+
+.btn-sm {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+.btn-toggle {
+    background: #ecf0f1;
+    color: #2c3e50;
+    border: 2px solid #bdc3c7;
+}
+
+.btn-toggle.active {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
 .btn-login {
     width: 100%;
     padding: 1rem;
@@ -217,6 +343,10 @@ body {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* ========================================================================
+   BLOCK 7: ALERTS & NOTIFICATIONS
+   ======================================================================== */
 
 .alert {
     padding: 1rem;
@@ -244,33 +374,48 @@ body {
     border-radius: 2px;
 }
 
-.login-footer {
-    text-align: center;
-    margin-top: 2rem;
-    padding-top: 1rem;
-    border-top: 1px solid #eee;
-    color: #999;
-    font-size: 0.85rem;
+.rules-banner {
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+    font-weight: 600;
 }
 
-.logged-in-section {
-    text-align: center;
+.rules-banner.ok {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border-left: 4px solid #4caf50;
 }
 
-.logged-in-text {
-    margin: 1.5rem 0;
-    font-size: 1.1rem;
-    color: #27ae60;
+.rules-banner.warning {
+    background: #fff3e0;
+    color: #e65100;
+    border-left: 4px solid #ff9800;
 }
 
-.empty-state {
-    text-align: center;
-    color: #999;
-    font-style: italic;
-    padding: 2rem;
+.banner-item {
+    display: inline-block;
+    background: rgba(0, 0, 0, 0.1);
+    padding: 0.3rem 0.8rem;
+    border-radius: 3px;
+    margin-right: 0.5rem;
+    margin-bottom: 0.3rem;
 }
 
-/* HOME */
+.banner-item.p0 {
+    background: #ffcdd2;
+    color: #c62828;
+}
+
+.banner-item.p1 {
+    background: #fff9c4;
+    color: #f57f17;
+}
+
+/* ========================================================================
+   BLOCK 8: HOME PAGE
+   ======================================================================== */
+
 .home-container {
     max-width: 1200px;
 }
@@ -386,7 +531,10 @@ body {
     color: #666;
 }
 
-/* TABLES */
+/* ========================================================================
+   BLOCK 9: TABLES (GLOBAL)
+   ======================================================================== */
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -425,85 +573,10 @@ table tbody tr:hover {
     text-align: right;
 }
 
-/* BUTTONS */
-.btn-info {
-    background: #3498db;
-    color: white;
-    font-size: 0.85rem;
-    padding: 0.4rem 0.8rem;
-}
+/* ========================================================================
+   BLOCK 10: PERSONAL VIEW
+   ======================================================================== */
 
-.btn-info:hover {
-    background: #2980b9;
-}
-
-.btn-danger {
-    background: #e74c3c;
-    color: white;
-    font-size: 0.85rem;
-    padding: 0.4rem 0.8rem;
-}
-
-.btn-danger:hover {
-    background: #c0392b;
-}
-
-.btn-success {
-    background: #27ae60;
-    color: white;
-    font-size: 0.85rem;
-    padding: 0.4rem 0.8rem;
-}
-
-.btn-success:hover {
-    background: #229954;
-}
-
-.btn-sm {
-    padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
-}
-
-.btn-toggle {
-    background: #ecf0f1;
-    color: #2c3e50;
-    border: 2px solid #bdc3c7;
-}
-
-.btn-toggle.active {
-    background: #667eea;
-    color: white;
-    border-color: #667eea;
-}
-
-/* FORMS */
-.form-error {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    color: #856404;
-    padding: 0.8rem;
-    border-radius: 4px;
-    margin-top: 1rem;
-}
-
-.form-error.hidden {
-    display: none;
-}
-
-.login-error {
-    background: #ffcdd2;
-    color: #c62828;
-    padding: 0.8rem;
-    border-radius: 4px;
-    margin-top: 1rem;
-    border-left: 4px solid #c62828;
-}
-
-.login-error.hidden {
-    display: none;
-}
-
-/* PERSONAL VIEW */
 .personal-form-section {
     background: white;
     border: 1px solid #ddd;
@@ -597,54 +670,77 @@ table tbody tr:hover {
     margin-bottom: 1rem;
 }
 
-/* SECTION DESC */
-.section-desc {
-    color: #666;
-    font-size: 0.9rem;
-    margin-bottom: 1.5rem;
-    line-height: 1.5;
+/* ========================================================================
+   BLOCK 11: AO-02B — PERSONNEL GROUPS WITH COLORS
+   ======================================================================== */
+
+.groups-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-top: 0.8rem;
 }
 
-/* RULES BANNER */
-.rules-banner {
-    padding: 1rem;
+.group-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+    font-size: 0.95rem;
+    user-select: none;
+    padding: 0.6rem;
+    border: 1px solid #ddd;
     border-radius: 4px;
-    margin-bottom: 1.5rem;
-    font-weight: 600;
+    transition: all 0.2s;
 }
 
-.rules-banner.ok {
-    background: #e8f5e9;
-    color: #2e7d32;
-    border-left: 4px solid #4caf50;
+.group-checkbox-label:hover {
+    background: #f9f9f9;
+    border-color: #667eea;
 }
 
-.rules-banner.warning {
-    background: #fff3e0;
-    color: #e65100;
-    border-left: 4px solid #ff9800;
+.group-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #667eea;
 }
 
-.banner-item {
+.group-color-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid;
+    flex-shrink: 0;
+}
+
+.group-tag {
     display: inline-block;
-    background: rgba(0, 0, 0, 0.1);
-    padding: 0.3rem 0.8rem;
-    border-radius: 3px;
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.85rem;
     margin-right: 0.5rem;
+    margin-bottom: 0.4rem;
+}
+
+.groups-cell {
+    padding: 0.8rem !important;
+}
+
+.groups-cell span {
+    display: block;
     margin-bottom: 0.3rem;
 }
 
-.banner-item.p0 {
-    background: #ffcdd2;
-    color: #c62828;
+.groups-cell span:last-child {
+    margin-bottom: 0;
 }
 
-.banner-item.p1 {
-    background: #fff9c4;
-    color: #f57f17;
-}
+/* ========================================================================
+   BLOCK 12: AO-09 — SCHEDULER
+   ======================================================================== */
 
-/* AO-09: SCHEDULER */
 .scheduler-section {
     background: white;
     border: 1px solid #ddd;
@@ -809,7 +905,14 @@ table tbody tr:hover {
     font-weight: 600;
 }
 
-/* WARNINGS */
+/* ========================================================================
+   BLOCK 13: CONTROL & WARNINGS
+   ======================================================================== */
+
+.control-container {
+    max-width: 1200px;
+}
+
 .control-warnings-section {
     margin-top: 2rem;
 }
@@ -876,46 +979,10 @@ table tbody tr:hover {
     text-align: right;
 }
 
-/* SUMMARY & CONTROL */
-.summary-container,
-.control-container {
-    max-width: 1200px;
-}
+/* ========================================================================
+   BLOCK 14: AO-24 — ROLE-BASED HOURS & VACANCIES
+   ======================================================================== */
 
-.summary-view-selector,
-.control-view-selector {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-    flex-wrap: wrap;
-}
-
-.summary-view-selector .btn,
-.control-view-selector .btn {
-    padding: 0.7rem 1.5rem;
-}
-
-.summary-month-selector,
-.control-month-selector {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-    margin-bottom: 1rem;
-}
-
-.summary-month-selector label,
-.control-month-selector label {
-    font-weight: 600;
-}
-
-.month-select {
-    padding: 0.6rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 0.95rem;
-}
-
-/* AO-24: ROLE-BASED HOURS + VACANCIES */
 .role-hours-section {
     background: white;
     border: 1px solid #ddd;
@@ -1086,7 +1153,54 @@ table tbody tr:hover {
     margin-bottom: 0.4rem;
 }
 
-/* SUMMARY TABLES */
+/* ========================================================================
+   BLOCK 15: SUMMARY VIEW
+   ======================================================================== */
+
+.summary-container {
+    max-width: 1200px;
+}
+
+.summary-view-selector,
+.control-view-selector {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.summary-view-selector .btn,
+.control-view-selector .btn {
+    padding: 0.7rem 1.5rem;
+}
+
+.summary-month-selector,
+.control-month-selector {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.summary-month-selector label,
+.control-month-selector label {
+    font-weight: 600;
+}
+
+.month-select {
+    padding: 0.6rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
+.section-desc {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+}
+
 .summary-stats-section {
     margin-bottom: 2rem;
 }
@@ -1226,7 +1340,10 @@ table tbody tr:hover {
     flex: 1;
 }
 
-/* EXPORT */
+/* ========================================================================
+   BLOCK 16: EXPORT & IMPORT
+   ======================================================================== */
+
 .export-container {
     max-width: 1000px;
 }
@@ -1331,12 +1448,18 @@ table tbody tr:hover {
     box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
 }
 
-/* HIDDEN */
+/* ========================================================================
+   BLOCK 17: UTILITY CLASSES
+   ======================================================================== */
+
 .hidden {
     display: none !important;
 }
 
-/* RESPONSIVE */
+/* ========================================================================
+   BLOCK 18: RESPONSIVE DESIGN — TABLET
+   ======================================================================== */
+
 @media (max-width: 1024px) {
     .summary-stats-table,
     .demand-table {
@@ -1356,7 +1479,12 @@ table tbody tr:hover {
     }
 }
 
+/* ========================================================================
+   BLOCK 19: RESPONSIVE DESIGN — MOBILE (768px and below)
+   ======================================================================== */
+
 @media (max-width: 768px) {
+    /* Navbar */
     #navbar {
         padding: 0.8rem 1rem;
     }
@@ -1376,6 +1504,7 @@ table tbody tr:hover {
         padding: 0.4rem 0.6rem;
     }
 
+    /* Container */
     #container {
         margin: 1rem auto;
         padding: 0 0.5rem;
@@ -1393,9 +1522,11 @@ table tbody tr:hover {
         font-size: 1.1rem;
     }
 
+    /* Grids */
     .stats-grid,
     .links-grid,
-    .need-grid {
+    .need-grid,
+    .groups-checkboxes {
         grid-template-columns: 1fr;
     }
 
@@ -1405,6 +1536,7 @@ table tbody tr:hover {
         grid-template-columns: 1fr;
     }
 
+    /* Actions */
     .form-actions,
     .scheduler-actions {
         flex-direction: column;
@@ -1415,6 +1547,7 @@ table tbody tr:hover {
         width: 100%;
     }
 
+    /* Tables */
     .summary-stats-table,
     .control-stats-table,
     .personal-table,
@@ -1441,10 +1574,11 @@ table tbody tr:hover {
         min-width: 100px;
     }
 
-    .need-grid {
-        grid-template-columns: repeat(2, 1fr);
+    .groups-checkboxes {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     }
 
+    /* Selectors */
     .swap-controls,
     .calendar-month-selector,
     .summary-month-selector,
@@ -1458,6 +1592,7 @@ table tbody tr:hover {
         width: 100%;
     }
 
+    /* Notifications */
     .notification {
         bottom: 1rem;
         right: 1rem;
@@ -1465,6 +1600,10 @@ table tbody tr:hover {
         max-width: 90vw;
     }
 }
+
+/* ========================================================================
+   BLOCK 20: RESPONSIVE DESIGN — SMALL MOBILE (480px and below)
+   ======================================================================== */
 
 @media (max-width: 480px) {
     body {
