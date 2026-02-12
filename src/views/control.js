@@ -1,5 +1,5 @@
 /*
- * AO-02C + AO-02D + AO-09: CONTROL: Grupp-behov, Pass, och Schemaläggning
+ * AO-02C + AO-02D + AO-02E + AO-09: CONTROL: Grupp-filter, Pass, Behov, Schemaläggning
  * Organized in clearly marked blocks for easy maintenance
  */
 
@@ -43,6 +43,9 @@ export function renderControl(container, ctx) {
             <!-- Regel-varnings-banner -->
             ${renderRulesBanner(rulesResult)}
 
+            <!-- AO-02E: Grupp-filter (nytt!) -->
+            ${renderGroupFilterSection(state)}
+
             <!-- AO-02D: Grupp-pass-koppling -->
             ${renderGroupShiftsSection(state)}
 
@@ -60,7 +63,36 @@ export function renderControl(container, ctx) {
     container.innerHTML = html;
 
     /* ====================================================================
-       EVENT LISTENERS - AO-02D
+       EVENT LISTENERS - AO-02E (FILTER)
+       ==================================================================== */
+    const filterCheckboxes = container.querySelectorAll('.group-filter-checkbox');
+    filterCheckboxes.forEach((cb) => {
+        cb.addEventListener('change', () => {
+            saveGroupFilterSelections(container);
+        });
+    });
+
+    const filterSelectAllBtn = container.querySelector('#filter-select-all-btn');
+    const filterSelectNoneBtn = container.querySelector('#filter-select-none-btn');
+    if (filterSelectAllBtn) {
+        filterSelectAllBtn.addEventListener('click', () => {
+            container.querySelectorAll('.group-filter-checkbox').forEach((cb) => {
+                cb.checked = true;
+            });
+            saveGroupFilterSelections(container);
+        });
+    }
+    if (filterSelectNoneBtn) {
+        filterSelectNoneBtn.addEventListener('click', () => {
+            container.querySelectorAll('.group-filter-checkbox').forEach((cb) => {
+                cb.checked = false;
+            });
+            saveGroupFilterSelections(container);
+        });
+    }
+
+    /* ====================================================================
+       EVENT LISTENERS - AO-02D (SHIFTS)
        ==================================================================== */
     const saveShiftsBtn = container.querySelector('#save-group-shifts-btn');
     if (saveShiftsBtn) {
@@ -70,7 +102,7 @@ export function renderControl(container, ctx) {
     }
 
     /* ====================================================================
-       EVENT LISTENERS - AO-02C
+       EVENT LISTENERS - AO-02C (DEMAND)
        ==================================================================== */
     const saveDemandBtn = container.querySelector('#save-group-demands-btn');
     if (saveDemandBtn) {
@@ -80,7 +112,7 @@ export function renderControl(container, ctx) {
     }
 
     /* ====================================================================
-       EVENT LISTENERS - AO-09
+       EVENT LISTENERS - AO-09 (SCHEDULER)
        ==================================================================== */
     const generateBtn = container.querySelector('#generate-schedule-btn');
     const monthSelect = container.querySelector('#scheduler-month');
@@ -124,7 +156,88 @@ function renderRulesBanner(result) {
 }
 
 /* ========================================================================
-   BLOCK 3: AO-02D — GROUP SHIFTS (WORKING HOURS)
+   BLOCK 3: AO-02E — GROUP FILTER
+   ======================================================================== */
+
+function renderGroupFilterSection(state) {
+    /* AO-02E: Hämta grupper och sparade val */
+    const groups = state.groups || {};
+    const groupIds = Object.keys(groups).sort();
+    const savedFilters = JSON.parse(sessionStorage.getItem('AO02E_groupFilters') || '{}');
+
+    if (groupIds.length === 0) {
+        return `
+            <div class="alert alert-info">
+                <h4>ℹ️ Inga grupper definierade</h4>
+                <p>Lägg till personalgrupper först.</p>
+            </div>
+        `;
+    }
+
+    return `
+        <section class="group-filter-section">
+            <h3>🔍 Grupp-filter</h3>
+            <p class="section-desc">
+                Välj vilka grupper du vill arbeta med. Dessa val påverkar både visning och schemagenering.
+            </p>
+
+            <div class="filter-controls">
+                <button id="filter-select-all-btn" class="btn btn-sm btn-secondary">Välj alla</button>
+                <button id="filter-select-none-btn" class="btn btn-sm btn-secondary">Välja ingen</button>
+            </div>
+
+            <div class="group-filter-checkboxes">
+                ${groupIds.map((groupId) => {
+                    const group = groups[groupId];
+                    const isChecked = savedFilters[groupId] !== false; // Default true
+                    return `
+                        <label class="group-filter-checkbox-label">
+                            <input 
+                                type="checkbox" 
+                                class="group-filter-checkbox" 
+                                data-group="${groupId}"
+                                ${isChecked ? 'checked' : ''}
+                            >
+                            <span class="filter-color-dot" style="background: ${group.color}; border-color: ${group.color};"></span>
+                            <span>${group.name}</span>
+                        </label>
+                    `;
+                }).join('')}
+            </div>
+        </section>
+    `;
+}
+
+/**
+ * AO-02E: Spara filter-val i sessionStorage
+ */
+function saveGroupFilterSelections(container) {
+    const checkboxes = container.querySelectorAll('.group-filter-checkbox');
+    const filters = {};
+
+    checkboxes.forEach((cb) => {
+        const groupId = cb.dataset.group;
+        filters[groupId] = cb.checked;
+    });
+
+    sessionStorage.setItem('AO02E_groupFilters', JSON.stringify(filters));
+    console.log('✓ Grupp-filter sparade:', filters);
+}
+
+/**
+ * AO-02E: Hämta valda grupper från filter
+ */
+function getSelectedGroupIds(container) {
+    const checkboxes = container.querySelectorAll('.group-filter-checkbox:checked');
+    const groupIds = [];
+    checkboxes.forEach((cb) => {
+        groupIds.push(cb.dataset.group);
+    });
+    return groupIds;
+}
+
+/* ========================================================================
+   BLOCK 4: AO-02D — GROUP SHIFTS (WORKING HOURS)
    ======================================================================== */
 
 function renderGroupShiftsSection(state) {
@@ -299,7 +412,7 @@ function handleSaveGroupShifts(store, container, ctx) {
 }
 
 /* ========================================================================
-   BLOCK 4: AO-02C — GROUP STAFFING DEMAND
+   BLOCK 5: AO-02C — GROUP STAFFING DEMAND
    ======================================================================== */
 
 function renderGroupDemandSection(state) {
@@ -443,7 +556,6 @@ function handleSaveGroupDemands(store, container, ctx) {
         `;
         resultDiv.classList.remove('hidden');
 
-        // Dölj efter 3 sekunder
         setTimeout(() => {
             resultDiv.classList.add('hidden');
         }, 3000);
@@ -462,7 +574,7 @@ function handleSaveGroupDemands(store, container, ctx) {
 }
 
 /* ========================================================================
-   BLOCK 5: AO-09 — SCHEDULER (SCHEMA GENERATION)
+   BLOCK 6: AO-09 — SCHEDULER (SCHEMA GENERATION)
    ======================================================================== */
 
 function renderSchedulerSection(state) {
@@ -480,7 +592,7 @@ function renderSchedulerSection(state) {
         <section class="scheduler-section">
             <h3>🤖 Föreslå schema</h3>
             <p class="section-desc">
-                Generera ett schemaförslag baserat på bemanningsbehov per veckodag.
+                Generera ett schemaförslag baserat på bemanningsbehov för de valda grupperna.
                 <br>
                 <strong>Aktiv personal:</strong> ${activePeople} personer
             </p>
@@ -508,7 +620,7 @@ function renderSchedulerSection(state) {
                             ✨ Föreslå schema
                         </button>
                         <p class="warning-text">
-                            ⚠️ Detta kommer att ersätta all A-status för vald månad.
+                            ⚠️ Detta kommer att ersätta all A-status för vald månad i valda grupper.
                         </p>
                     </div>
 
@@ -520,28 +632,36 @@ function renderSchedulerSection(state) {
 }
 
 /**
- * AO-09: Hantera schemagenering med FAIL-CLOSED
+ * AO-09 + AO-02E: Hantera schemagenering med grupp-filter
  */
 function handleGenerateSchedule(store, container, ctx) {
     try {
         const currentMonth = parseInt(sessionStorage.getItem('AO22_selectedMonth') || String(new Date().getMonth() + 1), 10);
         const selectedMonth = Math.max(1, Math.min(12, currentMonth));
 
-        console.log('🔄 Genererar schema för månad', selectedMonth);
+        /* AO-02E: Hämta valda grupper från filter */
+        const selectedGroupIds = getSelectedGroupIds(container);
 
-        if (!confirm('Är du säker? Detta ersätter all A-status för vald månad. Originaldata kan inte återställas.')) {
+        if (selectedGroupIds.length === 0) {
+            throw new Error('Du måste välja minst en grupp i filtret för att generera schema');
+        }
+
+        console.log('🔄 Genererar schema för månad', selectedMonth, 'grupper:', selectedGroupIds);
+
+        if (!confirm('Är du säker? Detta ersätter all A-status för vald månad i de valda grupperna.')) {
             return;
         }
 
         const state = store.getState();
 
-        // AO-02A: Försöka generera INNAN något ändras
+        /* AO-02E: Skicka valda grupper till generator */
         let result;
         try {
             result = generate(state, {
                 year: 2026,
                 month: selectedMonth,
-                needByWeekday: [6, 6, 6, 6, 6, 4, 4], // Fallback (kommer från grupp-behov senare)
+                needByWeekday: [6, 6, 6, 6, 6, 4, 4], // Fallback
+                selectedGroupIds, // ← NYT! (AO-02E)
             });
         } catch (genErr) {
             console.error('❌ Generering misslyckades:', genErr);
@@ -562,7 +682,7 @@ function handleGenerateSchedule(store, container, ctx) {
 
         console.log('✓ Schema genererat:', result);
 
-        // FIRST: Visa resultat
+        /* FIRST: Visa resultat */
         const resultDiv = container.querySelector('#scheduler-result');
         const vacancyList = result.vacancies.length > 0
             ? `<ul>${result.vacancies.map((v) => `<li>${v.date}: ${v.needed} behövs</li>`).join('')}</ul>`
@@ -592,7 +712,7 @@ function handleGenerateSchedule(store, container, ctx) {
         resultDiv.innerHTML = html;
         resultDiv.classList.remove('hidden');
 
-        // SECOND: Spara till store (EFTER validering passerad)
+        /* SECOND: Spara till store */
         store.update((s) => {
             result.proposedState.schedule.months.forEach((proposedMonth, idx) => {
                 s.schedule.months[idx].days = proposedMonth.days;
@@ -603,13 +723,13 @@ function handleGenerateSchedule(store, container, ctx) {
 
         console.log('✓ Schema sparat i store');
 
-        // Uppdatera regler-banner
+        /* Uppdatera regler-banner */
         setTimeout(() => {
             renderControl(container, ctx);
         }, 500);
 
     } catch (err) {
-        console.error('Oväntad fel i handleGenerateSchedule:', err);
+        console.error('Oväntad fel:', err);
         const resultDiv = container.querySelector('#scheduler-result');
         resultDiv.innerHTML = `
             <div class="result-box error">
@@ -622,7 +742,7 @@ function handleGenerateSchedule(store, container, ctx) {
 }
 
 /* ========================================================================
-   BLOCK 6: WARNINGS SECTION
+   BLOCK 7: WARNINGS SECTION
    ======================================================================== */
 
 function renderWarningsSection(result) {
@@ -676,7 +796,7 @@ function renderWarningsSection(result) {
 }
 
 /* ========================================================================
-   BLOCK 7: UTILITY FUNCTIONS
+   BLOCK 8: UTILITY FUNCTIONS
    ======================================================================== */
 
 /**
