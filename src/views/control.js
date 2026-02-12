@@ -3,20 +3,21 @@
  * FIL: control.js (HEL FIL)
  *
  * ÄNDRINGSLOGG (≤8)
- * 1) P0: Slopar hårdkodad år-check (=2026) → använder state.schedule.year (fixar att kontrollen “saknas” när store default-år är dynamiskt).
+ * 1) P0: Slopar hårdkodad år-check (=2026) → använder state.schedule.year (fixar att kontrollen "saknas" när store default-år är dynamiskt).
  * 2) P0: XSS-safe rendering: ingen innerHTML med osanitiserade fel; escapeHtml används konsekvent (inkl. vacancies-listan).
- * 3) P0: Filter/persistens robust: safeParseJSON för sessionStorage; “Välj ingen”-text fixad; default = alla valda om inget sparat.
+ * 3) P0: Filter/persistens robust: safeParseJSON för sessionStorage; "Välj ingen"-text fixad; default = alla valda om inget sparat.
  * 4) P0: Scheduler save fix: sparar bara vald månad (index = selectedMonth-1) istället för att loopa alla månader och blanda.
  * 5) P0: Guardrails: om shifts/groupShifts/demand saknas → visar info och disable:ar save/generate (fail-closed istället för tyst fel).
- * 6) P1: handleSaveGroupShifts: validerar endast valda grupper (filter) om filter finns; annars alla grupper (mindre “false errors”).
+ * 6) P1: handleSaveGroupShifts: validerar endast valda grupper (filter) om filter finns; annars alla grupper (mindre "false errors").
  * 7) P1: handleSaveGroupDemands: fyller saknade grupper med 0-array och normaliserar input; max = 20 behålls.
- * 8) P2: Småbuggar: “Välja ingen” → “Välj ingen”; monthSelect value sparas som string men parseas säkert.
+ * 8) P2: Småbuggar: "Välja ingen" → "Välj ingen"; monthSelect value sparas som string men parseas säkert.
  *
  * BUGGSÖK (hittade & patchade)
  * - BUGG: renderControl blockerar om year != 2026 (krock med autopatchad store som kan skapa nuvarande år).
  * - BUGG: Scheduler save: loopar proposedState.schedule.months och skriver days in i alla months → kan skriva fel månad.
  * - BUGG: Vacancy list renderar osanitiserat datum/needed i HTML.
  * - BUGG: sessionStorage JSON.parse kan kasta och döda render.
+ * - BUGG: handleSaveShiftEdit saknade store-parameter i render-loop.
  */
 
 import { evaluate } from '../rules.js';
@@ -71,7 +72,7 @@ export function renderControl(container, ctx) {
             ${renderGroupDemandSection(state)}
 
             <!-- AO-09: Schemaläggnings-panel -->
-            ${renderSchedulerSection(state)}
+            ${renderSchedulerSection(state, scheduleYear)}
 
             <!-- Varnings-detaljer -->
             ${renderWarningsSection(rulesResult)}
@@ -86,7 +87,6 @@ export function renderControl(container, ctx) {
     container.querySelectorAll('.group-filter-checkbox').forEach((cb) => {
         cb.addEventListener('change', () => {
             saveGroupFilterSelections(container);
-            // Re-render inte här (dyrt). Bara spara.
         });
     });
 
@@ -112,12 +112,19 @@ export function renderControl(container, ctx) {
     /* ====================================================================
        EVENT LISTENERS - AO-02D (SHIFTS)
        ==================================================================== */
-    const saveShiftsBtn = container.querySelector('#save-group-shifts-btn');
-    if (saveShiftsBtn) {
-        saveShiftsBtn.addEventListener('click', () => {
-            handleSaveGroupShifts(store, container, ctx);
+    container.querySelectorAll('.btn-shift-edit').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const groupId = btn.dataset.group;
+            openShiftEditModal(groupId, state, store, container, ctx);
         });
-    }
+    });
+
+    container.querySelectorAll('.btn-shift-delete').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const groupId = btn.dataset.group;
+            handleDeleteGroupShifts(groupId, store, state, container, ctx);
+        });
+    });
 
     /* ====================================================================
        EVENT LISTENERS - AO-02C (DEMAND)
@@ -204,7 +211,7 @@ function renderGroupFilterSection(state) {
                 ${groupIds
                     .map((groupId) => {
                         const group = groups[groupId];
-                        const isChecked = savedFilters[groupId] !== false; // default true
+                        const isChecked = savedFilters[groupId] !== false;
                         const color = typeof group?.color === 'string' ? group.color : '#777';
                         const name = escapeHtml(group?.name ?? groupId);
 
@@ -259,11 +266,7 @@ function loadGroupFiltersSafe() {
    BLOCK 4: AO-02D — GROUP SHIFTS (REDESIGNED WITH TABLE & EDIT MODAL)
    ======================================================================== */
 
-/**
- * AO-02D REDESIGN: Rendera grupp-pass-koppling som tabell (inspirerad av Grundpass)
- */
 function renderGroupShiftsSection(state) {
-    /* AO-02D: Hämta grupper, pass och kopplingen */
     const groups = state.groups || {};
     const shifts = state.shifts || {};
     const groupShifts = state.groupShifts || {};
@@ -280,47 +283,45 @@ function renderGroupShiftsSection(state) {
         `;
     }
 
-    /* AO-02D REDESIGN: Tabell istället för checkboxar */
-    const tableRows = groupIds.map((groupId) => {
-        const group = groups[groupId];
-        const selectedShifts = groupShifts[groupId] || [];
-        
-        /* Skapa shift-badgar för denna grupp */
-        const shiftBadges = selectedShifts
-            .map((shiftId) => {
-                const shift = shifts[shiftId];
-                return `
-                    <span class="shift-badge" style="background: ${shift.color}; color: ${shift.color === '#95a5a6' ? '#000' : '#fff'};">
-                        ${shift.shortName}
-                    </span>
-                `;
-            })
-            .join('');
+    const tableRows = groupIds
+        .map((groupId) => {
+            const group = groups[groupId];
+            const selectedShifts = groupShifts[groupId] || [];
 
-        const noShiftsMsg = selectedShifts.length === 0 
-            ? '<span style="color: #999; font-style: italic;">Ingen pass vald</span>'
-            : '';
+            const shiftBadges = selectedShifts
+                .map((shiftId) => {
+                    const shift = shifts[shiftId];
+                    return `
+                        <span class="shift-badge" style="background: ${shift.color}; color: ${shift.color === '#95a5a6' ? '#000' : '#fff'};">
+                            ${shift.shortName}
+                        </span>
+                    `;
+                })
+                .join('');
 
-        return `
-            <tr class="shift-row">
-                <td class="shift-group-name">
-                    <span class="shift-group-dot" style="background: ${group.color};"></span>
-                    <strong>${group.name}</strong>
-                </td>
-                <td class="shift-badges-cell">
-                    ${shiftBadges || noShiftsMsg}
-                </td>
-                <td class="shift-actions-cell">
-                    <button class="btn-shift-edit" data-group="${groupId}" title="Redigera">
-                        ✏️
-                    </button>
-                    <button class="btn-shift-delete" data-group="${groupId}" title="Radera">
-                        🗑️
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
+            const noShiftsMsg = selectedShifts.length === 0 ? '<span style="color: #999; font-style: italic;">Ingen pass vald</span>' : '';
+
+            return `
+                <tr class="shift-row">
+                    <td class="shift-group-name">
+                        <span class="shift-group-dot" style="background: ${group.color};"></span>
+                        <strong>${group.name}</strong>
+                    </td>
+                    <td class="shift-badges-cell">
+                        ${shiftBadges || noShiftsMsg}
+                    </td>
+                    <td class="shift-actions-cell">
+                        <button class="btn-shift-edit" data-group="${groupId}" title="Redigera" type="button">
+                            ✏️
+                        </button>
+                        <button class="btn-shift-delete" data-group="${groupId}" title="Radera" type="button">
+                            🗑️
+                        </button>
+                    </td>
+                </tr>
+            `;
+        })
+        .join('');
 
     return `
         <section class="group-shifts-section">
@@ -332,24 +333,23 @@ function renderGroupShiftsSection(state) {
             <div class="shifts-legend">
                 <h4>Tillgängliga pass:</h4>
                 <div class="shifts-legend-grid">
-                    ${shiftIds.map((shiftId) => {
-                        const shift = shifts[shiftId];
-                        const timeRange = shift.startTime && shift.endTime 
-                            ? `${shift.startTime}–${shift.endTime}`
-                            : 'Flex';
-                        return `
-                            <div class="shift-legend-item">
-                                <span class="shift-color-box" style="background: ${shift.color};"></span>
-                                <span>
-                                    <strong>${shift.shortName}</strong> = ${shift.name} (${timeRange})
-                                </span>
-                            </div>
-                        `;
-                    }).join('')}
+                    ${shiftIds
+                        .map((shiftId) => {
+                            const shift = shifts[shiftId];
+                            const timeRange = shift.startTime && shift.endTime ? `${shift.startTime}–${shift.endTime}` : 'Flex';
+                            return `
+                                <div class="shift-legend-item">
+                                    <span class="shift-color-box" style="background: ${shift.color};"></span>
+                                    <span>
+                                        <strong>${shift.shortName}</strong> = ${shift.name} (${timeRange})
+                                    </span>
+                                </div>
+                            `;
+                        })
+                        .join('')}
                 </div>
             </div>
 
-            <!-- AO-02D REDESIGN: Tabell istället för checkboxar -->
             <div class="group-shifts-table-wrapper">
                 <table class="group-shifts-table">
                     <thead>
@@ -372,20 +372,20 @@ function renderGroupShiftsSection(state) {
                 <div class="shift-edit-modal-content">
                     <div class="shift-edit-modal-header">
                         <h3 id="shift-edit-modal-title">Redigera arbetstider</h3>
-                        <button class="btn-close-modal" id="btn-close-modal">✕</button>
+                        <button class="btn-close-modal" id="btn-close-modal" type="button">✕</button>
                     </div>
 
                     <div class="shift-edit-modal-body">
                         <p id="shift-edit-group-name"></p>
-                        
+
                         <div class="shift-edit-checkboxes">
                             <!-- Fylla dynamiskt -->
                         </div>
                     </div>
 
                     <div class="shift-edit-modal-footer">
-                        <button id="btn-save-shifts" class="btn btn-primary">Spara ändringar</button>
-                        <button id="btn-cancel-modal" class="btn btn-secondary">Avbryt</button>
+                        <button id="btn-save-shifts" class="btn btn-primary" type="button">Spara ändringar</button>
+                        <button id="btn-cancel-modal" class="btn btn-secondary" type="button">Avbryt</button>
                     </div>
 
                     <div id="shift-edit-error" class="shift-edit-error hidden"></div>
@@ -398,10 +398,7 @@ function renderGroupShiftsSection(state) {
     `;
 }
 
-/**
- * AO-02D REDESIGN: Öppna edit-modal för grupp
- */
-function openShiftEditModal(groupId, state) {
+function openShiftEditModal(groupId, state, store, container, ctx) {
     const groups = state.groups || {};
     const shifts = state.shifts || {};
     const groupShifts = state.groupShifts || {};
@@ -410,7 +407,6 @@ function openShiftEditModal(groupId, state) {
     const selectedShifts = groupShifts[groupId] || [];
     const shiftIds = Object.keys(shifts).sort();
 
-    /* Fyll modal */
     const modal = document.getElementById('shift-edit-modal');
     const overlay = document.getElementById('shift-modal-overlay');
     const title = document.getElementById('shift-edit-modal-title');
@@ -423,51 +419,47 @@ function openShiftEditModal(groupId, state) {
         <strong>${group.name}</strong>
     `;
 
-    /* Skapa checkboxar för varje pass */
-    checkboxesDiv.innerHTML = shiftIds.map((shiftId) => {
-        const shift = shifts[shiftId];
-        const isChecked = selectedShifts.includes(shiftId);
-        const timeRange = shift.startTime && shift.endTime 
-            ? `${shift.startTime}–${shift.endTime}`
-            : 'Flex';
+    checkboxesDiv.innerHTML = shiftIds
+        .map((shiftId) => {
+            const shift = shifts[shiftId];
+            const isChecked = selectedShifts.includes(shiftId);
+            const timeRange = shift.startTime && shift.endTime ? `${shift.startTime}–${shift.endTime}` : 'Flex';
 
-        return `
-            <label class="shift-edit-checkbox-label">
-                <input 
-                    type="checkbox" 
-                    class="shift-edit-checkbox" 
-                    data-shift="${shiftId}"
-                    ${isChecked ? 'checked' : ''}
-                >
-                <span class="shift-edit-color-dot" style="background: ${shift.color};"></span>
-                <span>
-                    <strong>${shift.name}</strong> (${timeRange})
-                </span>
-            </label>
-        `;
-    }).join('');
+            return `
+                <label class="shift-edit-checkbox-label">
+                    <input
+                        type="checkbox"
+                        class="shift-edit-checkbox"
+                        data-shift="${shiftId}"
+                        ${isChecked ? 'checked' : ''}
+                    >
+                    <span class="shift-edit-color-dot" style="background: ${shift.color};"></span>
+                    <span>
+                        <strong>${shift.name}</strong> (${timeRange})
+                    </span>
+                </label>
+            `;
+        })
+        .join('');
 
-    /* Spara groupId för senare */
     modal.dataset.groupId = groupId;
-
-    /* Visa modal */
     modal.classList.remove('hidden');
     overlay.classList.remove('hidden');
 
-    /* Lägg till event listeners */
     const btnSave = document.getElementById('btn-save-shifts');
     const btnCancel = document.getElementById('btn-cancel-modal');
     const btnClose = document.getElementById('btn-close-modal');
 
-    btnSave.onclick = () => handleSaveShiftEdit(state);
+    btnSave.onclick = () => handleSaveShiftEdit(store, container, ctx);
     btnCancel.onclick = () => closeShiftEditModal();
     btnClose.onclick = () => closeShiftEditModal();
     overlay.onclick = () => closeShiftEditModal();
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeShiftEditModal();
+    });
 }
 
-/**
- * AO-02D REDESIGN: Stäng edit-modal
- */
 function closeShiftEditModal() {
     const modal = document.getElementById('shift-edit-modal');
     const overlay = document.getElementById('shift-modal-overlay');
@@ -475,10 +467,7 @@ function closeShiftEditModal() {
     overlay.classList.add('hidden');
 }
 
-/**
- * AO-02D REDESIGN: Spara ändringar från modal
- */
-function handleSaveShiftEdit(store, state) {
+function handleSaveShiftEdit(store, container, ctx) {
     try {
         const modal = document.getElementById('shift-edit-modal');
         const groupId = modal.dataset.groupId;
@@ -492,11 +481,8 @@ function handleSaveShiftEdit(store, state) {
             return;
         }
 
-        /* Spara till store */
         store.update((s) => {
-            if (!s.groupShifts) {
-                s.groupShifts = {};
-            }
+            if (!s.groupShifts) s.groupShifts = {};
             s.groupShifts[groupId] = selectedShifts;
             s.meta.updatedAt = Date.now();
             return s;
@@ -504,6 +490,7 @@ function handleSaveShiftEdit(store, state) {
 
         closeShiftEditModal();
         console.log(`✓ Arbetstider uppdaterade för ${groupId}`);
+        renderControl(container, ctx);
     } catch (err) {
         console.error('Spara-fel:', err);
         const errorDiv = document.getElementById('shift-edit-error');
@@ -512,9 +499,6 @@ function handleSaveShiftEdit(store, state) {
     }
 }
 
-/**
- * AO-02D REDESIGN: Delete shifts för grupp (med bekräftelse)
- */
 function handleDeleteGroupShifts(groupId, store, state, container, ctx) {
     const groups = state.groups || {};
     const group = groups[groupId];
@@ -525,22 +509,19 @@ function handleDeleteGroupShifts(groupId, store, state, container, ctx) {
 
     try {
         store.update((s) => {
-            if (s.groupShifts) {
-                delete s.groupShifts[groupId];
-            }
+            if (s.groupShifts) delete s.groupShifts[groupId];
             s.meta.updatedAt = Date.now();
             return s;
         });
 
         console.log(`✓ Pass raderade för ${groupId}`);
-        
-        /* Re-render för att uppdatera UI */
         renderControl(container, ctx);
     } catch (err) {
         console.error('Delete-fel:', err);
         alert(`Fel: ${err.message}`);
     }
 }
+
 /* ========================================================================
    BLOCK 5: AO-02C — GROUP STAFFING DEMAND
    ======================================================================== */
@@ -649,7 +630,6 @@ function handleSaveGroupDemands(store, container, ctx) {
             groupDemands[groupId][dayIdx] = value;
         });
 
-        // Fyll grupper utan inputs (om UI ändras senare)
         const stateNow = store.getState();
         const groups = stateNow.groups || {};
         Object.keys(groups).forEach((gid) => {
@@ -673,15 +653,17 @@ function handleSaveGroupDemands(store, container, ctx) {
         });
 
         const resultDiv = container.querySelector('#group-demands-result');
-        resultDiv.innerHTML = `
-            <div class="result-box success">
-                <h4>✓ Bemanningsbehov sparade!</h4>
-                <p>Grupp-behov uppdaterade för alla veckodagar.</p>
-            </div>
-        `;
-        resultDiv.classList.remove('hidden');
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-box success">
+                    <h4>✓ Bemanningsbehov sparade!</h4>
+                    <p>Grupp-behov uppdaterade för alla veckodagar.</p>
+                </div>
+            `;
+            resultDiv.classList.remove('hidden');
 
-        setTimeout(() => resultDiv.classList.add('hidden'), 3000);
+            setTimeout(() => resultDiv.classList.add('hidden'), 3000);
+        }
     } catch (err) {
         console.error('Spara-fel:', err);
         const resultDiv = container.querySelector('#group-demands-result');
@@ -701,7 +683,7 @@ function handleSaveGroupDemands(store, container, ctx) {
    BLOCK 6: AO-09 — SCHEDULER (SCHEMA GENERATION)
    ======================================================================== */
 
-function renderSchedulerSection(state) {
+function renderSchedulerSection(state, scheduleYear) {
     const selectedMonth = getSelectedMonth();
 
     const monthNames = [
@@ -721,12 +703,15 @@ function renderSchedulerSection(state) {
                 <strong>Aktiv personal:</strong> ${activePeople} personer
             </p>
 
-            ${activePeople === 0 ? `
+            ${
+                activePeople === 0
+                    ? `
                 <div class="alert alert-error">
                     <h4>❌ Ingen aktiv personal</h4>
                     <p>Lägg till minst 1 person i <strong>"Personal"</strong>-vyn innan du genererar schema.</p>
                 </div>
-            ` : `
+            `
+                    : `
                 <div class="scheduler-form">
                     <div class="form-group">
                         <label for="scheduler-month">Välj månad:</label>
@@ -752,7 +737,8 @@ function renderSchedulerSection(state) {
 
                     <div id="scheduler-result" class="scheduler-result hidden"></div>
                 </div>
-            `}
+            `
+            }
         </section>
     `;
 }
@@ -785,7 +771,7 @@ function handleGenerateSchedule(store, container, ctx) {
             result = generate(state, {
                 year: scheduleYear,
                 month: selectedMonth,
-                needByWeekday: [6, 6, 6, 6, 6, 4, 4], // fallback
+                needByWeekday: [6, 6, 6, 6, 6, 4, 4],
                 selectedGroupIds,
             });
         } catch (genErr) {
@@ -807,7 +793,6 @@ function handleGenerateSchedule(store, container, ctx) {
 
         console.log('✓ Schema genererat:', result);
 
-        // XSS-safe vacancies list
         const vacancies = Array.isArray(result?.vacancies) ? result.vacancies : [];
         const vacancyList =
             vacancies.length > 0
@@ -831,12 +816,16 @@ function handleGenerateSchedule(store, container, ctx) {
                     <h5>Anteckningar:</h5>
                     <ul>${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>
                 </div>
-                ${vacancies.length > 0 ? `
+                ${
+                    vacancies.length > 0
+                        ? `
                     <div class="result-vacancies">
                         <h5>Vakanser:</h5>
                         ${vacancyList}
                     </div>
-                ` : ''}
+                `
+                        : ''
+                }
             </div>
         `;
 
@@ -845,7 +834,6 @@ function handleGenerateSchedule(store, container, ctx) {
             resultDiv.classList.remove('hidden');
         }
 
-        // P0: Spara endast vald månad (inte alla)
         store.update((s) => {
             const mIdx = selectedMonth - 1;
 
@@ -903,12 +891,14 @@ function renderWarningsSection(result) {
                 <ul class="warnings-list">
                     ${p0Warnings
                         .slice(0, 10)
-                        .map((w) => `
+                        .map(
+                            (w) => `
                             <li class="warning-item p0">
                                 <span class="warning-code">${escapeHtml(w.code)}</span>
                                 <span class="warning-text">${escapeHtml(w.message)}</span>
                             </li>
-                        `)
+                        `
+                        )
                         .join('')}
                 </ul>
                 ${p0Warnings.length > 10 ? `<p style="font-size: 0.9rem; color: #999;">+${p0Warnings.length - 10} till...</p>` : ''}
@@ -923,12 +913,14 @@ function renderWarningsSection(result) {
                 <ul class="warnings-list">
                     ${p1Warnings
                         .slice(0, 10)
-                        .map((w) => `
+                        .map(
+                            (w) => `
                             <li class="warning-item p1">
                                 <span class="warning-code">${escapeHtml(w.code)}</span>
                                 <span class="warning-text">${escapeHtml(w.message)}</span>
                             </li>
-                        `)
+                        `
+                        )
                         .join('')}
                 </ul>
                 ${p1Warnings.length > 10 ? `<p style="font-size: 0.9rem; color: #999;">+${p1Warnings.length - 10} till...</p>` : ''}
