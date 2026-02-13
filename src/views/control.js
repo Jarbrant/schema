@@ -7,7 +7,8 @@
  * Sektioner:
  * 1. Grupp-filter
  * 2. Grupp-skift
- * 3. Bemanningsbehov (NY - AO-03)
+ * 3. Bemanningsbehov
+ * 4. Schemagenerator (NY - AO-04)
  */
 
 import { reportError } from '../diagnostics.js';
@@ -16,6 +17,7 @@ import { reportError } from '../diagnostics.js';
 import { renderGroupFilterSection } from './control/sections/groupFilter.js';
 import { renderGroupShiftsSection } from './control/sections/groupShifts.js';
 import { renderDemandTableSection } from './control/sections/demandTable.js';
+import { renderScheduleGeneratorSection } from './control/sections/scheduleGenerator.js';
 
 export function renderControl(container, ctx) {
     const store = ctx?.store;
@@ -31,7 +33,7 @@ export function renderControl(container, ctx) {
             <div class="control-content">
                 <h1>Kontroll & Schemaläggning</h1>
                 <p class="control-tagline">
-                    Validera schema mot HRF-regler, se bemanningsbehov och hantera grupp-inställningar
+                    Validera schema, hantera bemanningsbehov och generera automatiska scheman
                 </p>
 
                 <!-- Status Row -->
@@ -62,8 +64,11 @@ export function renderControl(container, ctx) {
                     <!-- Group Shifts Section -->
                     <div id="section-group-shifts" class="control-section"></div>
 
-                    <!-- Demand Table Section (NEW) -->
+                    <!-- Demand Table Section -->
                     <div id="section-demand-table" class="control-section"></div>
+
+                    <!-- Schedule Generator Section (NY) -->
+                    <div id="section-schedule-generator" class="control-section"></div>
                 </div>
             </div>
         </div>
@@ -97,6 +102,12 @@ function renderAllSections(container, ctx) {
             name: 'Bemanningsbehov',
             render: renderDemandTableSection,
             file: 'demandTable.js'
+        },
+        {
+            id: 'section-schedule-generator',
+            name: 'Schemagenerator',
+            render: renderScheduleGeneratorSection,
+            file: 'scheduleGenerator.js'
         }
     ];
 
