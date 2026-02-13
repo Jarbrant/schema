@@ -1,8 +1,8 @@
 /*
- * UI.JS — Shared UI Utilities
+ * UI.JS — Shared UI Utilities (UPPDATERAD för AO-05)
  * 
  * Funktioner för rendering av UI-komponenter:
- * - renderError: Visa felmeddelanden säkert
+ * - renderError: Visa felmeddelanden säkert (med modul-healthcheck)
  * - renderNavbar: Visa navigeringsfältet
  * - showSuccess/showWarning: Toast-meddelanden
  */
@@ -49,6 +49,7 @@ export function renderNavbar(container) {
 
 /**
  * Render error säkert (kompatibel med både Error och DiagnosticReport)
+ * NY: Visar modul-healthcheck om något misslyckades
  * 
  * @param {HTMLElement} container - Error-panel container
  * @param {Error|DiagnosticReport} errorOrReport - Error eller DiagnosticReport-objekt
@@ -77,6 +78,10 @@ export function renderError(container, errorOrReport) {
         const publicMsg = report.getPublicMessage();
         const debugMsg = report.getDebugMessage();
 
+        // NY: Hämta modul-healthcheck
+        const moduleHealth = diagnostics.getModuleHealth();
+        const allModuleStatuses = diagnostics.getAllModuleStatuses();
+
         const html = `
             <div class="error-panel-content">
                 <div class="error-header">
@@ -102,6 +107,23 @@ export function renderError(container, errorOrReport) {
                         <details class="error-debug">
                             <summary>🔍 Debug-info</summary>
                             <pre>${JSON.stringify(debugMsg, null, 2)}</pre>
+                        </details>
+                    ` : ''}
+
+                    <!-- NY: Module Healthcheck -->
+                    ${allModuleStatuses.length > 0 ? `
+                        <details class="module-health">
+                            <summary>🏥 Modul-hälsa (${moduleHealth.ok}/${moduleHealth.total} OK)</summary>
+                            <div class="module-list">
+                                ${allModuleStatuses.map(status => `
+                                    <div class="module-item module-${status.status}">
+                                        <span class="module-emoji">${status.getStatusEmoji()}</span>
+                                        <span class="module-id">${status.id}</span>
+                                        <span class="module-status">${status.getStatusText()}</span>
+                                        ${status.duration ? `<span class="module-duration">${status.duration}ms</span>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
                         </details>
                     ` : ''}
                 </div>
