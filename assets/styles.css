@@ -1,7 +1,9 @@
 /* ========================================================================
    SCHEMA-PROGRAM: Master stylesheet
-   Imports organized by feature area
    ======================================================================== */
+
+/* Home page */
+@import url('./css/home.css');
 
 /* Global & Layout */
 @import url('./css/base.css');
