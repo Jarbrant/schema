@@ -6,6 +6,10 @@
  * 2. Kontroll — Validering & regel-överträdelser
  */
 
+import { calculateHours, getRoleLabel } from '../modules/shifts-utils.js';
+import { validateShift } from '../modules/shifts-validate.js';
+import { setupShiftsEventListeners } from '../modules/shifts-form.js';
+
 export function renderShifts(container, ctx) {
     const store = ctx?.store;
     if (!store) {
@@ -15,7 +19,7 @@ export function renderShifts(container, ctx) {
 
     const state = store.getState();
     const shifts = state.shifts || [];
-    const currentTab = ctx?.shiftTab || 'schedule'; // 'schedule' eller 'control'
+    const currentTab = ctx?.shiftTab || 'schedule';
 
     const html = `
         <div class="shifts-container">
@@ -191,117 +195,6 @@ export function renderShifts(container, ctx) {
 
     container.innerHTML = html;
 
-    // Event listeners
+    // Setup event listeners
     setupShiftsEventListeners(container, store, ctx);
-}
-
-/**
- * Beräkna timmar mellan två tider
- */
-function calculateHours(startTime, endTime) {
-    const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
-    
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
-    
-    return (endMinutes - startMinutes) / 60;
-}
-
-/**
- * Få label för roll
- */
-function getRoleLabel(role) {
-    const roles = {
-        'staff': 'Personal',
-        'foreman': 'Befälhavare',
-        'chairman': 'Ordförande'
-    };
-    return roles[role] || role;
-}
-
-/**
- * Validera skift mot regler
- */
-function validateShift(shift, state) {
-    const violations = [];
-    
-    // Exempel-regler (kan expanderas senare)
-    const hours = calculateHours(shift.startTime, shift.endTime);
-    
-    if (hours > 12) {
-        violations.push('Skiftet överstiger 12 timmar');
-    }
-    
-    if (hours < 4) {
-        violations.push('Skiftet är kortare än 4 timmar');
-    }
-    
-    return violations;
-}
-
-/**
- * Setup event listeners för shifts-formuläret
- */
-function setupShiftsEventListeners(container, store, ctx) {
-    const form = container.querySelector('#shift-form');
-    
-    if (form) {
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            
-            const formData = new FormData(form);
-            const newShift = {
-                date: formData.get('date'),
-                startTime: formData.get('startTime'),
-                endTime: formData.get('endTime'),
-                personId: formData.get('personId'),
-                role: formData.get('role'),
-                location: formData.get('location'),
-                notes: formData.get('notes')
-            };
-            
-            // Lägg till i store
-            const state = store.getState();
-            const shifts = state.shifts || [];
-            shifts.push(newShift);
-            
-            store.setState({
-                ...state,
-                shifts: shifts
-            });
-            
-            // Rendera om
-            renderShifts(container, ctx);
-            
-            alert('Skift tillagt!');
-        });
-    }
-
-    // Tab-navigation
-    const tabs = container.querySelectorAll('.shifts-tab');
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            ctx.shiftTab = tab.dataset.tab;
-            renderShifts(container, ctx);
-        });
-    });
-
-    // Delete-knapp
-    const deleteButtons = container.querySelectorAll('[data-action="delete"]');
-    deleteButtons.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const index = e.target.dataset.id;
-            const state = store.getState();
-            const shifts = state.shifts || [];
-            shifts.splice(index, 1);
-            
-            store.setState({
-                ...state,
-                shifts: shifts
-            });
-            
-            renderShifts(container, ctx);
-        });
-    });
 }
