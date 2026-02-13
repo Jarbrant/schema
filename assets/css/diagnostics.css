@@ -1,1 +1,127 @@
+/* ========================================================================
+   DIAGNOSTICS — Error panel styling
+   ======================================================================== */
 
+.error-panel-content {
+    background: white;
+    border: 2px solid #d63031;
+    border-radius: 8px;
+    padding: 2rem;
+    max-width: 600px;
+}
+
+.error-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #d63031;
+}
+
+.error-icon {
+    font-size: 2rem;
+}
+
+.error-header h3 {
+    margin: 0;
+    color: #d63031;
+    font-size: 1.3rem;
+}
+
+.error-details {
+    margin-bottom: 1.5rem;
+    background: #fafafa;
+    padding: 1rem;
+    border-radius: 6px;
+    border-left: 4px solid #d63031;
+}
+
+.error-code,
+.error-where,
+.error-message,
+.error-hint {
+    margin-bottom: 0.75rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.error-code strong,
+.error-where strong,
+.error-message strong,
+.error-hint strong {
+    color: #333;
+    display: inline-block;
+    width: 100px;
+}
+
+.error-hint {
+    background: #fffacd;
+    padding: 0.75rem;
+    border-radius: 4px;
+    color: #333;
+    margin-top: 1rem;
+}
+
+.error-debug {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #f0f0f0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.error-debug summary {
+    font-weight: 600;
+    color: #667eea;
+    cursor: pointer;
+    user-select: none;
+}
+
+.error-debug pre {
+    margin: 1rem 0 0 0;
+    padding: 0.75rem;
+    background: #333;
+    color: #0f0;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.75rem;
+}
+
+.error-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.error-actions .btn {
+    flex: 1;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+@media (max-width: 480px) {
+    .error-panel-content {
+        padding: 1rem;
+    }
+
+    .error-actions {
+        flex-direction: column;
+    }
+
+    .error-actions .btn {
+        width: 100%;
+    }
+
+    .error-code strong,
+    .error-where strong,
+    .error-message strong {
+        display: block;
+        margin-bottom: 0.25rem;
+        width: auto;
+    }
+}
