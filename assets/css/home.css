@@ -1,0 +1,190 @@
+/* ========================================================================
+   HOME VIEW: Welcome screen with gradient background & card layout
+   ======================================================================== */
+
+/* Full-screen gradient background */
+.home-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.home-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    padding: 3rem;
+    max-width: 1200px;
+    width: 100%;
+}
+
+.home-content h1 {
+    font-size: 2.2rem;
+    margin-bottom: 1.5rem;
+    color: #333;
+    border-bottom: 3px solid #667eea;
+    padding-bottom: 1rem;
+}
+
+.home-tagline {
+    font-size: 1rem;
+    color: #666;
+    margin-bottom: 2rem;
+}
+
+/* Hero section */
+.home-hero {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    margin-bottom: 2rem;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+/* Stats grid (Personal | År | System) */
+.home-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+    margin-bottom: 3rem;
+}
+
+.stat-card {
+    background: #f9f9f9;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid #eee;
+    transition: all 0.3s;
+}
+
+.stat-card:hover {
+    background: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-card h3 {
+    margin: 0.5rem 0;
+    color: #333;
+    font-size: 1.2rem;
+}
+
+.stat-card .value {
+    font-size: 2.2rem;
+    color: #667eea;
+    font-weight: 700;
+    margin: 0.5rem 0;
+}
+
+.stat-card p {
+    margin: 0;
+    color: #999;
+    font-size: 0.9rem;
+}
+
+/* Quick navigation section */
+.home-nav-section h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: #333;
+    margin-top: 2rem;
+}
+
+/* Quick nav grid (6 items, 3 columns) */
+.home-nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.5rem;
+}
+
+.home-nav-item {
+    background: #f9f9f9;
+    padding: 1.5rem;
+    border-radius: 8px;
+    text-align: center;
+    text-decoration: none;
+    color: #333;
+    transition: all 0.3s;
+    border: 1px solid #eee;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.home-nav-item:hover {
+    background: white;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+    border-color: #667eea;
+    transform: translateY(-2px);
+}
+
+.home-nav-item-icon {
+    font-size: 2.5rem;
+}
+
+.home-nav-item-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #333;
+}
+
+.home-nav-item-desc {
+    font-size: 0.8rem;
+    color: #999;
+    line-height: 1.3;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .home-container {
+        padding: 1rem;
+    }
+
+    .home-content {
+        padding: 1.5rem;
+    }
+
+    .home-content h1 {
+        font-size: 1.6rem;
+    }
+
+    .home-stats {
+        gap: 1rem;
+    }
+
+    .home-nav-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stat-card .value {
+        font-size: 1.8rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .home-content {
+        padding: 1rem;
+    }
+
+    .home-stats,
+    .home-nav-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .home-content h1 {
+        font-size: 1.3rem;
+    }
+}
