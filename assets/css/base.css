@@ -43,7 +43,7 @@ a:hover {
     color: #5568d3;
 }
 
-/* Container */
+/* Container — DEFAULT styling */
 .view-container {
     max-width: 1400px;
     margin: 0 auto;
@@ -51,6 +51,16 @@ a:hover {
     background: white;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* FIX: Don't override home-container styling */
+.home-container.view-container {
+    background: inherit;  /* Låt home.css kontrollera bakgrund */
+    box-shadow: none;     /* Låt home.css kontrollera shadow */
+    border-radius: 0;     /* Låt home.css kontrollera radius */
+    padding: 0;           /* Låt home.css kontrollera padding */
+    margin: 0;            /* Låt home.css kontrollera margin */
+    max-width: 100%;      /* Låt home.css sträcka sig fullt */
 }
 
 /* Navigation */
