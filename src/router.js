@@ -10,6 +10,7 @@ import { renderSummary } from './views/summary.js';
 import { renderExport } from './views/export.js';
 import { renderRules } from './views/rules.js';
 import { renderShifts } from './views/shifts.js';
+import { renderGroups } from './views/groups.js';
 import { renderLogin, isLoggedIn } from './views/login.js';
 import { renderError } from './ui.js';
 
@@ -17,6 +18,7 @@ const routes = {
     login: renderLogin,
     home: renderHome,
     shifts: renderShifts,
+    groups: renderGroups,
     personal: renderPersonal,
     calendar: renderCalendar,
     control: renderControl,
