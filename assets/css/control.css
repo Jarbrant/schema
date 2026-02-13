@@ -1,1 +1,375 @@
+/* ========================================================================
+   CONTROL PAGE — Kontroll & Schemaläggning
+   ======================================================================== */
 
+.control-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.control-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    padding: 3rem;
+    max-width: 1400px;
+    width: 100%;
+}
+
+.control-content h1 {
+    font-size: 2.2rem;
+    margin-bottom: 0.5rem;
+    color: #333;
+    border-bottom: 3px solid #667eea;
+    padding-bottom: 1rem;
+}
+
+.control-tagline {
+    font-size: 1rem;
+    color: #666;
+    margin-bottom: 2rem;
+}
+
+/* Status Row */
+.control-status {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: #f9f9f9;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+}
+
+.status-label {
+    font-weight: 500;
+    color: #333;
+    font-size: 0.9rem;
+}
+
+.status-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #667eea;
+}
+
+/* Sections */
+.control-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.control-section {
+    background: #f9f9f9;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 2rem;
+    overflow: hidden;
+}
+
+.section-header {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #667eea;
+}
+
+.section-header h2 {
+    font-size: 1.5rem;
+    margin: 0 0 0.5rem 0;
+    color: #333;
+}
+
+.section-header p {
+    margin: 0;
+    color: #666;
+    font-size: 0.95rem;
+}
+
+.section-content {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 6px;
+}
+
+/* Section Error */
+.section-error {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: #ffe8e8;
+    border-left: 4px solid #d63031;
+    border-radius: 6px;
+    color: #721c24;
+}
+
+.section-error .error-icon {
+    font-size: 2rem;
+    flex-shrink: 0;
+}
+
+.section-error .error-text {
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+/* Group Filter */
+.filter-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.filter-btn {
+    padding: 0.75rem 1.5rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    color: #333;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.filter-btn:hover {
+    background: #f0f0f0;
+    border-color: #667eea;
+    color: #667eea;
+}
+
+.group-filter-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.filter-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: white;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+}
+
+.filter-item:hover {
+    border-color: #667eea;
+    background: #f9f9f9;
+}
+
+.filter-item input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: #667eea;
+}
+
+.filter-item label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    cursor: pointer;
+    flex: 1;
+    margin: 0;
+}
+
+.group-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.group-count {
+    font-size: 0.85rem;
+    color: #999;
+}
+
+/* Shifts Overview */
+.shifts-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #f0f0f0;
+    border-radius: 6px;
+}
+
+.overview-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stat-label {
+    font-weight: 500;
+    color: #333;
+    font-size: 0.9rem;
+}
+
+.stat-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #667eea;
+}
+
+/* Shifts Table */
+.shifts-table-wrapper {
+    overflow-x: auto;
+    border: 1px solid #eee;
+    border-radius: 6px;
+}
+
+.shifts-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+.shifts-table thead {
+    background: #f0f0f0;
+    border-bottom: 2px solid #eee;
+}
+
+.shifts-table th {
+    padding: 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.9rem;
+}
+
+.shifts-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #eee;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.shifts-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.status-ok {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #999;
+    font-style: italic;
+}
+
+.empty-state a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.empty-state a:hover {
+    text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .control-content {
+        padding: 2rem;
+    }
+
+    .group-filter-list {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .control-container {
+        padding: 1rem;
+    }
+
+    .control-content {
+        padding: 1.5rem;
+    }
+
+    .control-content h1 {
+        font-size: 1.6rem;
+    }
+
+    .control-status {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .group-filter-list {
+        grid-template-columns: 1fr;
+    }
+
+    .shifts-table {
+        font-size: 0.8rem;
+    }
+
+    .shifts-table th,
+    .shifts-table td {
+        padding: 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .control-content {
+        padding: 1rem;
+    }
+
+    .control-content h1 {
+        font-size: 1.3rem;
+    }
+
+    .section-header h2 {
+        font-size: 1.2rem;
+    }
+
+    .filter-buttons {
+        flex-direction: column;
+    }
+
+    .filter-btn {
+        width: 100%;
+    }
+
+    .shifts-table {
+        font-size: 0.75rem;
+    }
+
+    .shifts-table th,
+    .shifts-table td {
+        padding: 0.35rem;
+    }
+}
