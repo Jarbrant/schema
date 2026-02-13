@@ -1,9 +1,9 @@
 /*
- * ROUTER — AUTOPATCH (Topbar alltid synlig)
+ * ROUTER — AUTOPATCH (Topbar AV på login)
  *
  * Fix:
- * - P0: renderNavbar() körs alltid → topbar syns.
- * - P0: Ingen extra “ram” runt vyn (renderar direkt i app-container).
+ * - P0: Topbar visas INTE på login-route.
+ * - P0: Topbar visas på alla andra routes.
  * - Fail-closed: inte inloggad → allt utom login skickas till login.
  */
 
@@ -58,13 +58,30 @@ function parseRoute() {
   return routes[route] ? route : getDefaultRoute();
 }
 
-function ensureTopbar() {
+/* ================================
+   TOPBAR VISIBILITY
+   ================================ */
+
+function setTopbarVisible(isVisible) {
   const navbarEl = document.getElementById('navbar');
   if (!navbarEl) return;
-  try {
-    renderNavbar(navbarEl);
-  } catch (_) {
-    console.error('NAVBAR_RENDER_FAIL');
+
+  if (!isVisible) {
+    // P0: Inget nav alls på login (känns säkrare + renare)
+    navbarEl.textContent = '';
+    navbarEl.style.display = 'none';
+    return;
+  }
+
+  navbarEl.style.display = 'block';
+
+  // Bygg topbar om den saknas
+  if (navbarEl.childNodes.length === 0) {
+    try {
+      renderNavbar(navbarEl);
+    } catch (_) {
+      console.error('NAVBAR_RENDER_FAIL');
+    }
   }
 }
 
@@ -81,11 +98,13 @@ function renderRoute(routeName) {
   try {
     if (!container) throw new Error('ROUTER_NO_CONTAINER');
 
-    // Topbar ska alltid synas
-    ensureTopbar();
+    const isLoginRoute = routeName === 'login';
 
-    // Fail-closed: inte inloggad → login
-    if (!isLoggedIn() && routeName !== 'login') {
+    // P0: Topbar av på login
+    setTopbarVisible(!isLoginRoute);
+
+    // Fail-closed auth: inte inloggad → login
+    if (!isLoggedIn() && !isLoginRoute) {
       window.location.hash = '#/login';
       return;
     }
@@ -97,7 +116,7 @@ function renderRoute(routeName) {
     // Ingen extra “ram” här – vyn renderar direkt
     renderFn(container, { ...appCtx, currentRoute: routeName });
 
-    markActive(routeName);
+    if (!isLoginRoute) markActive(routeName);
   } catch (err) {
     console.error('ROUTER_RENDER_FAIL');
     try { renderError(errorPanel, err); } catch (_) {}
@@ -118,7 +137,5 @@ export function initRouter(containerEl, errorPanelEl, ctx) {
 
   window.addEventListener('hashchange', onHashChange, { passive: true });
 
-  const initialRoute = parseRoute();
-  ensureTopbar();
-  renderRoute(initialRoute);
+  renderRoute(parseRoute());
 }
