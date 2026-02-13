@@ -1,110 +1,362 @@
-/*
- * AO-07: HOME — Startsida med gradient bakgrund & card-layout
- * AUTOPATCH: Fix SyntaxError på rad 6
- */
+/* ========================================================================
+   AO-07: HOME — Startsida med gradient bakgrund & card-layout
+   ======================================================================== */
 
-export function renderHome(container, ctx) {
-    const store = ctx?.store;
-    if (!store) {
-        container.innerHTML = '<div class="view-container"><h2>Fel</h2><p>Store saknas.</p></div>';
-        return;
+/* Full-page gradient container */
+.home-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Main content card — SPECIFICITY FIX */
+.home-container.view-container {
+    background: white;
+    color: #333;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    max-width: 1200px;
+    width: 100%;
+    padding: 2rem 3rem;
+    display: flex;              /* KEEP flex from parent */
+    flex-direction: column;      /* KEEP from parent */
+    align-items: center;         /* KEEP from parent */
+    justify-content: flex-start; /* NEW: Top-align content */
+}
+
+.home-container h2 {
+    font-size: 2.2rem;
+    margin-bottom: 1.5rem;
+    color: #333;
+    border-bottom: 3px solid #667eea;
+    padding-bottom: 1rem;
+}
+
+/* Welcome section */
+.welcome-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    margin-bottom: 2rem;
+    width: 100%;
+}
+
+.welcome-text {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 500;
+    line-height: 1.6;
+}
+
+/* Stats Grid (3 kolumner) */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+    margin-bottom: 3rem;
+    width: 100%;
+}
+
+.stat-card {
+    background: #f9f9f9;
+    padding: 2rem;
+    border-radius: 8px;
+    border: 1px solid #eee;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+}
+
+.stat-card:hover {
+    background: white;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.15);
+    border-color: #667eea;
+    transform: translateY(-2px);
+}
+
+.stat-icon {
+    font-size: 2.5rem;
+    flex-shrink: 0;
+}
+
+.stat-content {
+    flex: 1;
+}
+
+.stat-content h3 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
+    font-size: 1.2rem;
+}
+
+.stat-value {
+    margin: 0.5rem 0;
+    font-size: 2rem;
+    color: #667eea;
+    font-weight: 700;
+}
+
+.stat-label {
+    margin: 0.5rem 0 0 0;
+    color: #999;
+    font-size: 0.9rem;
+}
+
+/* Quick Links Section */
+.quick-links {
+    margin-top: 3rem;
+    width: 100%;
+}
+
+.quick-links h3 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: #333;
+}
+
+/* Links Grid (6 kolumner, responsive) */
+.links-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1.5rem;
+}
+
+.quick-link {
+    background: #f9f9f9;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #eee;
+    text-decoration: none;
+    color: #333;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.8rem;
+}
+
+.quick-link:hover {
+    background: white;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+    border-color: #667eea;
+    transform: translateY(-2px);
+    color: #667eea;
+}
+
+.link-icon {
+    font-size: 2.5rem;
+}
+
+.link-text {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #333;
+}
+
+.quick-link:hover .link-text {
+    color: #667eea;
+}
+
+.link-desc {
+    font-size: 0.8rem;
+    color: #999;
+    line-height: 1.3;
+}
+
+/* Info Section */
+.info-section {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid #eee;
+    width: 100%;
+}
+
+.info-section h3 {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.info-content {
+    background: #f9f9f9;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.info-content p {
+    margin-bottom: 0.5rem;
+    color: #666;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .home-container.view-container {
+        padding: 1.5rem 2rem;
+        max-width: 100%;
     }
 
-    const state = store.getState();
-    const activePeople = state.people.filter(p => p.isActive).length;
+    .stats-grid {
+        gap: 1.5rem;
+    }
 
-    const html = `
-        <div class="home-container view-container">
-            <h2>Välkommen till Schema-Program</h2>
-            
-            <div class="welcome-section">
-                <p class="welcome-text">
-                    Schema-Program v1.0 — En schemaläggningslösning för HRF/Visita Gröna Riks
-                </p>
-            </div>
+    .stat-card {
+        padding: 1.5rem;
+    }
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">👥</div>
-                    <div class="stat-content">
-                        <h3>Personal</h3>
-                        <p class="stat-value">${activePeople}</p>
-                        <p class="stat-label">Aktiva personer</p>
-                    </div>
-                </div>
+    .stat-value {
+        font-size: 1.8rem;
+    }
 
-                <div class="stat-card">
-                    <div class="stat-icon">📅</div>
-                    <div class="stat-content">
-                        <h3>År</h3>
-                        <p class="stat-value">${state.schedule?.year || '2026'}</p>
-                        <p class="stat-label">Planerat år</p>
-                    </div>
-                </div>
+    .links-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
 
-                <div class="stat-card">
-                    <div class="stat-icon">⚙️</div>
-                    <div class="stat-content">
-                        <h3>System</h3>
-                        <p class="stat-value">${state.meta?.appVersion || '1.0.0'}</p>
-                        <p class="stat-label">App-version</p>
-                    </div>
-                </div>
-            </div>
+@media (max-width: 768px) {
+    .home-container {
+        padding: 1rem;
+    }
 
-            <div class="quick-links">
-                <h3>Snabb-navigation</h3>
-                <div class="links-grid">
-                    <a href="#/personal" class="quick-link">
-                        <span class="link-icon">👥</span>
-                        <span class="link-text">Personal</span>
-                        <span class="link-desc">Hantera personaldata</span>
-                    </a>
-                    <a href="#/calendar" class="quick-link">
-                        <span class="link-icon">📅</span>
-                        <span class="link-text">Kalender</span>
-                        <span class="link-desc">Redigera schema</span>
-                    </a>
-                    <a href="#/control" class="quick-link">
-                        <span class="link-icon">🔍</span>
-                        <span class="link-text">Kontroll</span>
-                        <span class="link-desc">Regelöversikt</span>
-                    </a>
-                    <a href="#/summary" class="quick-link">
-                        <span class="link-icon">📊</span>
-                        <span class="link-text">Sammanställning</span>
-                        <span class="link-desc">Timsummering</span>
-                    </a>
-                    <a href="#/rules" class="quick-link">
-                        <span class="link-icon">📋</span>
-                        <span class="link-text">Regler</span>
-                        <span class="link-desc">HRF-avtalsregler</span>
-                    </a>
-                    <a href="#/export" class="quick-link">
-                        <span class="link-icon">💾</span>
-                        <span class="link-text">Export/Import</span>
-                        <span class="link-desc">Säkerhetskopiering</span>
-                    </a>
-                </div>
-            </div>
+    .home-container.view-container {
+        padding: 1.5rem;
+        max-width: 100%;
+    }
 
-            <div class="info-section">
-                <h3>ℹ️ Om Schema-Program</h3>
-                <div class="info-content">
-                    <p>
-                        <strong>Projekt:</strong> Schema-Program v1 (UI-only / GitHub Pages)<br>
-                        <strong>Avtal:</strong> HRF/Visita Gröna Riks<br>
-                        <strong>Status:</strong> Produktion
-                    </p>
-                    <p>
-                        Denna applikation hjälper till att schemalägga personal enligt HRF-avtalet
-                        med stöd för rollbaserad bemanningsplanering, extra-ledighetshantering och
-                        automatisk schemagenering.
-                    </p>
-                </div>
-            </div>
-        </div>
-    `;
+    .home-container h2 {
+        font-size: 1.8rem;
+    }
 
-    container.innerHTML = html;
+    .welcome-text {
+        font-size: 1rem;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .stat-card {
+        padding: 1rem;
+        gap: 1rem;
+    }
+
+    .stat-icon {
+        font-size: 2rem;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+    }
+
+    .links-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .quick-link {
+        padding: 1rem;
+    }
+
+    .link-icon {
+        font-size: 2rem;
+    }
+
+    .link-text {
+        font-size: 0.9rem;
+    }
+
+    .link-desc {
+        font-size: 0.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .home-container {
+        padding: 0.5rem;
+        min-height: auto;
+    }
+
+    .home-container.view-container {
+        padding: 1rem;
+        max-width: 100%;
+    }
+
+    .home-container h2 {
+        font-size: 1.4rem;
+        margin-bottom: 1rem;
+    }
+
+    .welcome-section {
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .welcome-text {
+        font-size: 0.9rem;
+    }
+
+    .stats-grid {
+        gap: 0.8rem;
+    }
+
+    .stat-card {
+        flex-direction: column;
+        text-align: center;
+        padding: 0.8rem;
+    }
+
+    .stat-icon {
+        font-size: 1.8rem;
+    }
+
+    .stat-content h3 {
+        font-size: 1rem;
+    }
+
+    .stat-value {
+        font-size: 1.3rem;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+    }
+
+    .quick-links h3 {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+    }
+
+    .links-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .link-icon {
+        font-size: 1.8rem;
+    }
+
+    .link-text {
+        font-size: 0.8rem;
+    }
+
+    .info-section h3 {
+        font-size: 1.05rem;
+    }
+
+    .info-content {
+        padding: 1rem;
+    }
+
+    .info-content p {
+        font-size: 0.85rem;
+    }
 }
