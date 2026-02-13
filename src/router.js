@@ -1,5 +1,12 @@
 /*
- * AO-03 — ROUTER: Route-hantering (DEBUG VERSION)
+ * AO-03 — ROUTER: Route-hantering (AUTOPATCH v1.2)
+ *
+ * Säkrare/stabilare:
+ * - Init-guard: ingen dubbel init/listeners
+ * - Mindre loggspam (debug via ?debug=1)
+ * - Fail-closed: okänd route → login/home beroende på inloggning
+ * - Render: rensar container med DOM-metod (ingen onödig innerHTML)
+ * - Navbar: robustare aktiv länk (tål att nav saknas)
  */
 
 import { renderHome } from './views/home.js';
@@ -15,16 +22,16 @@ import { renderLogin, isLoggedIn } from './views/login.js';
 import { renderError } from './ui.js';
 
 const routes = {
-    login: renderLogin,
-    home: renderHome,
-    shifts: renderShifts,
-    groups: renderGroups,
-    personal: renderPersonal,
-    calendar: renderCalendar,
-    control: renderControl,
-    summary: renderSummary,
-    export: renderExport,
-    rules: renderRules,
+  login: renderLogin,
+  home: renderHome,
+  shifts: renderShifts,
+  groups: renderGroups,
+  personal: renderPersonal,
+  calendar: renderCalendar,
+  control: renderControl,
+  summary: renderSummary,
+  export: renderExport,
+  rules: renderRules
 };
 
 let currentRoute = null;
@@ -32,105 +39,122 @@ let container = null;
 let errorPanel = null;
 let appCtx = null;
 
-function parseRoute() {
-    let hash = window.location.hash.slice(1);
-    console.log('📍 parseRoute hash:', hash);
-    
-    if (!hash || hash === '/') {
-        const loggedIn = isLoggedIn();
-        console.log('📍 hash tom, inloggad?', loggedIn);
-        return loggedIn ? 'home' : 'login';
-    }
-
-    let route = hash.startsWith('/') ? hash.slice(1) : hash;
-    route = route.split('?')[0];
-
-    console.log('📍 parsed route:', route);
-
-    if (!routes[route]) {
-        console.warn(`❌ Okänd route "${route}"`);
-        return isLoggedIn() ? 'home' : 'login';
-    }
-
-    return route;
+const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
+function log(...args) {
+  if (DEBUG) console.log(...args);
 }
 
-async function renderRoute(routeName) {
-    try {
-        console.log('🔄 renderRoute kallad:', routeName);
-        console.log('🔄 container:', container);
-        console.log('🔄 routes[routeName]:', routes[routeName]);
+function safeClearContainer(el) {
+  if (!el) return;
+  // DOM-säkert: ta bort barn
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
 
-        if (!container) {
-            console.error('❌ Container saknas!');
-            throw new Error('Container saknas');
-        }
+function getDefaultRoute() {
+  return isLoggedIn() ? 'home' : 'login';
+}
 
-        if (!isLoggedIn() && routeName !== 'login') {
-            console.log('📍 Inte inloggad och inte login-route → redirect till #/login');
-            window.location.hash = '#/login';
-            return;
-        }
+function parseRoute() {
+  const hashRaw = window.location.hash || '';
+  let hash = hashRaw.startsWith('#') ? hashRaw.slice(1) : hashRaw;
 
-        const renderFn = routes[routeName];
-        if (!renderFn) {
-            console.error(`❌ renderFn för "${routeName}" inte hittat`);
-            throw new Error(`Route "${routeName}" inte hittat`);
-        }
+  if (!hash || hash === '/') {
+    return getDefaultRoute();
+  }
 
-        console.log(`✓ Renderar route: ${routeName}`);
-        container.innerHTML = '';
-        
-        console.log('🔄 Anropar renderFn med:', { container, appCtx });
-        renderFn(container, {
-            ...appCtx,
-            currentRoute: routeName
-        });
+  let route = hash.startsWith('/') ? hash.slice(1) : hash;
+  route = route.split('?')[0];
 
-        currentRoute = routeName;
-        updateNavbar(routeName);
-        console.log(`✓ Route ${routeName} renderad`);
-    } catch (err) {
-        console.error(`❌ Fel vid rendering av "${routeName}":`, err);
-        renderError(errorPanel, err);
-        if (container) {
-            container.innerHTML = '<div class="view-container"><h2>Fel</h2><p>Vyn kunde inte renderas. Se console för detaljer.</p></div>';
-        }
-    }
+  if (!routes[route]) {
+    return getDefaultRoute();
+  }
+
+  return route;
 }
 
 function updateNavbar(routeName) {
-    const navbar = document.getElementById('navbar');
-    if (navbar) {
-        navbar.style.display = routeName === 'login' ? 'none' : 'block';
+  const navbar = document.getElementById('navbar');
+  if (navbar) {
+    navbar.style.display = routeName === 'login' ? 'none' : 'block';
+  }
+
+  // Tål att det inte finns länkar ännu
+  const links = document.querySelectorAll('nav a[href^="#/"]');
+  links.forEach((link) => {
+    const href = link.getAttribute('href') || '';
+    const route = href.startsWith('#/') ? href.slice(2) : href;
+    link.classList.toggle('active', route === routeName);
+  });
+}
+
+function showFallbackView() {
+  if (!container) return;
+  safeClearContainer(container);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'view-container';
+
+  const h2 = document.createElement('h2');
+  h2.textContent = 'Fel';
+
+  const p = document.createElement('p');
+  p.textContent = 'Vyn kunde inte renderas.';
+
+  wrap.appendChild(h2);
+  wrap.appendChild(p);
+  container.appendChild(wrap);
+}
+
+function renderRoute(routeName) {
+  try {
+    if (!container) throw new Error('ROUTER_NO_CONTAINER');
+
+    // Fail-closed auth: inte inloggad → alltid login
+    if (!isLoggedIn() && routeName !== 'login') {
+      window.location.hash = '#/login';
+      return;
     }
 
-    document.querySelectorAll('nav a').forEach((link) => {
-        const href = link.getAttribute('href');
-        const route = href.slice(2);
-        link.classList.toggle('active', route === routeName);
-    });
+    const renderFn = routes[routeName];
+    if (!renderFn) {
+      window.location.hash = `#/${getDefaultRoute()}`;
+      return;
+    }
+
+    safeClearContainer(container);
+
+    renderFn(container, { ...appCtx, currentRoute: routeName });
+
+    currentRoute = routeName;
+    updateNavbar(routeName);
+  } catch (err) {
+    console.error('ROUTER_RENDER_FAIL', err);
+    try {
+      renderError(errorPanel, err);
+    } catch (_) {
+      // om ui.js saknas/krashar – visa fallback
+    }
+    showFallbackView();
+  }
 }
 
 function onHashChange() {
-    console.log('📍 hashchange event');
-    const route = parseRoute();
-    renderRoute(route);
+  const route = parseRoute();
+  renderRoute(route);
 }
 
 export function initRouter(containerEl, errorPanelEl, ctx) {
-    console.log('🔄 initRouter kallad');
-    console.log('🔄 containerEl:', containerEl);
-    console.log('🔄 errorPanelEl:', errorPanelEl);
-    console.log('🔄 ctx:', ctx);
+  // Init-guard mot dubbla listeners
+  if (window.__SCHEMA_ROUTER_INIT__) return;
+  window.__SCHEMA_ROUTER_INIT__ = true;
 
-    container = containerEl;
-    errorPanel = errorPanelEl;
-    appCtx = ctx;
+  container = containerEl;
+  errorPanel = errorPanelEl;
+  appCtx = ctx;
 
-    window.addEventListener('hashchange', onHashChange);
+  window.addEventListener('hashchange', onHashChange, { passive: true });
 
-    const initialRoute = parseRoute();
-    console.log(`🔄 Initial route: ${initialRoute}`);
-    renderRoute(initialRoute);
+  const initialRoute = parseRoute();
+  log('Router init route:', initialRoute);
+  renderRoute(initialRoute);
 }
