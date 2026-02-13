@@ -9,12 +9,14 @@ import { renderControl } from './views/control.js';
 import { renderSummary } from './views/summary.js';
 import { renderExport } from './views/export.js';
 import { renderRules } from './views/rules.js';
+import { renderShifts } from './views/shifts.js';
 import { renderLogin, isLoggedIn } from './views/login.js';
 import { renderError } from './ui.js';
 
 const routes = {
     login: renderLogin,
     home: renderHome,
+    shifts: renderShifts,
     personal: renderPersonal,
     calendar: renderCalendar,
     control: renderControl,
@@ -78,7 +80,10 @@ async function renderRoute(routeName) {
         container.innerHTML = '';
         
         console.log('🔄 Anropar renderFn med:', { container, appCtx });
-        renderFn(container, appCtx);
+        renderFn(container, {
+            ...appCtx,
+            currentRoute: routeName
+        });
 
         currentRoute = routeName;
         updateNavbar(routeName);
