@@ -1,16 +1,12 @@
 /*
- * AO-03 — ROUTER: Route-hantering (AUTOPATCH v1.3)
+ * AO-03 — ROUTER: Route-hantering (AUTOPATCH v1.4)
  *
  * Fix:
- * - P0: "Ramen" (view-container) ska alltid finnas runt alla views.
- *   => Router skapar en shell: <div class="view-container"><div class="view-inner"></div></div>
- *   => Views renderar i view-inner (inte direkt i #app-container/#container).
- *
- * Behåller:
- * - Init-guard: ingen dubbel init/listeners
- * - Debug via ?debug=1
- * - Fail-closed: okänd route → login/home beroende på inloggning
- * - Navbar: robust aktiv länk
+ * - P0: Topbar syns igen (renderNavbar() anropas alltid).
+ * - P0: Ta bort “andra ramen” (ingen extra wrapper runt innehållet).
+ * - P0: Topbar visas även på login (så du kan navigera).
+ * - P1: Aktiv länk markeras robust (tål både <div id="navbar"> och <nav id="navbar">).
+ * - Fail-closed: inte inloggad → allt utom login skickas till login.
  */
 
 import { renderHome } from './views/home.js';
@@ -23,7 +19,8 @@ import { renderRules } from './views/rules.js';
 import { renderShifts } from './views/shifts.js';
 import { renderGroups } from './views/groups.js';
 import { renderLogin, isLoggedIn } from './views/login.js';
-import { renderError } from './ui.js';
+
+import { renderError, renderNavbar } from './ui.js';
 
 const routes = {
   login: renderLogin,
@@ -38,17 +35,14 @@ const routes = {
   rules: renderRules
 };
 
-let currentRoute = null;
 let container = null;
 let errorPanel = null;
 let appCtx = null;
 
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
-function log(...args) {
-  if (DEBUG) console.log(...args);
-}
+function log(...args) { if (DEBUG) console.log(...args); }
 
-function safeClearContainer(el) {
+function safeClear(el) {
   if (!el) return;
   while (el.firstChild) el.removeChild(el.firstChild);
 }
@@ -61,27 +55,30 @@ function parseRoute() {
   const hashRaw = window.location.hash || '';
   let hash = hashRaw.startsWith('#') ? hashRaw.slice(1) : hashRaw;
 
-  if (!hash || hash === '/') {
-    return getDefaultRoute();
-  }
+  if (!hash || hash === '/') return getDefaultRoute();
 
   let route = hash.startsWith('/') ? hash.slice(1) : hash;
   route = route.split('?')[0];
 
-  if (!routes[route]) {
-    return getDefaultRoute();
-  }
-
+  if (!routes[route]) return getDefaultRoute();
   return route;
 }
 
-function updateNavbar(routeName) {
-  const navbar = document.getElementById('navbar');
-  if (navbar) {
-    navbar.style.display = routeName === 'login' ? 'none' : 'block';
-  }
+function ensureTopbar() {
+  const navbarEl = document.getElementById('navbar');
+  if (!navbarEl) return;
 
-  const links = document.querySelectorAll('nav a[href^="#/"]');
+  // Bygg topbar varje gång (ui.js rensar ändå själv med textContent)
+  try {
+    renderNavbar(navbarEl);
+  } catch (e) {
+    console.error('NAVBAR_RENDER_FAIL');
+  }
+}
+
+function markActiveLink(routeName) {
+  // Markera aktiv länk oavsett om du har <nav> eller <div> runt topbar
+  const links = document.querySelectorAll('#navbar a[href^="#/"]');
   links.forEach((link) => {
     const href = link.getAttribute('href') || '';
     const route = href.startsWith('#/') ? href.slice(2) : href;
@@ -89,22 +86,9 @@ function updateNavbar(routeName) {
   });
 }
 
-/** P0: Skapar alltid ramen runt vyn */
-function buildViewShell(routeName) {
-  const shell = document.createElement('div');
-  shell.className = 'view-container';
-  shell.setAttribute('data-route', routeName);
-
-  const inner = document.createElement('div');
-  inner.className = 'view-inner';
-
-  shell.appendChild(inner);
-  return { shell, inner };
-}
-
 function showFallbackView() {
   if (!container) return;
-  safeClearContainer(container);
+  safeClear(container);
 
   const wrap = document.createElement('div');
   wrap.className = 'view-container';
@@ -124,7 +108,10 @@ function renderRoute(routeName) {
   try {
     if (!container) throw new Error('ROUTER_NO_CONTAINER');
 
-    // Fail-closed auth: inte inloggad → alltid login
+    // Topbar ska alltid finnas (även på login)
+    ensureTopbar();
+
+    // Fail-closed: inte inloggad → allt utom login går till login
     if (!isLoggedIn() && routeName !== 'login') {
       window.location.hash = '#/login';
       return;
@@ -136,35 +123,26 @@ function renderRoute(routeName) {
       return;
     }
 
-    safeClearContainer(container);
+    safeClear(container);
 
-    // P0: skapa alltid shell så "ramen" syns på alla sidor
-    const { shell, inner } = buildViewShell(routeName);
-    container.appendChild(shell);
+    // VIKTIGT: ingen extra “ram” här – vyn renderar direkt som tidigare
+    renderFn(container, { ...appCtx, currentRoute: routeName });
 
-    // Rendera vyn inuti inner (så shell alltid ligger kvar)
-    renderFn(inner, { ...appCtx, currentRoute: routeName });
-
-    currentRoute = routeName;
-    updateNavbar(routeName);
-    log('Route rendered:', currentRoute);
+    markActiveLink(routeName);
+    log('Route rendered:', routeName);
   } catch (err) {
-    console.error('ROUTER_RENDER_FAIL', err);
-    try {
-      renderError(errorPanel, err);
-    } catch (_) {
-      // ignore
-    }
+    console.error('ROUTER_RENDER_FAIL');
+    try { renderError(errorPanel, err); } catch (_) {}
     showFallbackView();
   }
 }
 
 function onHashChange() {
-  const route = parseRoute();
-  renderRoute(route);
+  renderRoute(parseRoute());
 }
 
 export function initRouter(containerEl, errorPanelEl, ctx) {
+  // Init-guard
   if (window.__SCHEMA_ROUTER_INIT__) return;
   window.__SCHEMA_ROUTER_INIT__ = true;
 
@@ -175,6 +153,6 @@ export function initRouter(containerEl, errorPanelEl, ctx) {
   window.addEventListener('hashchange', onHashChange, { passive: true });
 
   const initialRoute = parseRoute();
-  log('Router init route:', initialRoute);
+  ensureTopbar();
   renderRoute(initialRoute);
 }
