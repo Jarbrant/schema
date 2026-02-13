@@ -1,1 +1,121 @@
+/* ========================================================================
+   BLOCK 13: CARDS & CARD-BASED COMPONENTS
+   ======================================================================== */
 
+.shifts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.shift-card {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.shift-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.shift-card-header {
+    padding: 1rem;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.shift-card-short {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.shift-card-body {
+    padding: 1.5rem;
+}
+
+.shift-card-body h3 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
+}
+
+.shift-desc {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 0 0 1rem 0;
+    line-height: 1.4;
+}
+
+.shift-details {
+    border-top: 1px solid #eee;
+    padding-top: 1rem;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.6rem;
+    font-size: 0.9rem;
+}
+
+.detail-row .label {
+    font-weight: 600;
+    color: #555;
+}
+
+.detail-row .value {
+    color: #333;
+}
+
+.shift-card-footer {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #eee;
+    background: #f9f9f9;
+}
+
+.btn-shift-edit-full,
+.btn-shift-delete-full {
+    flex: 1;
+    padding: 0.6rem;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-shift-edit-full {
+    background: #3498db;
+    color: white;
+}
+
+.btn-shift-edit-full:hover {
+    background: #2980b9;
+}
+
+.btn-shift-delete-full {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-shift-delete-full:hover {
+    background: #c0392b;
+}
+
+/* Shift Header */
+.shifts-header {
+    margin-bottom: 2rem;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.shifts-container {
+    max-width: 1200px;
+}
