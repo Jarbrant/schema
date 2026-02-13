@@ -1,12 +1,16 @@
 /*
- * AO-03 — ROUTER: Route-hantering (AUTOPATCH v1.2)
+ * AO-03 — ROUTER: Route-hantering (AUTOPATCH v1.3)
  *
- * Säkrare/stabilare:
+ * Fix:
+ * - P0: "Ramen" (view-container) ska alltid finnas runt alla views.
+ *   => Router skapar en shell: <div class="view-container"><div class="view-inner"></div></div>
+ *   => Views renderar i view-inner (inte direkt i #app-container/#container).
+ *
+ * Behåller:
  * - Init-guard: ingen dubbel init/listeners
- * - Mindre loggspam (debug via ?debug=1)
+ * - Debug via ?debug=1
  * - Fail-closed: okänd route → login/home beroende på inloggning
- * - Render: rensar container med DOM-metod (ingen onödig innerHTML)
- * - Navbar: robustare aktiv länk (tål att nav saknas)
+ * - Navbar: robust aktiv länk
  */
 
 import { renderHome } from './views/home.js';
@@ -46,7 +50,6 @@ function log(...args) {
 
 function safeClearContainer(el) {
   if (!el) return;
-  // DOM-säkert: ta bort barn
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
@@ -78,13 +81,25 @@ function updateNavbar(routeName) {
     navbar.style.display = routeName === 'login' ? 'none' : 'block';
   }
 
-  // Tål att det inte finns länkar ännu
   const links = document.querySelectorAll('nav a[href^="#/"]');
   links.forEach((link) => {
     const href = link.getAttribute('href') || '';
     const route = href.startsWith('#/') ? href.slice(2) : href;
     link.classList.toggle('active', route === routeName);
   });
+}
+
+/** P0: Skapar alltid ramen runt vyn */
+function buildViewShell(routeName) {
+  const shell = document.createElement('div');
+  shell.className = 'view-container';
+  shell.setAttribute('data-route', routeName);
+
+  const inner = document.createElement('div');
+  inner.className = 'view-inner';
+
+  shell.appendChild(inner);
+  return { shell, inner };
 }
 
 function showFallbackView() {
@@ -123,16 +138,22 @@ function renderRoute(routeName) {
 
     safeClearContainer(container);
 
-    renderFn(container, { ...appCtx, currentRoute: routeName });
+    // P0: skapa alltid shell så "ramen" syns på alla sidor
+    const { shell, inner } = buildViewShell(routeName);
+    container.appendChild(shell);
+
+    // Rendera vyn inuti inner (så shell alltid ligger kvar)
+    renderFn(inner, { ...appCtx, currentRoute: routeName });
 
     currentRoute = routeName;
     updateNavbar(routeName);
+    log('Route rendered:', currentRoute);
   } catch (err) {
     console.error('ROUTER_RENDER_FAIL', err);
     try {
       renderError(errorPanel, err);
     } catch (_) {
-      // om ui.js saknas/krashar – visa fallback
+      // ignore
     }
     showFallbackView();
   }
@@ -144,7 +165,6 @@ function onHashChange() {
 }
 
 export function initRouter(containerEl, errorPanelEl, ctx) {
-  // Init-guard mot dubbla listeners
   if (window.__SCHEMA_ROUTER_INIT__) return;
   window.__SCHEMA_ROUTER_INIT__ = true;
 
