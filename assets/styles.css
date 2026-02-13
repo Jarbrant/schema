@@ -1,5 +1,5 @@
 /* ========================================================================
-   SCHEMA-PROGRAM: Master stylesheet (AUTOPATCH v4)
+   SCHEMA-PROGRAM: Master stylesheet (AUTOPATCH v5)
    
    Importordning är KRITISK:
    1. base.css — Global reset, typography, layout
@@ -11,12 +11,16 @@
    7. home.css — Home page (kan "äga" sin container)
    8. shifts.css — Shifts module
    9. groups.css — Groups module
-   10. diagnostics.css — Error panel & diagnostics (INNAN responsive!)
-   11. responsive.css — Media queries (ALLTID SIST!)
+   10. control.css — Control page with sections
+   11. navbar.css — Navigation bar (topbar)
+   12. diagnostics.css — Error panel & diagnostics (INNAN responsive!)
+   13. responsive.css — Media queries (ALLTID SIST!)
    
    Varför denna ordning?
    - base.css måste komma FÖRST (reset, typography)
    - Specifika moduler (forms, tables) innan page-specifika (home, shifts)
+   - page-moduler (home, shifts, groups, control) innan navbar
+   - navbar innan diagnostics (så diagnostics kan överskriva)
    - diagnostics.css innan responsive.css (media queries kan överskriva)
    - responsive.css SIST (högsta prioritet för media queries)
    ======================================================================== */
@@ -48,8 +52,14 @@
 /* Step 9: Groups Module */
 @import url('./css/groups.css');
 
-/* Step 10: Diagnostics (Error Panel & System Health) */
+/* Step 10: Control Page (with sections) */
+@import url('./css/control.css');
+
+/* Step 11: Navbar (Navigation bar) */
+@import url('./css/navbar.css');
+
+/* Step 12: Diagnostics (Error Panel & System Health) */
 @import url('./css/diagnostics.css');
 
-/* Step 11: Responsive Design (ALLTID SIST!) */
+/* Step 13: Responsive Design (ALLTID SIST!) */
 @import url('./css/responsive.css');
