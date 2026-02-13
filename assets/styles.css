@@ -1523,7 +1523,286 @@ table tbody tr:hover {
     min-width: 100px;
     text-align: right;
 }
+/* ========================================================================
+   BLOCK 13: AO-02F — SHIFTS (GRUNDPASS)
+   ======================================================================== */
 
+.shifts-container {
+    max-width: 1200px;
+}
+
+.shifts-header {
+    margin-bottom: 2rem;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.shifts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.shift-card {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.shift-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.shift-card-header {
+    padding: 1rem;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.shift-card-short {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.shift-card-body {
+    padding: 1.5rem;
+}
+
+.shift-card-body h3 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
+}
+
+.shift-desc {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 0 0 1rem 0;
+    line-height: 1.4;
+}
+
+.shift-details {
+    border-top: 1px solid #eee;
+    padding-top: 1rem;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.6rem;
+    font-size: 0.9rem;
+}
+
+.detail-row .label {
+    font-weight: 600;
+    color: #555;
+}
+
+.detail-row .value {
+    color: #333;
+}
+
+.shift-card-footer {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #eee;
+    background: #f9f9f9;
+}
+
+.btn-shift-edit-full,
+.btn-shift-delete-full {
+    flex: 1;
+    padding: 0.6rem;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-shift-edit-full {
+    background: #3498db;
+    color: white;
+}
+
+.btn-shift-edit-full:hover {
+    background: #2980b9;
+}
+
+.btn-shift-delete-full {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-shift-delete-full:hover {
+    background: #c0392b;
+}
+
+/* FORM MODAL */
+.shift-form-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.shift-form-overlay.hidden {
+    display: none;
+}
+
+.shift-form-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 1001;
+}
+
+.shift-form-modal.hidden {
+    display: none;
+}
+
+.shift-form-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2rem;
+    border-bottom: 1px solid #eee;
+}
+
+.shift-form-modal-header h3 {
+    margin: 0;
+    color: #333;
+}
+
+.btn-close-modal {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #999;
+    transition: color 0.2s;
+}
+
+.btn-close-modal:hover {
+    color: #333;
+}
+
+.shift-form-modal-body {
+    padding: 2rem;
+}
+
+.color-picker {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.8rem;
+    margin-top: 0.8rem;
+}
+
+.color-option {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.color-option:hover {
+    transform: scale(1.1);
+}
+
+.color-option.selected {
+    border-color: #333;
+    box-shadow: 0 0 0 2px white, 0 0 0 4px #333;
+}
+
+.form-group-inline {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+}
+
+.form-group-inline label {
+    min-width: 100px;
+    margin-bottom: 0;
+}
+
+.time-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.time-inputs input {
+    flex: 1;
+    padding: 0.6rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.separator {
+    color: #999;
+    font-weight: 600;
+}
+
+.form-actions {
+    display: flex;
+    gap: 0.8rem;
+    margin-top: 2rem;
+}
+
+.form-actions .btn {
+    flex: 1;
+}
+
+@media (max-width: 768px) {
+    .shifts-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .shift-form-modal {
+        width: 95%;
+        max-height: 95vh;
+    }
+
+    .color-picker {
+        grid-template-columns: repeat(6, 1fr);
+    }
+
+    .form-group-inline {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .form-group-inline label {
+        min-width: auto;
+    }
+
+    .time-inputs {
+        justify-content: space-between;
+    }
+}
 /* ========================================================================
    BLOCK 14: AO-24 — ROLE-BASED HOURS & VACANCIES
    ======================================================================== */
