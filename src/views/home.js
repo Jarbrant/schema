@@ -3,6 +3,7 @@
  * 
  * Renderar välkomstsidan med:
  * - Gradient-bakgrund
+ * - Horisontell tab-navigation
  * - Stats (Personal, År, System)
  * - Snabb-navigation
  */
@@ -16,6 +17,9 @@ export function renderHome(container, ctx) {
 
     const state = store.getState();
     const activePeople = state.people.filter(p => p.isActive).length;
+    
+    // Få aktuell route från context
+    const currentRoute = ctx?.currentRoute || 'home';
 
     const html = `
         <div class="home-container">
@@ -24,6 +28,17 @@ export function renderHome(container, ctx) {
                 <p class="home-tagline">
                     En schemaläggningslösning för HRF/Visita Gröna Riks
                 </p>
+
+                <!-- Horisontell tab-navigation -->
+                <div class="home-tabs">
+                    <a href="#/home" class="home-tab ${currentRoute === 'home' ? 'active' : ''}">Hem</a>
+                    <a href="#/personal" class="home-tab ${currentRoute === 'personal' ? 'active' : ''}">Personal</a>
+                    <a href="#/calendar" class="home-tab ${currentRoute === 'calendar' ? 'active' : ''}">Kalender</a>
+                    <a href="#/control" class="home-tab ${currentRoute === 'control' ? 'active' : ''}">Kontroll</a>
+                    <a href="#/summary" class="home-tab ${currentRoute === 'summary' ? 'active' : ''}">Sammanställning</a>
+                    <a href="#/rules" class="home-tab ${currentRoute === 'rules' ? 'active' : ''}">Regler</a>
+                    <a href="#/export" class="home-tab ${currentRoute === 'export' ? 'active' : ''}">Export/Import</a>
+                </div>
 
                 <div class="home-hero">
                     Schema-Program v1.0 — En schemaläggningslösning för HRF/Visita Gröna Riks
