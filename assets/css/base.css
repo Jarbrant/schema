@@ -64,47 +64,88 @@ a:hover {
 }
 
 /* ========================================================================
-   LOGIN (AO-06): Centerad modern login-card
+   LOGIN (AO-06): Centerad modern login-card (FINARE)
    ======================================================================== */
 
 .login-page {
-    min-height: 100vh;                 /* funkar även om navbar är tom */
+    min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: 28px;
+    /* modern, mild bakgrund */
+    background:
+        radial-gradient(900px 500px at 20% 15%, rgba(102,126,234,0.18), transparent 60%),
+        radial-gradient(900px 500px at 80% 20%, rgba(118,75,162,0.14), transparent 60%),
+        linear-gradient(180deg, #f7f8fc 0%, #f3f6fb 100%);
 }
 
 .login-container {
     width: 100%;
     max-width: 520px;
+    position: relative;
 }
 
 .login-card {
     width: 100%;
-    background: #fff;
-    border: 1px solid #e9e9ef;
-    border-radius: 14px;
-    padding: 24px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+    background: rgba(255,255,255,0.92);
+    border: 1px solid rgba(233,233,239,0.9);
+    border-radius: 16px;
+    padding: 26px 26px 22px 26px;
+    box-shadow:
+        0 18px 45px rgba(0, 0, 0, 0.10),
+        0 2px 10px rgba(102, 126, 234, 0.10);
+    backdrop-filter: blur(6px);
 }
 
 .login-card h1 {
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.6rem;
+    font-size: 1.9rem; /* lite tajtare än global h1 */
 }
 
 .login-card h2 {
-    margin-top: 0.25rem;
+    margin-top: 0.15rem;
+    margin-bottom: 0.75rem;
 }
 
 .login-form {
-    margin-top: 12px;
+    margin-top: 10px;
 }
 
+/* Liten polish på form-fält utan att slåss med forms.css */
+.login-form .form-group label {
+    display: inline-block;
+    margin-bottom: 8px;
+}
+
+.login-form input[type="password"],
+.login-form input[type="text"],
+.login-form input[type="number"],
+.login-form input[type="time"],
+.login-form input[type="email"] {
+    width: 100%;
+    border-radius: 10px;
+}
+
+/* Fokus: tydlig men mjuk */
+.login-form input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 4px rgba(102,126,234,0.18);
+}
+
+/* Primärknapp full bredd */
 .btn-login {
     width: 100%;
+    margin-top: 10px;
 }
 
+/* Alerts i login: lite tightare */
+.login-card .alert {
+    border-radius: 12px;
+}
+
+/* Footer */
 .login-footer {
     margin-top: 14px;
 }
@@ -112,18 +153,64 @@ a:hover {
 .login-footer .footer-text {
     margin-bottom: 0;
     font-size: 12px;
-    color: #777;
+    color: #667;
     text-align: center;
 }
 
-/* Små skärmar */
+/* Mobil */
 @media (max-width: 480px) {
     .login-page {
         padding: 16px;
     }
     .login-card {
         padding: 18px;
-        border-radius: 12px;
+        border-radius: 14px;
+    }
+    .login-card h1 {
+        font-size: 1.6rem;
+    }
+}
+
+/* Mörkt tema (om användaren har det i OS) */
+@media (prefers-color-scheme: dark) {
+    html, body {
+        background: #0f1422;
+        color: #e9ecf1;
+    }
+
+    .login-page {
+        background:
+            radial-gradient(900px 500px at 20% 15%, rgba(102,126,234,0.22), transparent 60%),
+            radial-gradient(900px 500px at 80% 20%, rgba(118,75,162,0.18), transparent 60%),
+            linear-gradient(180deg, #0f1422 0%, #121a2b 100%);
+    }
+
+    .login-card {
+        background: rgba(18, 26, 43, 0.82);
+        border: 1px solid rgba(255,255,255,0.10);
+        box-shadow:
+            0 18px 50px rgba(0,0,0,0.50),
+            0 2px 12px rgba(102,126,234,0.14);
+    }
+
+    .login-card h1,
+    .login-card h2,
+    .login-card h3,
+    .login-card h4,
+    .login-card p,
+    .login-card label {
+        color: #e9ecf1;
+    }
+
+    .login-footer .footer-text {
+        color: #a9b3c6;
+    }
+}
+
+/* Respektera reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        scroll-behavior: auto !important;
     }
 }
 
