@@ -1,13 +1,12 @@
 /*
  * AO-02F: SHIFTS — Lägg till & redigera grundpass
- * AUTOPATCH v1.4: XSS-fix, state-safety, testability
+ * AUTOPATCH v1.5: Selector-escape, color-normalization, safe IDs
  * 
  * Ändringar:
- * 1) P0: Färg via .style.backgroundColor (inte inline-style-string)
- * 2) P0: Defensiv state-update (immutable pattern)
- * 3) P1: Bryt ut validering (ren funktion)
- * 4) P1: Bryt ut normalisering (ren funktion)
- * 5) P1: Säkerhet — whitelist färger
+ * 1) P0: CSS.escape() för selectors (inte escapeHtml)
+ * 2) P0: isValidColor() case-insensitiv (fix toLowerCase-bug)
+ * 3) P0: generateSafeId() för DOM-ids (whitelist [a-z0-9_-])
+ * 4) P1: Normalisera färger i getColorOptions()
  */
 
 import { validateShift, normalizeShift } from '../lib/shift-validator.js';
@@ -43,6 +42,7 @@ export function renderShiftsView(container, ctx) {
                     ? '<p class="empty-state">Inga grundpass definierade än. Lägg till ett för att börja.</p>'
                     : shiftIds.map((shiftId) => {
                         const shift = shifts[shiftId];
+                        const safeId = generateSafeId(shiftId);  // P0: Safe ID
                         const timeRange = shift.startTime && shift.endTime 
                             ? `${shift.startTime}–${shift.endTime}`
                             : 'Flex';
@@ -52,7 +52,7 @@ export function renderShiftsView(container, ctx) {
 
                         return `
                             <div class="shift-card">
-                                <div class="shift-card-header" id="shift-header-${escapeHtml(shiftId)}">
+                                <div class="shift-card-header" id="shift-header-${safeId}">
                                     <span class="shift-card-short">${escapeHtml(shift.shortName)}</span>
                                 </div>
                                 <div class="shift-card-body">
@@ -268,7 +268,7 @@ export function renderShiftsView(container, ctx) {
             e.preventDefault();
             const color = btn.dataset.color;
             
-            // Validera färg mot whitelist
+            // P0: Validera färg mot whitelist (case-insensitive)
             if (!isValidColor(color)) {
                 console.warn(`⚠️ Invalid color: ${color}`);
                 return;
@@ -317,10 +317,11 @@ export function renderShiftsView(container, ctx) {
         });
     }
 
-    // P1: Sätt färg på kort-headers EFTER DOM är renderad (inte i template)
+    // P0: Sätt färg på kort-headers EFTER DOM är renderad (använd CSS.escape)
     shiftIds.forEach(shiftId => {
         const shift = store.getState().shifts[shiftId];
-        const header = container.querySelector(`#shift-header-${escapeHtml(shiftId)}`);
+        const safeId = generateSafeId(shiftId);
+        const header = container.querySelector(`#shift-header-${CSS.escape(safeId)}`);
         if (header && isValidColor(shift.color)) {
             header.style.backgroundColor = shift.color;
         }
@@ -339,7 +340,7 @@ function openShiftForm(container, shiftId, state) {
     title.textContent = shift ? `Redigera pass: ${shift.name}` : 'Lägg till grundpass';
 
     // Fyll formulär
-    container.querySelector('#shift-color').value = shift?.color || '#667eea';
+    container.querySelector('#shift-color').value = shift?.color || '#667EEA';  // Normalized
     container.querySelector('#shift-name').value = shift?.name || '';
     container.querySelector('#shift-shortname').value = shift?.shortName || '';
     container.querySelector('#shift-description').value = shift?.description || '';
@@ -351,9 +352,10 @@ function openShiftForm(container, shiftId, state) {
     container.querySelector('#shift-break-end').value = shift?.breakEnd || '13:00';
     container.querySelector('#shift-cost').value = shift?.snittKostnad || '';
 
-    // Sätt färg som vald
+    // Sätt färg som vald (case-insensitive)
+    const defaultColor = (shift?.color || '#667EEA').toUpperCase();
     container.querySelectorAll('.color-option').forEach((opt) => {
-        if (opt.dataset.color === (shift?.color || '#667eea')) {
+        if (opt.dataset.color.toUpperCase() === defaultColor) {
             opt.classList.add('selected');
         } else {
             opt.classList.remove('selected');
@@ -397,7 +399,7 @@ function handleSaveShift(store, container, ctx) {
             name: container.querySelector('#shift-name').value.trim(),
             shortName: container.querySelector('#shift-shortname').value.trim().toUpperCase(),
             description: container.querySelector('#shift-description').value.trim(),
-            color: container.querySelector('#shift-color').value,
+            color: container.querySelector('#shift-color').value.toUpperCase(),  // P0: Normalize
             startTime: container.querySelector('#shift-start').value,
             endTime: container.querySelector('#shift-end').value,
             breakType: container.querySelector('#shift-break-type').value,
@@ -474,6 +476,9 @@ function handleDeleteShift(shiftId, store, container, ctx) {
    UTILITY FUNCTIONS
    ======================================================================== */
 
+/**
+ * P1: Normalisera färger till UPPERCASE för konsistens
+ */
 function getColorOptions() {
     return [
         '#FFD93D', '#FF8C42', '#6C5CE7', '#0984E3',
@@ -483,12 +488,26 @@ function getColorOptions() {
 }
 
 /**
- * P0 SECURITY: Whitelist-validering av färg
+ * P0 SECURITY: Whitelist-validering av färg (case-insensitive)
  * Förhindrar CSS-injektion via shift.color
  */
 function isValidColor(color) {
-    const validColors = getColorOptions();
-    return validColors.includes(String(color).toLowerCase());
+    const validColors = getColorOptions().map(c => c.toUpperCase());
+    const normalizedColor = String(color).toUpperCase();
+    return validColors.includes(normalizedColor);
+}
+
+/**
+ * P0 SECURITY: Skapa säkert DOM-ID från user-data
+ * Ersätter alla icke-alphanumeriska tecken med "-"
+ * 
+ * @param {string} id - Original ID
+ * @returns {string} Safe ID (endast [a-z0-9_-])
+ */
+function generateSafeId(id) {
+    return String(id)
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '-');
 }
 
 function generateShiftId() {
