@@ -1,1 +1,271 @@
+/* ========================================================================
+   BLOCK 14+: RESPONSIVE DESIGN & MEDIA QUERIES
+   ======================================================================== */
 
+/* Tablets (768px - 1024px) */
+@media (max-width: 1024px) {
+    .view-container {
+        padding: 1.5rem;
+    }
+
+    .shifts-grid {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1rem;
+    }
+
+    .color-picker {
+        grid-template-columns: repeat(6, 1fr);
+    }
+
+    .group-filter-checkboxes {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .shifts-legend-grid {
+        grid-template-columns: 1fr;
+    }
+
+    table {
+        font-size: 0.9rem;
+    }
+
+    th,
+    td {
+        padding: 0.6rem;
+    }
+
+    h1 { font-size: 1.8rem; }
+    h2 { font-size: 1.5rem; }
+    h3 { font-size: 1.2rem; }
+}
+
+/* Mobile (480px - 768px) */
+@media (max-width: 768px) {
+    html,
+    body {
+        font-size: 15px;
+    }
+
+    .view-container {
+        padding: 1rem;
+        border-radius: 0;
+    }
+
+    nav {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    nav .logo {
+        padding: 1rem;
+        text-align: center;
+    }
+
+    nav .nav-links {
+        flex-direction: column;
+    }
+
+    nav .nav-link {
+        border-bottom: none;
+        padding: 1rem;
+        border-left: 4px solid transparent;
+    }
+
+    nav .nav-link.active {
+        border-left-color: #667eea;
+        border-bottom: none;
+    }
+
+    /* Buttons & Forms */
+    .btn {
+        padding: 0.65rem 1.2rem;
+        font-size: 0.9rem;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+        padding: 0.65rem;
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+
+    .form-group-inline {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .form-group-inline label {
+        min-width: auto;
+    }
+
+    .time-inputs {
+        justify-content: space-between;
+    }
+
+    .time-inputs input {
+        max-width: 100%;
+        flex: 1;
+    }
+
+    /* Tables */
+    .table-wrapper,
+    .group-demand-table-wrapper,
+    .group-shifts-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+        font-size: 0.8rem;
+        min-width: 500px;
+    }
+
+    th,
+    td {
+        padding: 0.5rem 0.4rem;
+    }
+
+    .demand-input {
+        width: 50px;
+        font-size: 0.8rem;
+    }
+
+    /* Cards & Grid */
+    .shifts-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .shift-card-body {
+        padding: 1rem;
+    }
+
+    .shift-card-footer {
+        flex-direction: column;
+    }
+
+    .btn-shift-edit-full,
+    .btn-shift-delete-full {
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    /* Modals */
+    .shift-form-modal,
+    .shift-edit-modal {
+        width: 95%;
+        max-height: 95vh;
+    }
+
+    .shift-form-modal-header,
+    .shift-edit-modal-header {
+        padding: 1.5rem;
+    }
+
+    .shift-form-modal-body,
+    .shift-edit-modal-body {
+        padding: 1.5rem;
+    }
+
+    .color-picker {
+        grid-template-columns: repeat(6, 1fr);
+    }
+
+    /* Filter */
+    .filter-controls {
+        flex-wrap: wrap;
+    }
+
+    .filter-controls .btn {
+        flex: 1;
+        min-width: 100px;
+    }
+
+    .group-filter-checkboxes {
+        grid-template-columns: 1fr;
+    }
+
+    /* Alerts & Banners */
+    .alert,
+    .rules-banner {
+        padding: 0.8rem;
+    }
+
+    .banner-item {
+        padding: 0.3rem 0.6rem;
+        font-size: 0.8rem;
+    }
+
+    /* Headings */
+    h1 { font-size: 1.5rem; }
+    h2 { font-size: 1.3rem; }
+    h3 { font-size: 1.1rem; }
+    h4 { font-size: 1rem; }
+
+    .section-desc {
+        font-size: 0.9rem;
+    }
+}
+
+/* Small Mobile (< 480px) */
+@media (max-width: 480px) {
+    html,
+    body {
+        font-size: 14px;
+    }
+
+    .view-container {
+        padding: 0.8rem;
+    }
+
+    h1 { font-size: 1.3rem; }
+    h2 { font-size: 1.1rem; }
+    h3 { font-size: 1rem; }
+
+    /* Full-width buttons */
+    .btn {
+        width: 100%;
+        display: block;
+        padding: 0.7rem 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .form-actions {
+        flex-direction: column;
+    }
+
+    .form-actions .btn {
+        margin-bottom: 0.5rem;
+    }
+
+    /* Simplified table */
+    .demand-input {
+        width: 45px;
+        font-size: 0.75rem;
+    }
+
+    table {
+        font-size: 0.75rem;
+        min-width: 100%;
+    }
+
+    /* Stack everything */
+    .shifts-legend-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .color-picker {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    .shift-card-short {
+        font-size: 1.5rem;
+    }
+
+    .detail-row {
+        flex-direction: column;
+    }
+
+    .detail-row .label {
+        margin-bottom: 0.2rem;
+    }
+}
