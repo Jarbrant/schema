@@ -35,6 +35,44 @@
     margin-bottom: 2rem;
 }
 
+/* ========================================================================
+   TAB NAVIGATION — Horisontell navigation med röd aktiv-state
+   ======================================================================== */
+
+.home-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #eee;
+    overflow-x: auto;
+    padding-bottom: 1rem;
+}
+
+.home-tab {
+    padding: 0.75rem 1.5rem;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: #999;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.home-tab:hover {
+    color: #667eea;
+    border-color: #667eea;
+}
+
+.home-tab.active {
+    color: #d63031;
+    border-color: #d63031;
+    background: rgba(214, 48, 49, 0.05);
+}
+
 /* Hero section */
 .home-hero {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -172,6 +210,16 @@
     .stat-card .value {
         font-size: 1.8rem;
     }
+
+    .home-tabs {
+        gap: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+
+    .home-tab {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
 }
 
 @media (max-width: 480px) {
@@ -186,5 +234,14 @@
 
     .home-content h1 {
         font-size: 1.3rem;
+    }
+
+    .home-tabs {
+        gap: 0.25rem;
+    }
+
+    .home-tab {
+        padding: 0.5rem 0.8rem;
+        font-size: 0.75rem;
     }
 }
