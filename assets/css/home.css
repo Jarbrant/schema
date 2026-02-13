@@ -101,7 +101,7 @@
     margin-top: 2rem;
 }
 
-/* Quick nav grid (6 items, 3 columns) */
+/* Quick nav grid (6 items) */
 .home-nav-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
