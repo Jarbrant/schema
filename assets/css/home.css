@@ -1,17 +1,25 @@
 /* ========================================================================
-   HOME VIEW: Welcome screen with gradient background & card layout
+   AO-HOME-01 — HOME VIEW (AUTOPATCH v2)
+   FIL: assets/css/home.css
+
+   Fixar:
+   - P0: Home ska INTE innehålla “egen navbar/tabs” som krockar med topbar.
+   - P1: Anpassa home-container så den spelar fint med sticky topbar.
    ======================================================================== */
 
-/* Full-screen gradient background */
+/* ========================================================================
+   BLOCK 1: Home background
+   ======================================================================== */
 .home-container {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    min-height: 100vh;
+    min-height: calc(100vh - var(--topbar-h, 64px)); /* SAFE: när topbar finns */
     padding: 2rem;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
+/* Den “vita panelen” i mitten */
 .home-content {
     background: white;
     border-radius: 12px;
@@ -36,44 +44,20 @@
 }
 
 /* ========================================================================
-   TAB NAVIGATION — Horisontell navigation med röd aktiv-state
+   BLOCK 2: “Tabs” (STÄDNING: JA)
+   - Dessa tabs var en intern “sekundär navigation” som visuellt krockar
+     med topbar. Vi behåller CSS men gömmer dem, så vi slipper dubbel-nav.
    ======================================================================== */
-
 .home-tabs {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 2rem;
-    border-bottom: 2px solid #eee;
-    overflow-x: auto;
-    padding-bottom: 1rem;
+    display: none; /* STÄDNING: bort från UI */
 }
 
-.home-tab {
-    padding: 0.75rem 1.5rem;
-    border: 2px solid transparent;
-    border-radius: 8px;
-    background: transparent;
-    color: #999;
-    font-size: 0.95rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    white-space: nowrap;
-    text-decoration: none;
-}
+/* Om någon vy ändå råkar rendera .home-tab — neutralisera */
+.home-tab { display: none; }
 
-.home-tab:hover {
-    color: #667eea;
-    border-color: #667eea;
-}
-
-.home-tab.active {
-    color: #d63031;
-    border-color: #d63031;
-    background: rgba(214, 48, 49, 0.05);
-}
-
-/* Hero section */
+/* ========================================================================
+   BLOCK 3: Resten av home-layout (behålls)
+   ======================================================================== */
 .home-hero {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -85,7 +69,6 @@
     font-weight: 500;
 }
 
-/* Stats grid (Personal | År | System) */
 .home-stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -107,10 +90,7 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.stat-card-icon {
-    font-size: 2.5rem;
-    margin-bottom: 0.5rem;
-}
+.stat-card-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
 
 .stat-card h3 {
     margin: 0.5rem 0;
@@ -131,7 +111,6 @@
     font-size: 0.9rem;
 }
 
-/* Quick navigation section */
 .home-nav-section h2 {
     font-size: 1.5rem;
     margin-bottom: 1.5rem;
@@ -139,7 +118,6 @@
     margin-top: 2rem;
 }
 
-/* Quick nav grid (6 items) */
 .home-nav-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -169,79 +147,22 @@
     transform: translateY(-2px);
 }
 
-.home-nav-item-icon {
-    font-size: 2.5rem;
-}
-
-.home-nav-item-title {
-    font-weight: 600;
-    font-size: 0.95rem;
-    color: #333;
-}
-
-.home-nav-item-desc {
-    font-size: 0.8rem;
-    color: #999;
-    line-height: 1.3;
-}
+.home-nav-item-icon { font-size: 2.5rem; }
+.home-nav-item-title { font-weight: 600; font-size: 0.95rem; color: #333; }
+.home-nav-item-desc { font-size: 0.8rem; color: #999; line-height: 1.3; }
 
 /* Responsive */
 @media (max-width: 768px) {
-    .home-container {
-        padding: 1rem;
-    }
-
-    .home-content {
-        padding: 1.5rem;
-    }
-
-    .home-content h1 {
-        font-size: 1.6rem;
-    }
-
-    .home-stats {
-        gap: 1rem;
-    }
-
-    .home-nav-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .stat-card .value {
-        font-size: 1.8rem;
-    }
-
-    .home-tabs {
-        gap: 0.5rem;
-        padding-bottom: 0.5rem;
-    }
-
-    .home-tab {
-        padding: 0.5rem 1rem;
-        font-size: 0.85rem;
-    }
+    .home-container { padding: 1rem; }
+    .home-content { padding: 1.5rem; }
+    .home-content h1 { font-size: 1.6rem; }
+    .home-stats { gap: 1rem; }
+    .home-nav-grid { grid-template-columns: repeat(2, 1fr); }
+    .stat-card .value { font-size: 1.8rem; }
 }
 
 @media (max-width: 480px) {
-    .home-content {
-        padding: 1rem;
-    }
-
-    .home-stats,
-    .home-nav-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .home-content h1 {
-        font-size: 1.3rem;
-    }
-
-    .home-tabs {
-        gap: 0.25rem;
-    }
-
-    .home-tab {
-        padding: 0.5rem 0.8rem;
-        font-size: 0.75rem;
-    }
+    .home-content { padding: 1rem; }
+    .home-stats, .home-nav-grid { grid-template-columns: 1fr; }
+    .home-content h1 { font-size: 1.3rem; }
 }
