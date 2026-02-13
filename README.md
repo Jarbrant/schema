@@ -13,6 +13,7 @@ Extra-ledighets hantering
 Import/Export av scheman
 Färgkonfigurering
 Fullständigt svenskt gränssnitt
+
 Språk
 Applikationen är helt på svenska med svenskt gränssnitt och svensk dokumentation. Alla meddelanden, knappar, formulär och hjälptexter är översatta till svenska för att ge den bästa användarupplevelsen för svenska användare.
 
