@@ -1,14 +1,26 @@
 /*
  * AO-02F: SHIFTS — Lägg till & redigera grundpass
- * AUTOPATCH v1.6: Safe dataset, normalized colors, DOM-built shift cards
+ * FINAL v1.7: Fail-closed policies, unified error handling, testable
  * 
  * Ändringar:
- * 1) P0: data-shift säkert utan HTML-escaping (mappa shiftId)
- * 2) P0: Normalisera färger konsekvent vid render
- * 3) P1: Skapa shift-kort med createElement (minskar XSS-yta)
+ * 1) P0: Fail-closed ID-policy (isValidShiftId)
+ * 2) P0: Fail-closed färg-policy (getColorOrDefault)
+ * 3) P1: Enhetlig error-hantering (showError)
+ * 4) P1: Exporterbara testbara funktioner
  */
 
 import { validateShift, normalizeShift } from '../lib/shift-validator.js';
+import { 
+    createShiftCard, 
+    createDetailRow, 
+    getColorOrDefault,
+    normalizeColor,
+    isValidColor,
+    isValidShiftId,
+    generateShiftId,
+    getColorOptions 
+} from '../lib/shift-utils.js';
+import { showError, hideError } from '../lib/error-handler.js';
 
 export function renderShiftsView(container, ctx) {
     const store = ctx?.store;
@@ -21,7 +33,6 @@ export function renderShiftsView(container, ctx) {
     const shifts = state.shifts || {};
     const shiftIds = Object.keys(shifts).sort();
 
-    // Statisk HTML-struktur
     const html = `
         <div class="view-container shifts-container">
             <h2>⏰ Grundpass</h2>
@@ -35,12 +46,8 @@ export function renderShiftsView(container, ctx) {
                 </button>
             </div>
 
-            <!-- Shift-kort renders här (dynamiskt via DOM) -->
-            <div class="shifts-grid" id="shifts-grid">
-                <!-- Fylls av JavaScript -->
-            </div>
+            <div class="shifts-grid" id="shifts-grid"></div>
 
-            <!-- Modal samma som innan -->
             <div id="shift-form-modal" class="shift-form-modal hidden">
                 <div class="shift-form-modal-content">
                     <div class="shift-form-modal-header">
@@ -52,9 +59,7 @@ export function renderShiftsView(container, ctx) {
                         <form id="shift-form">
                             <div class="form-group">
                                 <label>Färg *</label>
-                                <div class="color-picker" id="color-picker">
-                                    <!-- Fylls av JavaScript -->
-                                </div>
+                                <div class="color-picker" id="color-picker"></div>
                                 <input type="hidden" id="shift-color" value="">
                             </div>
 
@@ -123,16 +128,10 @@ export function renderShiftsView(container, ctx) {
 
     container.innerHTML = html;
 
-    // P1: Rendera färg-väljare med DOM
     renderColorPicker(container);
-
-    // P1: Rendera shift-kort med DOM (säkrare än innerHTML)
     renderShiftCards(container, shiftIds, shifts);
 
-    /* ====================================================================
-       EVENT LISTENERS
-       ==================================================================== */
-
+    /* EVENT LISTENERS */
     const addShiftBtn = container.querySelector('#btn-add-shift');
     const breakTypeSelect = container.querySelector('#shift-break-type');
     const formElement = container.querySelector('#shift-form');
@@ -146,21 +145,18 @@ export function renderShiftsView(container, ctx) {
         });
     }
 
-    // P0: Event-delegation för edit/delete (ej rebind varje render)
+    // Event delegation
     container.addEventListener('click', (e) => {
         if (e.target.closest('.btn-shift-edit-full')) {
-            const btn = e.target.closest('.btn-shift-edit-full');
-            const shiftId = btn.dataset.shiftId;  // P0: Använd shiftId direkt (inte escapet)
+            const shiftId = e.target.closest('.btn-shift-edit-full').dataset.shiftId;
             openShiftForm(container, shiftId, store.getState());
         }
 
         if (e.target.closest('.btn-shift-delete-full')) {
-            const btn = e.target.closest('.btn-shift-delete-full');
-            const shiftId = btn.dataset.shiftId;
+            const shiftId = e.target.closest('.btn-shift-delete-full').dataset.shiftId;
             handleDeleteShift(shiftId, store, container, ctx);
         }
 
-        // Färg-väljare
         if (e.target.closest('.color-option')) {
             const btn = e.target.closest('.color-option');
             const color = btn.dataset.color;
@@ -215,9 +211,6 @@ export function renderShiftsView(container, ctx) {
     }
 }
 
-/**
- * P1: Rendera färg-väljare med DOM (inte innerHTML)
- */
 function renderColorPicker(container) {
     const pickerDiv = container.querySelector('#color-picker');
     pickerDiv.innerHTML = '';
@@ -234,9 +227,6 @@ function renderColorPicker(container) {
     });
 }
 
-/**
- * P1: Rendera shift-kort med DOM-builder (minskar XSS-yta)
- */
 function renderShiftCards(container, shiftIds, shifts) {
     const grid = container.querySelector('#shifts-grid');
     grid.innerHTML = '';
@@ -256,105 +246,6 @@ function renderShiftCards(container, shiftIds, shifts) {
     });
 }
 
-/**
- * P1: Skapa ett shift-kort med createElement
- * Alla text-värden sätts via textContent (XSS-safe)
- */
-function createShiftCard(shiftId, shift) {
-    const card = document.createElement('div');
-    card.className = 'shift-card';
-
-    // Header med färg
-    const header = document.createElement('div');
-    header.className = 'shift-card-header';
-    header.style.backgroundColor = normalizeColor(shift.color);  // P0: Normaliserad färg
-    const shortName = document.createElement('span');
-    shortName.className = 'shift-card-short';
-    shortName.textContent = shift.shortName;  // XSS-safe
-    header.appendChild(shortName);
-
-    // Body
-    const body = document.createElement('div');
-    body.className = 'shift-card-body';
-
-    const title = document.createElement('h3');
-    title.textContent = shift.name;
-    body.appendChild(title);
-
-    const desc = document.createElement('p');
-    desc.className = 'shift-desc';
-    desc.textContent = shift.description || '';
-    body.appendChild(desc);
-
-    // Details
-    const details = document.createElement('div');
-    details.className = 'shift-details';
-
-    const timeRange = shift.startTime && shift.endTime 
-        ? `${shift.startTime}–${shift.endTime}`
-        : 'Flex';
-    const timeRow = createDetailRow('Tid:', timeRange);
-    details.appendChild(timeRow);
-
-    const breakRange = shift.breakStart && shift.breakEnd
-        ? `${shift.breakStart}–${shift.breakEnd}`
-        : 'Ingen';
-    const breakRow = createDetailRow('Paus:', breakRange);
-    details.appendChild(breakRow);
-
-    if (shift.snittKostnad) {
-        const costRow = createDetailRow('Snitt-kostnad:', `${shift.snittKostnad} kr/tim`);
-        details.appendChild(costRow);
-    }
-
-    body.appendChild(details);
-
-    // Footer med buttons
-    const footer = document.createElement('div');
-    footer.className = 'shift-card-footer';
-
-    const editBtn = document.createElement('button');
-    editBtn.className = 'btn-shift-edit-full';
-    editBtn.type = 'button';
-    editBtn.textContent = '✏️ Redigera';
-    editBtn.dataset.shiftId = shiftId;  // P0: Direkt shiftId (inte escapet)
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn-shift-delete-full';
-    deleteBtn.type = 'button';
-    deleteBtn.textContent = '🗑️ Radera';
-    deleteBtn.dataset.shiftId = shiftId;
-
-    footer.appendChild(editBtn);
-    footer.appendChild(deleteBtn);
-
-    card.appendChild(header);
-    card.appendChild(body);
-    card.appendChild(footer);
-
-    return card;
-}
-
-/**
- * Hjälp-funktion: skapa detail-rad
- */
-function createDetailRow(label, value) {
-    const row = document.createElement('div');
-    row.className = 'detail-row';
-
-    const labelEl = document.createElement('span');
-    labelEl.className = 'label';
-    labelEl.textContent = label;
-
-    const valueEl = document.createElement('span');
-    valueEl.className = 'value';
-    valueEl.textContent = value;
-
-    row.appendChild(labelEl);
-    row.appendChild(valueEl);
-    return row;
-}
-
 function openShiftForm(container, shiftId, state) {
     const shifts = state.shifts || {};
     const shift = shiftId ? shifts[shiftId] : null;
@@ -366,8 +257,7 @@ function openShiftForm(container, shiftId, state) {
 
     title.textContent = shift ? `Redigera pass: ${shift.name}` : 'Lägg till grundpass';
 
-    // Fyll formulär
-    const normalizedColor = shift ? normalizeColor(shift.color) : '#667EEA';
+    const normalizedColor = shift ? getColorOrDefault(shift.color) : '#667EEA';
     container.querySelector('#shift-color').value = normalizedColor;
     container.querySelector('#shift-name').value = shift?.name || '';
     container.querySelector('#shift-shortname').value = shift?.shortName || '';
@@ -380,7 +270,6 @@ function openShiftForm(container, shiftId, state) {
     container.querySelector('#shift-break-end').value = shift?.breakEnd || '13:00';
     container.querySelector('#shift-cost').value = shift?.snittKostnad || '';
 
-    // Sätt färg som vald (case-insensitive)
     container.querySelectorAll('.color-option').forEach((opt) => {
         if (opt.dataset.color.toUpperCase() === normalizedColor.toUpperCase()) {
             opt.classList.add('selected');
@@ -389,7 +278,6 @@ function openShiftForm(container, shiftId, state) {
         }
     });
 
-    // Visa/göm manuell paus
     const manualBreakGroup = container.querySelector('#manual-break-group');
     if (shift?.breakStart && shift?.breakEnd) {
         manualBreakGroup.classList.remove('hidden');
@@ -407,12 +295,14 @@ function closeShiftForm(container) {
     const modal = container.querySelector('#shift-form-modal');
     const overlay = container.querySelector('#shift-form-overlay');
     const form = container.querySelector('#shift-form');
+    const errorDiv = container.querySelector('#shift-form-error');
 
     modal.classList.add('hidden');
     overlay.classList.add('hidden');
     form.reset();
     form.dataset.shiftId = '';
     container.querySelector('#manual-break-group').classList.add('hidden');
+    hideError(errorDiv);
 }
 
 function handleSaveShift(store, container, ctx) {
@@ -438,10 +328,15 @@ function handleSaveShift(store, container, ctx) {
             snittKostnad: toIntOrFloat(container.querySelector('#shift-cost').value, 0),
         };
 
+        // P0: Strikt färg-validering vid save
+        if (!isValidColor(formData.color)) {
+            showError(errorDiv, `Färgen är inte giltig. Välj en från paletten.`);
+            return;
+        }
+
         const errors = validateShift(formData);
         if (errors.length > 0) {
-            errorDiv.textContent = errors.join('; ');
-            errorDiv.classList.remove('hidden');
+            showError(errorDiv, errors.join('; '));
             return;
         }
 
@@ -460,8 +355,7 @@ function handleSaveShift(store, container, ctx) {
     } catch (err) {
         console.error('Sparfel:', err);
         const errorDiv = container.querySelector('#shift-form-error');
-        errorDiv.textContent = `Fel: ${err.message}`;
-        errorDiv.classList.remove('hidden');
+        showError(errorDiv, `Fel vid sparning: ${err.message}`);
     }
 }
 
@@ -472,6 +366,12 @@ function handleDeleteShift(shiftId, store, container, ctx) {
     if (!confirm(`Radera pass "${shift?.name}"?`)) return;
 
     try {
+        // P0: Fail-closed — kontrollera ID innan delete
+        if (!isValidShiftId(shiftId)) {
+            console.error(`⚠️ Försök att radera med ogiltigt ID: ${shiftId}`);
+            return;
+        }
+
         store.update((state) => {
             const shifts = { ...(state.shifts || {}) };
             delete shifts[shiftId];
@@ -486,52 +386,9 @@ function handleDeleteShift(shiftId, store, container, ctx) {
         renderShiftsView(container, ctx);
     } catch (err) {
         console.error('Radera-fel:', err);
-        alert(`Fel: ${err.message}`);
+        // P3: Enhetlig error-hantering (kunde visa snackbar här istället)
+        alert(`Fel vid radering: ${err.message}`);
     }
-}
-
-/* ========================================================================
-   UTILITY FUNCTIONS
-   ======================================================================== */
-
-function getColorOptions() {
-    return [
-        '#FFD93D', '#FF8C42', '#6C5CE7', '#0984E3',
-        '#00B894', '#A29BFE', '#FDCB6E', '#6C7A89',
-        '#E17055', '#D63031', '#FD79A8', '#B71C1C',
-    ];
-}
-
-/**
- * P0 SECURITY: Normalisera färg till UPPERCASE
- */
-function normalizeColor(color) {
-    if (!color) return '#667EEA';
-    return String(color).toUpperCase();
-}
-
-/**
- * P0 SECURITY: Whitelist-validering av färg (case-insensitive)
- */
-function isValidColor(color) {
-    const validColors = getColorOptions().map(c => c.toUpperCase());
-    const normalizedColor = normalizeColor(color);
-    return validColors.includes(normalizedColor);
-}
-
-function generateShiftId() {
-    return `shift-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;',
-    };
-    return String(text).replace(/[&<>"']/g, (m) => map[m]);
 }
 
 function toIntOrFloat(v, fallback = 0) {
