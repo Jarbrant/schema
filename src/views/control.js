@@ -7,6 +7,7 @@
  * Sektioner:
  * 1. Grupp-filter
  * 2. Grupp-skift
+ * 3. Bemanningsbehov (NY - AO-03)
  */
 
 import { reportError } from '../diagnostics.js';
@@ -14,6 +15,7 @@ import { reportError } from '../diagnostics.js';
 // Import sections
 import { renderGroupFilterSection } from './control/sections/groupFilter.js';
 import { renderGroupShiftsSection } from './control/sections/groupShifts.js';
+import { renderDemandTableSection } from './control/sections/demandTable.js';
 
 export function renderControl(container, ctx) {
     const store = ctx?.store;
@@ -29,7 +31,7 @@ export function renderControl(container, ctx) {
             <div class="control-content">
                 <h1>Kontroll & Schemaläggning</h1>
                 <p class="control-tagline">
-                    Validera schema mot HRF-regler och se bemanningsbehov
+                    Validera schema mot HRF-regler, se bemanningsbehov och hantera grupp-inställningar
                 </p>
 
                 <!-- Status Row -->
@@ -46,6 +48,10 @@ export function renderControl(container, ctx) {
                         <span class="status-label">Grundpass:</span>
                         <span class="status-value">${state.passes?.length || 0}</span>
                     </div>
+                    <div class="status-item">
+                        <span class="status-label">Bemanningsbehov:</span>
+                        <span class="status-value">${state.demands?.length || 0}</span>
+                    </div>
                 </div>
 
                 <!-- Sections Container -->
@@ -55,6 +61,9 @@ export function renderControl(container, ctx) {
 
                     <!-- Group Shifts Section -->
                     <div id="section-group-shifts" class="control-section"></div>
+
+                    <!-- Demand Table Section (NEW) -->
+                    <div id="section-demand-table" class="control-section"></div>
                 </div>
             </div>
         </div>
@@ -82,6 +91,12 @@ function renderAllSections(container, ctx) {
             name: 'Grupp-skift',
             render: renderGroupShiftsSection,
             file: 'groupShifts.js'
+        },
+        {
+            id: 'section-demand-table',
+            name: 'Bemanningsbehov',
+            render: renderDemandTableSection,
+            file: 'demandTable.js'
         }
     ];
 
