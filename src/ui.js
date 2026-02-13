@@ -1,110 +1,104 @@
-/* ============================================================
- * AO-05 — UI: Navbar och error-rendering (AUTOPATCH v3)
- * FIL: src/ui.js
- *
- * Mål:
- * - Navbar byggs med DOM (XSS-säkert)
- * - Logout längst till höger
- * - Errorpanel byggs med DOM (ingen innerHTML)
- * ============================================================ */
+/*
+ * UI.JS — Shared UI Utilities
+ */
 
-import { logout } from './views/login.js';
+import { diagnostics } from './diagnostics.js';
 
-/* ============================================================
-   BLOCK 1: NAVBAR (DOM-builder)
-   ============================================================ */
+/**
+ * Render error (kompatibel med både Error och DiagnosticReport)
+ */
+export function renderError(container, errorOrReport) {
+    if (!container) return;
 
-export function renderNavbar(navbar) {
-  if (!navbar) return;
+    // Konvertera Error till DiagnosticReport om nödvändigt
+    let report;
+    
+    if (errorOrReport instanceof Error) {
+        report = diagnostics.report({
+            code: 'RENDER_ERROR',
+            where: 'UI_UTILITY',
+            fileHint: 'src/ui.js',
+            detailsSafe: errorOrReport.message || 'Ett fel uppstod under rendering'
+        });
+    } else {
+        report = errorOrReport;
+    }
 
-  // Rensa alltid, så vi inte får dubletter
-  navbar.textContent = '';
+    const publicMsg = report.getPublicMessage();
+    const debugMsg = report.getDebugMessage();
 
-  const appName = 'Schema-Program';
-  const links = [
-    { route: 'home', label: 'Hem' },
-    { route: 'personal', label: 'Personal' },
-    { route: 'calendar', label: 'Kalender' },
-    { route: 'control', label: 'Kontroll' },
-    { route: 'summary', label: 'Sammanställning' },
-    { route: 'rules', label: '📋 Regler' },
-    { route: 'export', label: 'Export/Import' }
-  ];
+    const html = `
+        <div class="error-panel-content">
+            <div class="error-header">
+                <span class="error-icon">⚠️</span>
+                <h3>Ett fel uppstod</h3>
+            </div>
+            
+            <div class="error-details">
+                <div class="error-code">
+                    <strong>Kod:</strong> ${publicMsg.code}
+                </div>
+                <div class="error-where">
+                    <strong>Modul:</strong> ${publicMsg.where}
+                </div>
+                <div class="error-message">
+                    <strong>Meddelande:</strong> ${publicMsg.message}
+                </div>
+                <div class="error-hint">
+                    💡 ${publicMsg.hint}
+                </div>
+                
+                ${debugMsg ? `
+                    <details class="error-debug">
+                        <summary>🔍 Debug-info</summary>
+                        <pre>${JSON.stringify(debugMsg, null, 2)}</pre>
+                    </details>
+                ` : ''}
+            </div>
+            
+            <div class="error-actions">
+                <button onclick="window.location.reload()" class="btn btn-primary">
+                    🔄 Ladda om sidan
+                </button>
+                <button onclick="window.location.hash = '#/home'" class="btn btn-secondary">
+                    🏠 Gå till Hem
+                </button>
+            </div>
+        </div>
+    `;
 
-  const topbar = document.createElement('div');
-  topbar.className = 'topbar';
-
-  const inner = document.createElement('div');
-  inner.className = 'topbar-inner';
-
-  const brand = document.createElement('div');
-  brand.className = 'topbar-brand';
-  brand.textContent = appName;
-
-  const ul = document.createElement('ul');
-  ul.className = 'topbar-links';
-
-  links.forEach(({ route, label }) => {
-    const li = document.createElement('li');
-    const a = document.createElement('a');
-    a.className = 'nav-link';
-    a.href = `#/${route}`;
-    a.textContent = label;
-    li.appendChild(a);
-    ul.appendChild(li);
-  });
-
-  const logoutBtn = document.createElement('button');
-  logoutBtn.id = 'logout-btn';
-  logoutBtn.type = 'button';
-  logoutBtn.className = 'topbar-logout';
-  logoutBtn.textContent = '🚪 Logga ut';
-
-  logoutBtn.addEventListener('click', () => {
-    if (confirm('Logga ut?')) logout();
-  });
-
-  inner.appendChild(brand);
-  inner.appendChild(ul);
-  inner.appendChild(logoutBtn);
-
-  topbar.appendChild(inner);
-  navbar.appendChild(topbar);
+    container.innerHTML = html;
+    container.style.display = 'block';
 }
 
-/* ============================================================
-   BLOCK 2: ERROR RENDER (DOM-builder)
-   ============================================================ */
+/**
+ * Show success message
+ */
+export function showSuccess(message, duration = 3000) {
+    const div = document.createElement('div');
+    div.className = 'alert alert-success';
+    div.textContent = '✓ ' + message;
+    div.style.position = 'fixed';
+    div.style.top = '20px';
+    div.style.right = '20px';
+    div.style.zIndex = '9999';
+    
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), duration);
+}
 
-export function renderError(errorPanel, error) {
-  if (!errorPanel) return;
-
-  const errorMsg = (error && error.message) ? error.message : String(error);
-  const errorType = (error && error.name) ? error.name : 'Error';
-
-  errorPanel.textContent = '';
-  errorPanel.classList.remove('hidden');
-
-  const h3 = document.createElement('h3');
-  h3.textContent = 'Något gick fel';
-
-  const type = document.createElement('div');
-  type.className = 'error-type';
-  type.textContent = `${errorType}: ${errorMsg}`;
-
-  const tip = document.createElement('p');
-  tip.className = 'error-tip';
-  tip.textContent = '💡 Öppna Console för fler detaljer';
-
-  errorPanel.appendChild(h3);
-  errorPanel.appendChild(type);
-  errorPanel.appendChild(tip);
-
-  // Auto-hide (fail-soft)
-  window.clearTimeout(errorPanel.__hideTimer);
-  errorPanel.__hideTimer = window.setTimeout(() => {
-    try {
-      errorPanel.classList.add('hidden');
-    } catch (_) {}
-  }, 8000);
+/**
+ * Show warning message
+ */
+export function showWarning(message, duration = 5000) {
+    const div = document.createElement('div');
+    div.className = 'alert alert-warning';
+    div.textContent = '⚠️ ' + message;
+    div.style.position = 'fixed';
+    div.style.top = '20px';
+    div.style.right = '20px';
+    div.style.zIndex = '9999';
+    
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), duration);
 }
