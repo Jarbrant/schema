@@ -9,6 +9,12 @@
  * 2. Store (state management)
  * 3. Router (navigation)
  * 4. App context
+ * 
+ * State structure:
+ * - Authentication: user, isLoggedIn
+ * - Data: people, shifts, groups, passes, demands, generatedShifts
+ * - Schedule: year, startDate, endDate
+ * - Metadata: appVersion, appName
  */
 
 import { initRouter } from './router.js';
@@ -34,25 +40,38 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // 2. Create app store (state management)
         const store = createStore({
+            // Authentication
             user: null,
             isLoggedIn: false,
+            
+            // Data: People & Groups
             people: [],
-            shifts: [],
             groups: [],
+            
+            // Data: Shifts & Scheduling
+            shifts: [],
             passes: [],
-            demands: [],  // NY: Bemanningsbehov
+            demands: [],
+            generatedShifts: [],  // Föreslagna shifts från schemagenerator
+            lastGenerationParams: null,  // Senaste generator-parametrar
+            
+            // Schedule configuration
             schedule: {
                 year: new Date().getFullYear(),
                 startDate: null,
                 endDate: null
             },
+            
+            // App metadata
             meta: {
                 appVersion: '1.0.0',
-                appName: 'Schema-Program'
+                appName: 'Schema-Program',
+                lastUpdated: new Date().toISOString()
             }
         });
         
         console.log('✓ Store skapad');
+        console.log('✓ Initial state:', store.getState());
         
         // 3. Get DOM elements
         const appContainer = document.getElementById('app-container');
@@ -64,18 +83,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         if (!errorPanel) {
-            console.warn('⚠️ error-panel saknas i index.html (valfritt)');
+            console.warn('⚠️ error-panel saknas i index.html (valfritt element)');
         }
         
         console.log('✓ DOM-element hittade');
         
-        // 4. Create app context (passar till alla views)
+        // 4. Create app context (passar till alla views & modules)
         const appCtx = {
+            // Store reference
             store: store,
+            
+            // Routing
             currentRoute: null,
-            shiftTab: 'schedule',
-            groupsTab: 'groups',
-            selectedGroups: [],  // För grupp-filterering
+            
+            // View-specific tabs/modes
+            shiftTab: 'schedule',        // 'schedule' eller 'validation'
+            groupsTab: 'groups',         // 'groups' eller 'passes'
+            
+            // Filtering
+            selectedGroups: [],          // För grupp-filterering i Control
+            
+            // Diagnostics reference
             diagnostics: diagnostics
         };
         
@@ -85,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('🔄 Initialiserar router...');
         initRouter(appContainer, errorPanel, appCtx);
         
+        console.log('✓ Router initialiserad');
         console.log('✅ Schema-Program initialiserad!');
         console.log('💡 Tips: Lägg till ?debug=1 i URL:en för debug-läge');
         
@@ -104,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             // Fallback om error-panel inte finns
             console.error('FALLBACK: Error-panel saknas. Visar error i console endast.');
+            console.error('Error details:', report.getPublicMessage());
         }
     }
 });
