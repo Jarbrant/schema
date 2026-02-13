@@ -1,25 +1,19 @@
 /* ========================================================================
-   AO-BASE-01 — GLOBAL STYLES (AUTOPATCH v3)
+   AO-BASE-01 — GLOBAL STYLES (AUTOPATCH v4)
    FIL: assets/css/base.css
 
-   Fixar:
-   - P0: “Ramen”/inramningen runt innehållet kommer tillbaka (gäller både #container och #app-container).
-   - P0: .view-container får tunn ram + tydligare inramning utan att ändra layout-flöde.
-   - P0: Topbar/navbar fortsatt horisontell och sticky.
-   - P1: Mindre risk för krock: base.css styr ramverk, home.css styr home.
-
-   Not: Du har haft två olika index-varianter (#container och #app-container).
-        Den här filen stödjer båda så du slipper “försvunnen ram” när ID byts.
+   Förbättringar:
+   - P0: ALLA sidor får samma “ram” (även Home) → inga undantag kvar.
+   - P0: Stöd för både #container och #app-container.
+   - P0: Ram känns tydligare + stabil spacing utan att flytta layout.
+   - P0: Topbar fortsatt horisontell/sticky.
+   - P1: Mindre risk för “hopp” när scrollbar dyker upp (stabil gutter).
    ======================================================================== */
 
 /* ========================================================================
    BLOCK 1: RESET + TYPO
    ======================================================================== */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -27,93 +21,77 @@ html, body {
     line-height: 1.5;
     color: #333;
     background: #f5f7fa;
+    /* P1: minskar layout-hopp när scrollbar kommer/försvinner */
+    scrollbar-gutter: stable;
 }
 
-/* Små rubriker */
-h1, h2, h3, h4, h5, h6 {
-    margin-bottom: 1rem;
-    font-weight: 600;
-    color: #222;
-}
+/* Rubriker */
+h1, h2, h3, h4, h5, h6 { margin-bottom: 1rem; font-weight: 600; color: #222; }
 h1 { font-size: 2.2rem; }
 h2 { font-size: 1.8rem; }
 h3 { font-size: 1.4rem; }
 h4 { font-size: 1.2rem; }
 
-p {
-    margin-bottom: 1rem;
-    line-height: 1.6;
-}
+p { margin-bottom: 1rem; line-height: 1.6; }
 
-a {
-    color: #667eea;
-    text-decoration: none;
-    transition: color 0.2s;
-}
+a { color: #667eea; text-decoration: none; transition: color 0.2s; }
 a:hover { color: #5568d3; }
 
 /* ========================================================================
-   BLOCK 2: DEFAULT CONTAINERS
-   ======================================================================== */
-
-/* P0: “Ramen” runt huvudytan (stödjer båda varianter av index.html) */
-#container,
-#app-container {
-    /* Ger luft runt vy-korten så det känns “inramat” */
-    padding: 22px;
-    min-height: calc(100vh - var(--topbar-h, 64px));
-}
-
-/* Standard “kort” för vyer */
-.view-container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 2rem;
-    background: white;
-    border-radius: 8px;
-
-    /* P0: ramen tillbaka (tunn kant + mjuk skugga) */
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
-}
-
-/* FIX: Home ska få styra sin bakgrund och fullbredd */
-.home-container.view-container {
-    background: inherit;
-    box-shadow: none;
-    border-radius: 0;
-    border: none;
-    padding: 0;
-    margin: 0;
-    max-width: 100%;
-}
-
-/* ========================================================================
-   BLOCK 3: TOPBAR (NY STANDARD)
+   BLOCK 2: APP ROOT + “RAM”
    ======================================================================== */
 :root {
-    /* Enkel “design token” för topbar-höjd */
     --topbar-h: 64px;
+
+    /* “Ram”-känsla */
+    --frame-max: 1400px;
+    --frame-pad: 2rem;
+    --frame-radius: 10px;
+    --frame-border: rgba(0, 0, 0, 0.10);
+    --frame-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+
+    /* Topbar */
     --topbar-bg: #2c3e50;
     --topbar-bg-hover: #34495e;
     --topbar-text: #ecf0f1;
     --topbar-accent: #667eea;
 }
 
-/* #navbar ska inte skapa extra whitespace */
+/* P0: Stöd för båda index-varianter */
+#container,
+#app-container {
+    padding: 22px;
+    min-height: calc(100vh - var(--topbar-h));
+}
+
+/* P0: Standard “ram” på ALLA sidor (inkl home) */
+.view-container {
+    max-width: var(--frame-max);
+    margin: 0 auto;
+    padding: var(--frame-pad);
+    background: #fff;
+    border-radius: var(--frame-radius);
+    border: 1px solid var(--frame-border);
+    box-shadow: var(--frame-shadow);
+}
+
+/* P0: TA BORT undantaget för home — alla sidor ska ha samma ram */
+/* (Medvetet inga .home-container overrides här) */
+
+/* ========================================================================
+   BLOCK 3: TOPBAR
+   ======================================================================== */
 #navbar {
-    position: sticky; /* sticky = ingen padding-top behövs */
+    position: sticky;
     top: 0;
     z-index: 1000;
 }
 
-/* Topbar wrapper */
 .topbar {
     background: var(--topbar-bg);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
 }
 
-/* Inre rad */
 .topbar-inner {
     min-height: var(--topbar-h);
     display: flex;
@@ -122,7 +100,6 @@ a:hover { color: #5568d3; }
     padding: 0 18px;
 }
 
-/* Brand vänster */
 .topbar-brand {
     color: white;
     font-weight: 800;
@@ -131,7 +108,6 @@ a:hover { color: #5568d3; }
     white-space: nowrap;
 }
 
-/* Links (UL) horisontellt */
 .topbar-links {
     list-style: none;
     display: flex;
@@ -142,7 +118,6 @@ a:hover { color: #5568d3; }
     overflow-x: auto;
 }
 
-/* Länkar */
 .topbar-links .nav-link {
     display: inline-flex;
     align-items: center;
@@ -160,9 +135,8 @@ a:hover { color: #5568d3; }
     border-bottom-color: var(--topbar-accent);
 }
 
-/* Logout: pushas längst till höger */
 .topbar-logout {
-    margin-left: auto; /* viktigaste raden för “längst till höger” */
+    margin-left: auto;
     background: #e74c3c;
     color: white;
     border: none;
@@ -175,7 +149,7 @@ a:hover { color: #5568d3; }
 .topbar-logout:hover { filter: brightness(0.95); }
 
 /* ========================================================================
-   BLOCK 4: LOGIN (AO-06) — Centerad modern login-card (som du redan hade)
+   BLOCK 4: LOGIN (AO-06)
    ======================================================================== */
 .login-page {
     min-height: 100vh;
@@ -207,7 +181,6 @@ a:hover { color: #5568d3; }
 .login-card h2 { margin-top: 0.15rem; margin-bottom: 0.75rem; }
 
 .login-form { margin-top: 10px; }
-
 .login-form .form-group label { display: inline-block; margin-bottom: 8px; }
 
 .login-form input[type="password"],
@@ -238,14 +211,22 @@ a:hover { color: #5568d3; }
 }
 
 @media (max-width: 480px) {
+    #container, #app-container { padding: 14px; }
+    .view-container { padding: 18px; }
     .login-page { padding: 16px; }
     .login-card { padding: 18px; border-radius: 14px; }
     .login-card h1 { font-size: 1.6rem; }
 }
 
-/* Dark-mode (bara login + grundfärger) */
+/* Dark-mode (grund + login) */
 @media (prefers-color-scheme: dark) {
     html, body { background: #0f1422; color: #e9ecf1; }
+
+    .view-container {
+        background: rgba(18, 26, 43, 0.78);
+        border: 1px solid rgba(255,255,255,0.10);
+        box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+    }
 
     .login-page {
         background:
@@ -284,6 +265,7 @@ a:hover { color: #5568d3; }
     margin-bottom: 1.5rem;
     font-size: 0.95rem;
 }
+
 .empty-state {
     text-align: center;
     padding: 3rem 2rem;
@@ -292,11 +274,6 @@ a:hover { color: #5568d3; }
 }
 
 /* ========================================================================
-   BLOCK 6: BACKWARD COMPAT (om något gammalt råkar finnas kvar)
-   - Om någon vy fortfarande använder <nav><ul> utan topbar-klasser:
+   BLOCK 6: BACKWARD COMPAT
    ======================================================================== */
-nav ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
+nav ul { list-style: none; margin: 0; padding: 0; }
