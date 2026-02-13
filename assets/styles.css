@@ -1,31 +1,55 @@
 /* ========================================================================
-   SCHEMA-PROGRAM: Master stylesheet (AUTOPATCH v2)
-   FIL: assets/styles.css
-
-   Fix:
-   - P0: Importordning: base först, så home kan “vara home” utan krock.
+   SCHEMA-PROGRAM: Master stylesheet (AUTOPATCH v4)
+   
+   Importordning är KRITISK:
+   1. base.css — Global reset, typography, layout
+   2. forms.css — Input, select, textarea, buttons
+   3. tables.css — Table styling
+   4. alerts.css — Alert boxes, notifications
+   5. modals.css — Modal dialogs, overlays
+   6. cards.css — Card components
+   7. home.css — Home page (kan "äga" sin container)
+   8. shifts.css — Shifts module
+   9. groups.css — Groups module
+   10. diagnostics.css — Error panel & diagnostics (INNAN responsive!)
+   11. responsive.css — Media queries (ALLTID SIST!)
+   
+   Varför denna ordning?
+   - base.css måste komma FÖRST (reset, typography)
+   - Specifika moduler (forms, tables) innan page-specifika (home, shifts)
+   - diagnostics.css innan responsive.css (media queries kan överskriva)
+   - responsive.css SIST (högsta prioritet för media queries)
    ======================================================================== */
 
-/* Global & Layout (måste ligga tidigt) */
+/* Step 1: Global Reset & Base Styles */
 @import url('./css/base.css');
 
-/* Forms, Inputs, Buttons */
+/* Step 2: Forms, Inputs, Buttons */
 @import url('./css/forms.css');
 
-/* Tables & Tabular Data */
+/* Step 3: Tables & Tabular Data */
 @import url('./css/tables.css');
 
-/* Alerts, Banners, Notifications */
+/* Step 4: Alerts, Banners, Notifications */
 @import url('./css/alerts.css');
 
-/* Modals, Dialogs, Overlays */
+/* Step 5: Modals, Dialogs, Overlays */
 @import url('./css/modals.css');
 
-/* Cards & Components */
+/* Step 6: Cards & Reusable Components */
 @import url('./css/cards.css');
 
-/* Home page (efter base så home kan styra sina ytor) */
+/* Step 7: Home Page (kan nu "äga" sin container) */
 @import url('./css/home.css');
 
-/* Responsive Design (sist) */
+/* Step 8: Shifts Module */
+@import url('./css/shifts.css');
+
+/* Step 9: Groups Module */
+@import url('./css/groups.css');
+
+/* Step 10: Diagnostics (Error Panel & System Health) */
+@import url('./css/diagnostics.css');
+
+/* Step 11: Responsive Design (ALLTID SIST!) */
 @import url('./css/responsive.css');
