@@ -1,11 +1,12 @@
 /* ========================================================================
-   SCHEMA-PROGRAM: Master stylesheet
+   SCHEMA-PROGRAM: Master stylesheet (AUTOPATCH v2)
+   FIL: assets/styles.css
+
+   Fix:
+   - P0: Importordning: base först, så home kan “vara home” utan krock.
    ======================================================================== */
 
-/* Home page */
-@import url('./css/home.css');
-
-/* Global & Layout */
+/* Global & Layout (måste ligga tidigt) */
 @import url('./css/base.css');
 
 /* Forms, Inputs, Buttons */
@@ -23,5 +24,8 @@
 /* Cards & Components */
 @import url('./css/cards.css');
 
-/* Responsive Design */
+/* Home page (efter base så home kan styra sina ytor) */
+@import url('./css/home.css');
+
+/* Responsive Design (sist) */
 @import url('./css/responsive.css');
