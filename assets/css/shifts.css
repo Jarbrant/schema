@@ -1,1 +1,382 @@
+/* ========================================================================
+   AO-02F: SHIFTS — Schemaläggning & skifthantering
+   ======================================================================== */
 
+/* Container */
+.shifts-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.shifts-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    padding: 3rem;
+    max-width: 1400px;
+    width: 100%;
+}
+
+.shifts-content h1 {
+    font-size: 2.2rem;
+    margin-bottom: 1.5rem;
+    color: #333;
+    border-bottom: 3px solid #667eea;
+    padding-bottom: 1rem;
+}
+
+.shifts-tagline {
+    font-size: 1rem;
+    color: #666;
+    margin-bottom: 2rem;
+}
+
+/* Tabs Navigation */
+.shifts-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #eee;
+    overflow-x: auto;
+    padding-bottom: 1rem;
+}
+
+.shifts-tab {
+    padding: 0.75rem 1.5rem;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: #999;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.shifts-tab:hover {
+    color: #667eea;
+    border-color: #667eea;
+}
+
+.shifts-tab.active {
+    color: #d63031;
+    border-color: #d63031;
+    background: rgba(214, 48, 49, 0.05);
+}
+
+/* Form Section */
+.shifts-form-section {
+    background: #f9f9f9;
+    padding: 2rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    border: 1px solid #eee;
+}
+
+.shifts-form-section h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: #333;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #333;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.form-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background: #667eea;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #5568d3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn-secondary {
+    background: #eee;
+    color: #333;
+}
+
+.btn-secondary:hover {
+    background: #ddd;
+}
+
+.btn-danger {
+    background: #d63031;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c92a2a;
+}
+
+/* Shifts Table */
+.shifts-table-section {
+    margin-top: 2rem;
+}
+
+.shifts-table-section h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: #333;
+}
+
+.shifts-table-wrapper {
+    overflow-x: auto;
+    border: 1px solid #eee;
+    border-radius: 8px;
+}
+
+.shifts-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+.shifts-table thead {
+    background: #f9f9f9;
+    border-bottom: 2px solid #eee;
+}
+
+.shifts-table th {
+    padding: 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.95rem;
+}
+
+.shifts-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #eee;
+    color: #666;
+    font-size: 0.95rem;
+}
+
+.shifts-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.shifts-table-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.shifts-table-actions button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-edit {
+    background: #667eea;
+    color: white;
+}
+
+.btn-edit:hover {
+    background: #5568d3;
+}
+
+.btn-delete {
+    background: #d63031;
+    color: white;
+}
+
+.btn-delete:hover {
+    background: #c92a2a;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #999;
+    font-style: italic;
+}
+
+/* Status Badge */
+.status-badge {
+    padding: 0.35rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.status-active {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-inactive {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .shifts-content {
+        padding: 2rem;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .shifts-table {
+        font-size: 0.9rem;
+    }
+
+    .shifts-table th,
+    .shifts-table td {
+        padding: 0.75rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .shifts-container {
+        padding: 1rem;
+    }
+
+    .shifts-content {
+        padding: 1.5rem;
+    }
+
+    .shifts-content h1 {
+        font-size: 1.6rem;
+    }
+
+    .shifts-form-section {
+        padding: 1.5rem;
+    }
+
+    .shifts-table {
+        font-size: 0.85rem;
+    }
+
+    .shifts-table th,
+    .shifts-table td {
+        padding: 0.5rem;
+    }
+
+    .shifts-table-actions button {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.75rem;
+    }
+
+    .shifts-tabs {
+        gap: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+
+    .shifts-tab {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .shifts-content {
+        padding: 1rem;
+    }
+
+    .shifts-content h1 {
+        font-size: 1.3rem;
+    }
+
+    .form-buttons {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+    }
+
+    .shifts-table {
+        font-size: 0.75rem;
+    }
+
+    .shifts-table th,
+    .shifts-table td {
+        padding: 0.35rem;
+    }
+
+    .shifts-table-actions {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .shifts-table-actions button {
+        width: 100%;
+    }
+
+    .shifts-tabs {
+        gap: 0.25rem;
+    }
+
+    .shifts-tab {
+        padding: 0.5rem 0.8rem;
+        font-size: 0.75rem;
+    }
+}
