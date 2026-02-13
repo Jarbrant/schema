@@ -1,17 +1,17 @@
 /*
- * AO-02 — CONTROL PAGE
+ * AO-02 — CONTROL PAGE (UPPDATERAD för AO-05)
  * 
  * Container-sida som komponerar flera sektioner.
- * Varje sektion är modulär och kan failas oberoende.
+ * Registrerar modul-healthcheck via Diagnostics.
  * 
  * Sektioner:
  * 1. Grupp-filter
  * 2. Grupp-skift
  * 3. Bemanningsbehov
- * 4. Schemagenerator (NY - AO-04)
+ * 4. Schemagenerator
  */
 
-import { reportError } from '../diagnostics.js';
+import { reportError, diagnostics } from '../diagnostics.js';
 
 // Import sections
 import { renderGroupFilterSection } from './control/sections/groupFilter.js';
@@ -67,7 +67,7 @@ export function renderControl(container, ctx) {
                     <!-- Demand Table Section -->
                     <div id="section-demand-table" class="control-section"></div>
 
-                    <!-- Schedule Generator Section (NY) -->
+                    <!-- Schedule Generator Section -->
                     <div id="section-schedule-generator" class="control-section"></div>
                 </div>
             </div>
@@ -76,36 +76,40 @@ export function renderControl(container, ctx) {
 
     container.innerHTML = html;
 
-    // Render all sections with error handling
+    // Render all sections with error handling + healthcheck
     renderAllSections(container, ctx);
 }
 
 /**
- * Render alla sektioner med error-handling
+ * Render alla sektioner med error-handling + healthcheck
  */
 function renderAllSections(container, ctx) {
     const sections = [
         {
             id: 'section-group-filter',
             name: 'Grupp-filter',
+            moduleId: 'control.groupFilter',
             render: renderGroupFilterSection,
             file: 'groupFilter.js'
         },
         {
             id: 'section-group-shifts',
             name: 'Grupp-skift',
+            moduleId: 'control.groupShifts',
             render: renderGroupShiftsSection,
             file: 'groupShifts.js'
         },
         {
             id: 'section-demand-table',
             name: 'Bemanningsbehov',
+            moduleId: 'control.demandTable',
             render: renderDemandTableSection,
             file: 'demandTable.js'
         },
         {
             id: 'section-schedule-generator',
             name: 'Schemagenerator',
+            moduleId: 'control.scheduleGenerator',
             render: renderScheduleGeneratorSection,
             file: 'scheduleGenerator.js'
         }
@@ -119,10 +123,23 @@ function renderAllSections(container, ctx) {
         }
 
         try {
+            // Register module start (healthcheck)
+            diagnostics.moduleStart(
+                section.moduleId,
+                `src/views/control/sections/${section.file}`
+            );
+
             console.log(`🔄 Renderar sektion: ${section.name}`);
             section.render(sectionContainer, ctx);
+
+            // Mark module as OK (healthcheck)
+            diagnostics.moduleOk(section.moduleId);
+
         } catch (err) {
             console.error(`❌ Fel i sektion ${section.name}:`, err);
+
+            // Mark module as failed (healthcheck)
+            diagnostics.moduleFail(section.moduleId, err);
             
             // Rapportera via Diagnostics
             reportError(
