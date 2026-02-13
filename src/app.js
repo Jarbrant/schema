@@ -69,6 +69,7 @@ export const DEFAULT_STATE = {
     shifts: [],
     groups: [],
     passes: [],
+    demands: [],  // NY: Bemanningsbehov
     
     // Schedule info
     schedule: {
