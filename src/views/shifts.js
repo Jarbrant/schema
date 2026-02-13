@@ -1,28 +1,12 @@
 /*
- * AO-02F: SHIFTS — Lägg till & redigera grundpass
- * FINAL v1.7: Fail-closed policies, unified error handling, testable
+ * AO-02F: SHIFTS — Schemaläggning & skifthantering
  * 
- * Ändringar:
- * 1) P0: Fail-closed ID-policy (isValidShiftId)
- * 2) P0: Fail-closed färg-policy (getColorOrDefault)
- * 3) P1: Enhetlig error-hantering (showError)
- * 4) P1: Exporterbara testbara funktioner
+ * Två tabs:
+ * 1. Schemaläggning — Lägg till/redigera/radera shifts
+ * 2. Kontroll — Validering & regel-överträdelser
  */
 
-import { validateShift, normalizeShift } from '../lib/shift-validator.js';
-import { 
-    createShiftCard, 
-    createDetailRow, 
-    getColorOrDefault,
-    normalizeColor,
-    isValidColor,
-    isValidShiftId,
-    generateShiftId,
-    getColorOptions 
-} from '../lib/shift-utils.js';
-import { showError, hideError } from '../lib/error-handler.js';
-
-export function renderShiftsView(container, ctx) {
+export function renderShifts(container, ctx) {
     const store = ctx?.store;
     if (!store) {
         container.innerHTML = '<div class="view-container"><h2>Fel</h2><p>Store saknas.</p></div>';
@@ -30,368 +14,294 @@ export function renderShiftsView(container, ctx) {
     }
 
     const state = store.getState();
-    const shifts = state.shifts || {};
-    const shiftIds = Object.keys(shifts).sort();
+    const shifts = state.shifts || [];
+    const currentTab = ctx?.shiftTab || 'schedule'; // 'schedule' eller 'control'
 
     const html = `
-        <div class="view-container shifts-container">
-            <h2>⏰ Grundpass</h2>
-            <p class="section-desc">
-                Definiera de grundpass som dina grupper kan jobba. Du kan ange tider, pauser och kostnad.
-            </p>
+        <div class="shifts-container">
+            <div class="shifts-content">
+                <h1>Schemaläggning</h1>
+                <p class="shifts-tagline">
+                    Hantera arbetsschema och validera mot HRF-avtalsregler
+                </p>
 
-            <div class="shifts-header">
-                <button id="btn-add-shift" class="btn btn-primary" type="button">
-                    ➕ Lägg till grundpass
-                </button>
-            </div>
+                <!-- Tab Navigation -->
+                <div class="shifts-tabs">
+                    <button class="shifts-tab ${currentTab === 'schedule' ? 'active' : ''}" data-tab="schedule">
+                        📅 Schemaläggning
+                    </button>
+                    <button class="shifts-tab ${currentTab === 'control' ? 'active' : ''}" data-tab="control">
+                        ✓ Kontroll
+                    </button>
+                </div>
 
-            <div class="shifts-grid" id="shifts-grid"></div>
-
-            <div id="shift-form-modal" class="shift-form-modal hidden">
-                <div class="shift-form-modal-content">
-                    <div class="shift-form-modal-header">
-                        <h3 id="shift-form-title">Lägg till grundpass</h3>
-                        <button class="btn-close-modal" id="btn-close-form-modal" type="button">✕</button>
-                    </div>
-
-                    <div class="shift-form-modal-body">
-                        <form id="shift-form">
-                            <div class="form-group">
-                                <label>Färg *</label>
-                                <div class="color-picker" id="color-picker"></div>
-                                <input type="hidden" id="shift-color" value="">
+                <!-- TAB 1: SCHEMALÄGGNING -->
+                ${currentTab === 'schedule' ? `
+                    <div class="shifts-form-section">
+                        <h2>Lägg till nytt skift</h2>
+                        <form id="shift-form" class="shifts-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="shift-date">Datum *</label>
+                                    <input type="date" id="shift-date" name="date" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="shift-start">Starttid *</label>
+                                    <input type="time" id="shift-start" name="startTime" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="shift-end">Sluttid *</label>
+                                    <input type="time" id="shift-end" name="endTime" required>
+                                </div>
                             </div>
 
-                            <div class="form-group">
-                                <label for="shift-name">Benämning *</label>
-                                <input type="text" id="shift-name" placeholder="Ex. Dag, Kväll, Natt" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="shift-shortname">Kortnamn *</label>
-                                <input type="text" id="shift-shortname" placeholder="Ex. D, K, N" maxlength="3" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="shift-description">Passbeskrivning</label>
-                                <textarea id="shift-description" placeholder="Ex. Dagtid 07:00–16:00 med lunch 12:00–13:00" rows="3"></textarea>
-                            </div>
-
-                            <div class="form-group form-group-inline">
-                                <label>Tid *</label>
-                                <div class="time-inputs">
-                                    <input type="time" id="shift-start" required>
-                                    <span class="separator">–</span>
-                                    <input type="time" id="shift-end" required>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="shift-person">Person *</label>
+                                    <select id="shift-person" name="personId" required>
+                                        <option value="">-- Välj person --</option>
+                                        ${(state.people || []).map(p => `
+                                            <option value="${p.id}">${p.name}</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="shift-role">Roll *</label>
+                                    <select id="shift-role" name="role" required>
+                                        <option value="">-- Välj roll --</option>
+                                        <option value="staff">Personal</option>
+                                        <option value="foreman">Befälhavare</option>
+                                        <option value="chairman">Ordförande</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="shift-location">Plats</label>
+                                    <input type="text" id="shift-location" name="location" placeholder="t.ex. Avdelning A">
                                 </div>
                             </div>
 
                             <div class="form-group">
-                                <label for="shift-break-type">Paustyp *</label>
-                                <select id="shift-break-type" required>
-                                    <option value="">Välj paustyp</option>
-                                    <option value="auto">Automatisk (standard)</option>
-                                    <option value="manual">Manuell</option>
-                                    <option value="none">Ingen paus</option>
-                                </select>
+                                <label for="shift-notes">Anteckningar</label>
+                                <textarea id="shift-notes" name="notes" rows="3" placeholder="Eventuella noteringar..."></textarea>
                             </div>
 
-                            <div id="manual-break-group" class="form-group form-group-inline hidden">
-                                <label>Pausstart – Pausslut</label>
-                                <div class="time-inputs">
-                                    <input type="time" id="shift-break-start">
-                                    <span class="separator">–</span>
-                                    <input type="time" id="shift-break-end">
-                                </div>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="shift-cost">Snitt-kostnad (kr/tim)</label>
-                                <input type="number" id="shift-cost" placeholder="0" min="0" step="0.01">
-                            </div>
-
-                            <div id="shift-form-error" class="form-error hidden"></div>
-
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary">Spara pass</button>
-                                <button type="button" id="btn-cancel-form" class="btn btn-secondary">Avbryt</button>
+                            <div class="form-buttons">
+                                <button type="submit" class="btn btn-primary">Lägg till skift</button>
+                                <button type="reset" class="btn btn-secondary">Rensa</button>
                             </div>
                         </form>
                     </div>
-                </div>
-            </div>
 
-            <div id="shift-form-overlay" class="shift-form-overlay hidden"></div>
+                    <div class="shifts-table-section">
+                        <h2>Befintliga skift</h2>
+                        ${shifts.length > 0 ? `
+                            <div class="shifts-table-wrapper">
+                                <table class="shifts-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Datum</th>
+                                            <th>Tid</th>
+                                            <th>Person</th>
+                                            <th>Roll</th>
+                                            <th>Plats</th>
+                                            <th>Timmar</th>
+                                            <th>Åtgärd</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${shifts.map((shift, i) => {
+                                            const person = (state.people || []).find(p => p.id === shift.personId);
+                                            const hours = calculateHours(shift.startTime, shift.endTime);
+                                            return `
+                                                <tr>
+                                                    <td>${shift.date}</td>
+                                                    <td>${shift.startTime} - ${shift.endTime}</td>
+                                                    <td>${person?.name || 'Okänd'}</td>
+                                                    <td>${getRoleLabel(shift.role)}</td>
+                                                    <td>${shift.location || '-'}</td>
+                                                    <td>${hours.toFixed(1)}h</td>
+                                                    <td>
+                                                        <div class="shifts-table-actions">
+                                                            <button class="btn-edit" data-action="edit" data-id="${i}">Redigera</button>
+                                                            <button class="btn-delete" data-action="delete" data-id="${i}">Radera</button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ` : `
+                            <div class="empty-state">
+                                Inga skift har lagts till ännu. Skapa ditt första skift ovan.
+                            </div>
+                        `}
+                    </div>
+                ` : ''}
+
+                <!-- TAB 2: KONTROLL -->
+                ${currentTab === 'control' ? `
+                    <div class="shifts-form-section">
+                        <h2>Regelvalidering</h2>
+                        <p style="color: #666; margin-bottom: 1.5rem;">
+                            Här visas överträdelser mot HRF-avtalsregler.
+                        </p>
+                        
+                        ${shifts.length > 0 ? `
+                            <div class="shifts-table-wrapper">
+                                <table class="shifts-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Datum</th>
+                                            <th>Person</th>
+                                            <th>Status</th>
+                                            <th>Meddelande</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${shifts.map((shift, i) => {
+                                            const violations = validateShift(shift, state);
+                                            return `
+                                                <tr>
+                                                    <td>${shift.date}</td>
+                                                    <td>${(state.people || []).find(p => p.id === shift.personId)?.name || 'Okänd'}</td>
+                                                    <td>
+                                                        <span class="status-badge ${violations.length === 0 ? 'status-active' : 'status-inactive'}">
+                                                            ${violations.length === 0 ? '✓ OK' : '⚠ Varning'}
+                                                        </span>
+                                                    </td>
+                                                    <td>${violations.length > 0 ? violations.join(', ') : 'Inga överträdelser'}</td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ` : `
+                            <div class="empty-state">
+                                Inga skift att validera ännu.
+                            </div>
+                        `}
+                    </div>
+                ` : ''}
+            </div>
         </div>
     `;
 
     container.innerHTML = html;
 
-    renderColorPicker(container);
-    renderShiftCards(container, shiftIds, shifts);
+    // Event listeners
+    setupShiftsEventListeners(container, store, ctx);
+}
 
-    /* EVENT LISTENERS */
-    const addShiftBtn = container.querySelector('#btn-add-shift');
-    const breakTypeSelect = container.querySelector('#shift-break-type');
-    const formElement = container.querySelector('#shift-form');
-    const cancelFormBtn = container.querySelector('#btn-cancel-form');
-    const closeFormBtn = container.querySelector('#btn-close-form-modal');
-    const overlay = container.querySelector('#shift-form-overlay');
+/**
+ * Beräkna timmar mellan två tider
+ */
+function calculateHours(startTime, endTime) {
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    
+    return (endMinutes - startMinutes) / 60;
+}
 
-    if (addShiftBtn) {
-        addShiftBtn.addEventListener('click', () => {
-            openShiftForm(container, null, store.getState());
-        });
+/**
+ * Få label för roll
+ */
+function getRoleLabel(role) {
+    const roles = {
+        'staff': 'Personal',
+        'foreman': 'Befälhavare',
+        'chairman': 'Ordförande'
+    };
+    return roles[role] || role;
+}
+
+/**
+ * Validera skift mot regler
+ */
+function validateShift(shift, state) {
+    const violations = [];
+    
+    // Exempel-regler (kan expanderas senare)
+    const hours = calculateHours(shift.startTime, shift.endTime);
+    
+    if (hours > 12) {
+        violations.push('Skiftet överstiger 12 timmar');
     }
-
-    // Event delegation
-    container.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-shift-edit-full')) {
-            const shiftId = e.target.closest('.btn-shift-edit-full').dataset.shiftId;
-            openShiftForm(container, shiftId, store.getState());
-        }
-
-        if (e.target.closest('.btn-shift-delete-full')) {
-            const shiftId = e.target.closest('.btn-shift-delete-full').dataset.shiftId;
-            handleDeleteShift(shiftId, store, container, ctx);
-        }
-
-        if (e.target.closest('.color-option')) {
-            const btn = e.target.closest('.color-option');
-            const color = btn.dataset.color;
-
-            if (!isValidColor(color)) {
-                console.warn(`⚠️ Invalid color: ${color}`);
-                return;
-            }
-
-            container.querySelector('#shift-color').value = color;
-            container.querySelectorAll('.color-option').forEach((opt) => {
-                opt.classList.remove('selected');
-            });
-            btn.classList.add('selected');
-        }
-    });
-
-    if (breakTypeSelect) {
-        breakTypeSelect.addEventListener('change', (e) => {
-            const manualBreakGroup = container.querySelector('#manual-break-group');
-            if (e.target.value === 'manual') {
-                manualBreakGroup.classList.remove('hidden');
-            } else {
-                manualBreakGroup.classList.add('hidden');
-            }
-        });
+    
+    if (hours < 4) {
+        violations.push('Skiftet är kortare än 4 timmar');
     }
+    
+    return violations;
+}
 
-    if (formElement) {
-        formElement.addEventListener('submit', (e) => {
+/**
+ * Setup event listeners för shifts-formuläret
+ */
+function setupShiftsEventListeners(container, store, ctx) {
+    const form = container.querySelector('#shift-form');
+    
+    if (form) {
+        form.addEventListener('submit', (e) => {
             e.preventDefault();
-            handleSaveShift(store, container, ctx);
-        });
-    }
-
-    if (cancelFormBtn) {
-        cancelFormBtn.addEventListener('click', () => {
-            closeShiftForm(container);
-        });
-    }
-
-    if (closeFormBtn) {
-        closeFormBtn.addEventListener('click', () => {
-            closeShiftForm(container);
-        });
-    }
-
-    if (overlay) {
-        overlay.addEventListener('click', () => {
-            closeShiftForm(container);
-        });
-    }
-}
-
-function renderColorPicker(container) {
-    const pickerDiv = container.querySelector('#color-picker');
-    pickerDiv.innerHTML = '';
-
-    getColorOptions().forEach((color) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'color-option';
-        btn.dataset.color = color;
-        btn.title = color;
-        btn.setAttribute('aria-label', `Välj färg ${color}`);
-        btn.style.backgroundColor = color;
-        pickerDiv.appendChild(btn);
-    });
-}
-
-function renderShiftCards(container, shiftIds, shifts) {
-    const grid = container.querySelector('#shifts-grid');
-    grid.innerHTML = '';
-
-    if (shiftIds.length === 0) {
-        const empty = document.createElement('p');
-        empty.className = 'empty-state';
-        empty.textContent = 'Inga grundpass definierade än. Lägg till ett för att börja.';
-        grid.appendChild(empty);
-        return;
-    }
-
-    shiftIds.forEach((shiftId) => {
-        const shift = shifts[shiftId];
-        const card = createShiftCard(shiftId, shift);
-        grid.appendChild(card);
-    });
-}
-
-function openShiftForm(container, shiftId, state) {
-    const shifts = state.shifts || {};
-    const shift = shiftId ? shifts[shiftId] : null;
-
-    const modal = container.querySelector('#shift-form-modal');
-    const overlay = container.querySelector('#shift-form-overlay');
-    const form = container.querySelector('#shift-form');
-    const title = container.querySelector('#shift-form-title');
-
-    title.textContent = shift ? `Redigera pass: ${shift.name}` : 'Lägg till grundpass';
-
-    const normalizedColor = shift ? getColorOrDefault(shift.color) : '#667EEA';
-    container.querySelector('#shift-color').value = normalizedColor;
-    container.querySelector('#shift-name').value = shift?.name || '';
-    container.querySelector('#shift-shortname').value = shift?.shortName || '';
-    container.querySelector('#shift-description').value = shift?.description || '';
-    container.querySelector('#shift-start').value = shift?.startTime || '07:00';
-    container.querySelector('#shift-end').value = shift?.endTime || '16:00';
-    container.querySelector('#shift-break-type').value = 
-        shift?.breakStart && shift?.breakEnd ? 'manual' : 'auto';
-    container.querySelector('#shift-break-start').value = shift?.breakStart || '12:00';
-    container.querySelector('#shift-break-end').value = shift?.breakEnd || '13:00';
-    container.querySelector('#shift-cost').value = shift?.snittKostnad || '';
-
-    container.querySelectorAll('.color-option').forEach((opt) => {
-        if (opt.dataset.color.toUpperCase() === normalizedColor.toUpperCase()) {
-            opt.classList.add('selected');
-        } else {
-            opt.classList.remove('selected');
-        }
-    });
-
-    const manualBreakGroup = container.querySelector('#manual-break-group');
-    if (shift?.breakStart && shift?.breakEnd) {
-        manualBreakGroup.classList.remove('hidden');
-    } else {
-        manualBreakGroup.classList.add('hidden');
-    }
-
-    form.dataset.shiftId = shiftId || '';
-
-    modal.classList.remove('hidden');
-    overlay.classList.remove('hidden');
-}
-
-function closeShiftForm(container) {
-    const modal = container.querySelector('#shift-form-modal');
-    const overlay = container.querySelector('#shift-form-overlay');
-    const form = container.querySelector('#shift-form');
-    const errorDiv = container.querySelector('#shift-form-error');
-
-    modal.classList.add('hidden');
-    overlay.classList.add('hidden');
-    form.reset();
-    form.dataset.shiftId = '';
-    container.querySelector('#manual-break-group').classList.add('hidden');
-    hideError(errorDiv);
-}
-
-function handleSaveShift(store, container, ctx) {
-    try {
-        const form = container.querySelector('#shift-form');
-        const shiftId = form.dataset.shiftId;
-        const errorDiv = container.querySelector('#shift-form-error');
-
-        const formData = {
-            name: container.querySelector('#shift-name').value.trim(),
-            shortName: container.querySelector('#shift-shortname').value.trim().toUpperCase(),
-            description: container.querySelector('#shift-description').value.trim(),
-            color: container.querySelector('#shift-color').value.toUpperCase(),
-            startTime: container.querySelector('#shift-start').value,
-            endTime: container.querySelector('#shift-end').value,
-            breakType: container.querySelector('#shift-break-type').value,
-            breakStart: container.querySelector('#shift-break-type').value === 'manual' 
-                ? container.querySelector('#shift-break-start').value 
-                : null,
-            breakEnd: container.querySelector('#shift-break-type').value === 'manual' 
-                ? container.querySelector('#shift-break-end').value 
-                : null,
-            snittKostnad: toIntOrFloat(container.querySelector('#shift-cost').value, 0),
-        };
-
-        // P0: Strikt färg-validering vid save
-        if (!isValidColor(formData.color)) {
-            showError(errorDiv, `Färgen är inte giltig. Välj en från paletten.`);
-            return;
-        }
-
-        const errors = validateShift(formData);
-        if (errors.length > 0) {
-            showError(errorDiv, errors.join('; '));
-            return;
-        }
-
-        const normalizedShift = normalizeShift(formData, shiftId);
-
-        store.update((state) => {
-            const shifts = { ...(state.shifts || {}) };
-            const meta = { ...(state.meta || {}), updatedAt: Date.now() };
-            shifts[normalizedShift.id] = normalizedShift;
-            return { ...state, shifts, meta };
-        });
-
-        closeShiftForm(container);
-        console.log(`✓ Pass sparade: ${normalizedShift.name}`);
-        renderShiftsView(container, ctx);
-    } catch (err) {
-        console.error('Sparfel:', err);
-        const errorDiv = container.querySelector('#shift-form-error');
-        showError(errorDiv, `Fel vid sparning: ${err.message}`);
-    }
-}
-
-function handleDeleteShift(shiftId, store, container, ctx) {
-    const state = store.getState();
-    const shift = state.shifts?.[shiftId];
-
-    if (!confirm(`Radera pass "${shift?.name}"?`)) return;
-
-    try {
-        // P0: Fail-closed — kontrollera ID innan delete
-        if (!isValidShiftId(shiftId)) {
-            console.error(`⚠️ Försök att radera med ogiltigt ID: ${shiftId}`);
-            return;
-        }
-
-        store.update((state) => {
-            const shifts = { ...(state.shifts || {}) };
-            delete shifts[shiftId];
-            return {
-                ...state,
-                shifts,
-                meta: { ...(state.meta || {}), updatedAt: Date.now() }
+            
+            const formData = new FormData(form);
+            const newShift = {
+                date: formData.get('date'),
+                startTime: formData.get('startTime'),
+                endTime: formData.get('endTime'),
+                personId: formData.get('personId'),
+                role: formData.get('role'),
+                location: formData.get('location'),
+                notes: formData.get('notes')
             };
+            
+            // Lägg till i store
+            const state = store.getState();
+            const shifts = state.shifts || [];
+            shifts.push(newShift);
+            
+            store.setState({
+                ...state,
+                shifts: shifts
+            });
+            
+            // Rendera om
+            renderShifts(container, ctx);
+            
+            alert('Skift tillagt!');
         });
-
-        console.log(`✓ Pass raderat: ${shift.name}`);
-        renderShiftsView(container, ctx);
-    } catch (err) {
-        console.error('Radera-fel:', err);
-        // P3: Enhetlig error-hantering (kunde visa snackbar här istället)
-        alert(`Fel vid radering: ${err.message}`);
     }
-}
 
-function toIntOrFloat(v, fallback = 0) {
-    const n = parseFloat(String(v));
-    return Number.isFinite(n) ? n : fallback;
+    // Tab-navigation
+    const tabs = container.querySelectorAll('.shifts-tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            ctx.shiftTab = tab.dataset.tab;
+            renderShifts(container, ctx);
+        });
+    });
+
+    // Delete-knapp
+    const deleteButtons = container.querySelectorAll('[data-action="delete"]');
+    deleteButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const index = e.target.dataset.id;
+            const state = store.getState();
+            const shifts = state.shifts || [];
+            shifts.splice(index, 1);
+            
+            store.setState({
+                ...state,
+                shifts: shifts
+            });
+            
+            renderShifts(container, ctx);
+        });
+    });
 }
