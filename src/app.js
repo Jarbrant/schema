@@ -1,7 +1,11 @@
-/*
- * AO-02 — APP: Huvudapplikation med router (AUTOPATCH v1)
- * P0-FIX: Router måste initieras även när användaren inte är inloggad,
- * annars renderas aldrig login-vyn och #container förblir tom.
+/* 
+ * AO-02 — APP: Huvudapplikation med router (AUTOPATCH v2)
+ * P0-FIX: Navbar måste renderas även om användaren inte är inloggad vid init,
+ * annars blir #navbar tom efter login (eftersom appen inte initieras om).
+ *
+ * Ändring:
+ * - Rendera navbar alltid vid init.
+ * - Routern ansvarar för att gömma den på login-route.
  */
 
 import { initRouter } from './router.js';
@@ -41,14 +45,10 @@ class SchemaApp {
             const loggedIn = isLoggedIn();
             console.log('✓ Inloggad:', loggedIn);
 
-            // Navbar: endast om inloggad
-            if (loggedIn) {
-                console.log('✓ Inloggad → visar navbar');
-                renderNavbar(this.navbar);
-            } else {
-                console.log('📍 Inte inloggad → navbar göms');
-                this.navbar.innerHTML = '';
-            }
+            // P0: Rendera navbar alltid (router gömmer den på login-route).
+            // Detta gör att navbar finns direkt efter login utan att appen behöver startas om.
+            console.log('🧱 Renderar navbar (alltid)');
+            renderNavbar(this.navbar);
 
             // Auth-context till router (router/vyer avgör vad som får visas)
             const ctx = {
