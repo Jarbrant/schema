@@ -1,94 +1,86 @@
-/* 
- * AO-02 — APP: Huvudapplikation med router (AUTOPATCH v2)
- * P0-FIX: Navbar måste renderas även om användaren inte är inloggad vid init,
- * annars blir #navbar tom efter login (eftersom appen inte initieras om).
- *
- * Ändring:
- * - Rendera navbar alltid vid init.
- * - Routern ansvarar för att gömma den på login-route.
+/*
+ * APP.JS — State Management (Store)
+ * 
+ * Globalt state för hela appen.
+ * Alla views och modules läser/skriver via denna store.
  */
 
-import { initRouter } from './router.js';
-import { renderNavbar, renderError } from './ui.js';
-import { isLoggedIn } from './views/login.js';
-import store from './store.js';
-
-class SchemaApp {
-    constructor() {
-        this.container = document.getElementById('container');
-        this.errorPanel = document.getElementById('error-panel');
-        this.navbar = document.getElementById('navbar');
-
-        console.log('🔍 SchemaApp konstruktor startad');
-        console.log('Container:', this.container);
-        console.log('ErrorPanel:', this.errorPanel);
-        console.log('Navbar:', this.navbar);
-
-        if (!this.container || !this.navbar || !this.errorPanel) {
-            console.error('❌ Kritiska DOM-element saknas');
-            return;
-        }
-
-        this.init();
-    }
-
-    init() {
-        try {
-            console.log('🔄 Init startad');
-            console.log('Store isReady:', store.isReady);
-            console.log('Store:', store);
-
-            if (!store.isReady) {
-                throw new Error('Store kunde inte initialiseras');
-            }
-
-            const loggedIn = isLoggedIn();
-            console.log('✓ Inloggad:', loggedIn);
-
-            // P0: Rendera navbar alltid (router gömmer den på login-route).
-            // Detta gör att navbar finns direkt efter login utan att appen behöver startas om.
-            console.log('🧱 Renderar navbar (alltid)');
-            renderNavbar(this.navbar);
-
-            // Auth-context till router (router/vyer avgör vad som får visas)
-            const ctx = {
-                store,
-                auth: {
-                    isLoggedIn: loggedIn,
-                },
-            };
-
-            // P0: Om inte inloggad, se till att vi är på login-route
-            // MEN starta fortfarande routern så vyn faktiskt renderas.
-            if (!loggedIn) {
-                const h = window.location.hash || '';
-                if (!h.startsWith('#/login')) {
-                    window.location.hash = '#/login';
+/**
+ * Skapa app-store (state management)
+ * @param {object} initialState - Initial state
+ * @returns {object} Store med getState, setState, subscribe
+ */
+export function createStore(initialState) {
+    let state = { ...initialState };
+    const listeners = [];
+    
+    return {
+        /**
+         * Hämta aktuellt state
+         * @returns {object} Current state
+         */
+        getState() {
+            return state;
+        },
+        
+        /**
+         * Uppdatera state
+         * @param {object} newState - Ny state (merges med gammal)
+         */
+        setState(newState) {
+            state = { ...state, ...newState };
+            // Notifiera alla subscribers
+            listeners.forEach(listener => listener(state));
+            console.log('📊 State uppdaterad:', state);
+        },
+        
+        /**
+         * Subscribe till state-ändringar
+         * @param {function} listener - Callback när state ändras
+         * @returns {function} Unsubscribe-funktion
+         */
+        subscribe(listener) {
+            listeners.push(listener);
+            console.log(`📡 Listener registrerad (totalt: ${listeners.length})`);
+            
+            // Returnera unsubscribe-funktion
+            return () => {
+                const index = listeners.indexOf(listener);
+                if (index > -1) {
+                    listeners.splice(index, 1);
+                    console.log(`📡 Listener borttagen (kvar: ${listeners.length})`);
                 }
-            }
-
-            console.log('🧭 Initierar router');
-            initRouter(this.container, this.errorPanel, ctx);
-
-            console.log('✓ Appen initialiserad');
-        } catch (err) {
-            console.error('❌ Init-fel:', err);
-            this.showError(err);
+            };
         }
-    }
-
-    showError(error) {
-        renderError(this.errorPanel, error);
-    }
+    };
 }
 
-if (document.readyState === 'loading') {
-    console.log('📍 Väntar på DOM...');
-    document.addEventListener('DOMContentLoaded', () => {
-        console.log('✓ DOM ready');
-        new SchemaApp();
-    });
-} else {
-    console.log('✓ DOM redan ready');
-    new SchemaApp();
-}
+/**
+ * DEFAULT INITIAL STATE
+ * Exporteras för referens
+ */
+export const DEFAULT_STATE = {
+    // Authentication
+    user: null,
+    isLoggedIn: false,
+    
+    // Data
+    people: [],
+    shifts: [],
+    groups: [],
+    passes: [],
+    
+    // Schedule info
+    schedule: {
+        year: new Date().getFullYear(),
+        startDate: null,
+        endDate: null
+    },
+    
+    // App metadata
+    meta: {
+        appVersion: '1.0.0',
+        appName: 'Schema-Program',
+        lastUpdated: new Date().toISOString()
+    }
+};
