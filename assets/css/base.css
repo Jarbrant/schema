@@ -1,8 +1,17 @@
 /* ========================================================================
-   BLOCK 1-4: GLOBAL STYLES
-   Reset, Typography, Layout, Navigation
+   AO-BASE-01 — GLOBAL STYLES (AUTOPATCH v2)
+   FIL: assets/css/base.css
+
+   Fixar:
+   - P0: Topbar/navbar ska vara horisontell och sticky, utan “tom ram”.
+   - P0: UL ska inte bli vertikal (flex + reset).
+   - P0: Logout på samma rad längst till höger.
+   - P1: Minskad CSS-krock: home.css får styra home-layout, base.css styr layout/ramverk.
    ======================================================================== */
 
+/* ========================================================================
+   BLOCK 1: RESET + TYPO
+   ======================================================================== */
 * {
     margin: 0;
     padding: 0;
@@ -17,12 +26,12 @@ html, body {
     background: #f5f7fa;
 }
 
+/* Små rubriker */
 h1, h2, h3, h4, h5, h6 {
     margin-bottom: 1rem;
     font-weight: 600;
     color: #222;
 }
-
 h1 { font-size: 2.2rem; }
 h2 { font-size: 1.8rem; }
 h3 { font-size: 1.4rem; }
@@ -38,12 +47,11 @@ a {
     text-decoration: none;
     transition: color 0.2s;
 }
+a:hover { color: #5568d3; }
 
-a:hover {
-    color: #5568d3;
-}
-
-/* Container — DEFAULT styling */
+/* ========================================================================
+   BLOCK 2: DEFAULT CONTAINERS
+   ======================================================================== */
 .view-container {
     max-width: 1400px;
     margin: 0 auto;
@@ -53,38 +61,118 @@ a:hover {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-/* FIX: Don't override home-container styling */
+/* FIX: Home ska få styra sin bakgrund och fullbredd */
 .home-container.view-container {
-    background: inherit;  /* Låt home.css kontrollera bakgrund */
-    box-shadow: none;     /* Låt home.css kontrollera shadow */
-    border-radius: 0;     /* Låt home.css kontrollera radius */
-    padding: 0;           /* Låt home.css kontrollera padding */
-    margin: 0;            /* Låt home.css kontrollera margin */
-    max-width: 100%;      /* Låt home.css sträcka sig fullt */
+    background: inherit;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    max-width: 100%;
 }
 
 /* ========================================================================
-   LOGIN (AO-06): Centerad modern login-card (FINARE)
+   BLOCK 3: TOPBAR (NY STANDARD)
    ======================================================================== */
+:root {
+    /* Enkel “design token” för topbar-höjd */
+    --topbar-h: 64px;
+    --topbar-bg: #2c3e50;
+    --topbar-bg-hover: #34495e;
+    --topbar-text: #ecf0f1;
+    --topbar-accent: #667eea;
+}
 
+/* #navbar ska inte skapa extra whitespace */
+#navbar {
+    position: sticky; /* sticky = ingen padding-top behövs */
+    top: 0;
+    z-index: 1000;
+}
+
+/* Topbar wrapper */
+.topbar {
+    background: var(--topbar-bg);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+}
+
+/* Inre rad */
+.topbar-inner {
+    min-height: var(--topbar-h);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 18px;
+}
+
+/* Brand vänster */
+.topbar-brand {
+    color: white;
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+}
+
+/* Links (UL) horisontellt */
+.topbar-links {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+}
+
+/* Länkar */
+.topbar-links .nav-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 14px 14px;
+    color: var(--topbar-text);
+    border-bottom: 3px solid transparent;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+.topbar-links .nav-link:hover,
+.topbar-links .nav-link.active {
+    background: var(--topbar-bg-hover);
+    color: white;
+    border-bottom-color: var(--topbar-accent);
+}
+
+/* Logout: pushas längst till höger */
+.topbar-logout {
+    margin-left: auto; /* viktigaste raden för “längst till höger” */
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.topbar-logout:hover { filter: brightness(0.95); }
+
+/* ========================================================================
+   BLOCK 4: LOGIN (AO-06) — Centerad modern login-card (som du redan hade)
+   ======================================================================== */
 .login-page {
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 28px;
-    /* modern, mild bakgrund */
     background:
         radial-gradient(900px 500px at 20% 15%, rgba(102,126,234,0.18), transparent 60%),
         radial-gradient(900px 500px at 80% 20%, rgba(118,75,162,0.14), transparent 60%),
         linear-gradient(180deg, #f7f8fc 0%, #f3f6fb 100%);
 }
 
-.login-container {
-    width: 100%;
-    max-width: 520px;
-    position: relative;
-}
+.login-container { width: 100%; max-width: 520px; position: relative; }
 
 .login-card {
     width: 100%;
@@ -98,25 +186,12 @@ a:hover {
     backdrop-filter: blur(6px);
 }
 
-.login-card h1 {
-    margin-bottom: 0.6rem;
-    font-size: 1.9rem; /* lite tajtare än global h1 */
-}
+.login-card h1 { margin-bottom: 0.6rem; font-size: 1.9rem; }
+.login-card h2 { margin-top: 0.15rem; margin-bottom: 0.75rem; }
 
-.login-card h2 {
-    margin-top: 0.15rem;
-    margin-bottom: 0.75rem;
-}
+.login-form { margin-top: 10px; }
 
-.login-form {
-    margin-top: 10px;
-}
-
-/* Liten polish på form-fält utan att slåss med forms.css */
-.login-form .form-group label {
-    display: inline-block;
-    margin-bottom: 8px;
-}
+.login-form .form-group label { display: inline-block; margin-bottom: 8px; }
 
 .login-form input[type="password"],
 .login-form input[type="text"],
@@ -127,29 +202,17 @@ a:hover {
     border-radius: 10px;
 }
 
-/* Fokus: tydlig men mjuk */
 .login-form input:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 4px rgba(102,126,234,0.18);
 }
 
-/* Primärknapp full bredd */
-.btn-login {
-    width: 100%;
-    margin-top: 10px;
-}
+.btn-login { width: 100%; margin-top: 10px; }
 
-/* Alerts i login: lite tightare */
-.login-card .alert {
-    border-radius: 12px;
-}
+.login-card .alert { border-radius: 12px; }
 
-/* Footer */
-.login-footer {
-    margin-top: 14px;
-}
-
+.login-footer { margin-top: 14px; }
 .login-footer .footer-text {
     margin-bottom: 0;
     font-size: 12px;
@@ -157,26 +220,15 @@ a:hover {
     text-align: center;
 }
 
-/* Mobil */
 @media (max-width: 480px) {
-    .login-page {
-        padding: 16px;
-    }
-    .login-card {
-        padding: 18px;
-        border-radius: 14px;
-    }
-    .login-card h1 {
-        font-size: 1.6rem;
-    }
+    .login-page { padding: 16px; }
+    .login-card { padding: 18px; border-radius: 14px; }
+    .login-card h1 { font-size: 1.6rem; }
 }
 
-/* Mörkt tema (om användaren har det i OS) */
+/* Dark-mode (bara login + grundfärger) */
 @media (prefers-color-scheme: dark) {
-    html, body {
-        background: #0f1422;
-        color: #e9ecf1;
-    }
+    html, body { background: #0f1422; color: #e9ecf1; }
 
     .login-page {
         background:
@@ -198,70 +250,36 @@ a:hover {
     .login-card h3,
     .login-card h4,
     .login-card p,
-    .login-card label {
-        color: #e9ecf1;
-    }
+    .login-card label { color: #e9ecf1; }
 
-    .login-footer .footer-text {
-        color: #a9b3c6;
-    }
+    .login-footer .footer-text { color: #a9b3c6; }
 }
 
-/* Respektera reduced motion */
 @media (prefers-reduced-motion: reduce) {
-    * {
-        scroll-behavior: auto !important;
-    }
+    * { scroll-behavior: auto !important; }
 }
 
-/* Navigation */
-nav {
-    background: #2c3e50;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-nav .logo {
-    padding: 1rem 2rem;
-    color: white;
-    font-weight: 700;
-    font-size: 1.3rem;
-}
-
-nav .nav-links {
-    display: flex;
-    gap: 0;
-    list-style: none;
-}
-
-nav .nav-link {
-    padding: 1.5rem 1.5rem;
-    color: #ecf0f1;
-    cursor: pointer;
-    transition: all 0.3s;
-    border-bottom: 3px solid transparent;
-}
-
-nav .nav-link:hover,
-nav .nav-link.active {
-    background: #34495e;
-    color: white;
-    border-bottom-color: #667eea;
-}
-
-/* Section Descriptions */
+/* ========================================================================
+   BLOCK 5: SMALL UTILS
+   ======================================================================== */
 .section-desc {
     color: #666;
     margin-bottom: 1.5rem;
     font-size: 0.95rem;
 }
-
-/* Empty State */
 .empty-state {
     text-align: center;
     padding: 3rem 2rem;
     color: #999;
     font-style: italic;
+}
+
+/* ========================================================================
+   BLOCK 6: BACKWARD COMPAT (om något gammalt råkar finnas kvar)
+   - Om någon vy fortfarande använder <nav><ul> utan topbar-klasser:
+   ======================================================================== */
+nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
