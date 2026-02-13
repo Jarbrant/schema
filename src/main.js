@@ -1,24 +1,23 @@
 /*
- * MAIN.JS — Entry point for Schema-Program (AUTOPATCH v1)
+ * MAIN.JS — Entry point for Schema-Program (AUTOPATCH v2)
  *
- * Säkerhet/Stabilitet:
- * - P0: Rätt import för createStore (från store.js)
- * - Fail-closed: visar fel i error-panel istället för att krascha tyst
+ * Fix:
+ * - P0: Använd store.js (getStore) istället för createStore
+ * - Fail-closed: visa fel i error-panel om något saknas
  * - Init-guard: ingen dubbel init
- * - Inga “spam-logs” i normal drift (kan slås på via ?debug=1)
+ * - Mindre loggspam (debug via ?debug=1)
  */
 
 import { initRouter } from './router.js';
-import { createStore } from './store.js';
+import { getStore } from './store.js';
 
 (function bootstrap() {
-  // Init-guard (skydd mot dubbel init)
   if (window.__SCHEMA_APP_INIT__) return;
   window.__SCHEMA_APP_INIT__ = true;
 
   const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
-  function safeLog(...args) {
+  function log(...args) {
     if (DEBUG) console.log(...args);
   }
 
@@ -32,11 +31,9 @@ import { createStore } from './store.js';
         errorPanel.style.borderRadius = '10px';
         errorPanel.style.border = '1px solid rgba(0,0,0,0.15)';
       } else {
-        // Fail-closed fallback om error-panel saknas
         alert(`${code}: ${message}`);
       }
     } catch (_) {
-      // Sista fallback
       alert(`${code}: ${message}`);
     }
   }
@@ -45,9 +42,6 @@ import { createStore } from './store.js';
     'DOMContentLoaded',
     () => {
       try {
-        safeLog('Init: Schema-Program');
-
-        // DOM elements (fail-closed om root saknas)
         const appContainer = document.getElementById('app-container');
         const errorPanel = document.getElementById('error-panel');
 
@@ -56,18 +50,10 @@ import { createStore } from './store.js';
           return;
         }
 
-        // Create store (state)
-        const store = createStore({
-          user: null,
-          people: [],
-          shifts: [],
-          groups: [],
-          passes: [],
-          schedule: { year: new Date().getFullYear() },
-          meta: { appVersion: '1.0.0', appName: 'Schema-Program' }
-        });
+        // ✅ Robust store (singleton) från store.js
+        const store = getStore();
 
-        // App context (lås objektet så det inte råkar “bytas ut”)
+        // Context till router/views
         const appCtx = Object.freeze({
           store,
           currentRoute: null,
@@ -75,14 +61,12 @@ import { createStore } from './store.js';
           groupsTab: 'groups'
         });
 
-        // Init router (fail-closed)
+        log('Init router...');
         initRouter(appContainer, errorPanel, appCtx);
-
-        safeLog('Init: OK');
+        log('Init OK');
       } catch (err) {
         const errorPanel = document.getElementById('error-panel');
-        showFatal(errorPanel, 'SCHEMA_E_BOOT', 'Appen kunde inte starta. Kontrollera console för detaljer.');
-        // Logga kort utan känslig info
+        showFatal(errorPanel, 'SCHEMA_E_BOOT', 'Appen kunde inte starta.');
         console.error('SCHEMA_E_BOOT', err);
       }
     },
