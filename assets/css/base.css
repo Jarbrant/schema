@@ -1,12 +1,15 @@
 /* ========================================================================
-   AO-BASE-01 — GLOBAL STYLES (AUTOPATCH v2)
+   AO-BASE-01 — GLOBAL STYLES (AUTOPATCH v3)
    FIL: assets/css/base.css
 
    Fixar:
-   - P0: Topbar/navbar ska vara horisontell och sticky, utan “tom ram”.
-   - P0: UL ska inte bli vertikal (flex + reset).
-   - P0: Logout på samma rad längst till höger.
-   - P1: Minskad CSS-krock: home.css får styra home-layout, base.css styr layout/ramverk.
+   - P0: “Ramen”/inramningen runt innehållet kommer tillbaka (gäller både #container och #app-container).
+   - P0: .view-container får tunn ram + tydligare inramning utan att ändra layout-flöde.
+   - P0: Topbar/navbar fortsatt horisontell och sticky.
+   - P1: Mindre risk för krock: base.css styr ramverk, home.css styr home.
+
+   Not: Du har haft två olika index-varianter (#container och #app-container).
+        Den här filen stödjer båda så du slipper “försvunnen ram” när ID byts.
    ======================================================================== */
 
 /* ========================================================================
@@ -52,13 +55,26 @@ a:hover { color: #5568d3; }
 /* ========================================================================
    BLOCK 2: DEFAULT CONTAINERS
    ======================================================================== */
+
+/* P0: “Ramen” runt huvudytan (stödjer båda varianter av index.html) */
+#container,
+#app-container {
+    /* Ger luft runt vy-korten så det känns “inramat” */
+    padding: 22px;
+    min-height: calc(100vh - var(--topbar-h, 64px));
+}
+
+/* Standard “kort” för vyer */
 .view-container {
     max-width: 1400px;
     margin: 0 auto;
     padding: 2rem;
     background: white;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+    /* P0: ramen tillbaka (tunn kant + mjuk skugga) */
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
 }
 
 /* FIX: Home ska få styra sin bakgrund och fullbredd */
@@ -66,6 +82,7 @@ a:hover { color: #5568d3; }
     background: inherit;
     box-shadow: none;
     border-radius: 0;
+    border: none;
     padding: 0;
     margin: 0;
     max-width: 100%;
