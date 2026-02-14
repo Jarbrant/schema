@@ -1,5 +1,5 @@
 /* ========================================================================
-   BASE.CSS — Global Styles (AUTOPATCH v5 — AO-06 Security Update)
+   BASE.CSS — Global Styles (AUTOPATCH v6 — AO-06 Security + Bugfixes)
    
    Förbättringar:
    - P0: ALLA sidor får samma "ram" (även Home) → inga undantag kvar.
@@ -8,6 +8,7 @@
    - P0: Topbar fortsatt horisontell/sticky.
    - P1: Mindre risk för "hopp" när scrollbar dyker upp (stabil gutter).
    - AO-06: Login form säkerhet + navbar visibility control
+   - BUGFIX: Fixed form input styling, alert colors, input border defaults
    ======================================================================== */
 
 /* ========================================================================
@@ -19,7 +20,11 @@
     box-sizing: border-box; 
 }
 
-html, body {
+html {
+    height: 100%;
+}
+
+body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     font-size: 16px;
     line-height: 1.5;
@@ -28,16 +33,15 @@ html, body {
     /* P1: minskar layout-hopp när scrollbar kommer/försvinner */
     scrollbar-gutter: stable;
     height: 100%;
-}
-
-body {
     display: flex;
     flex-direction: column;
+    margin: 0;
+    padding: 0;
 }
 
 /* Rubriker */
 h1, h2, h3, h4, h5, h6 { 
-    margin-bottom: 1rem; 
+    margin: 0 0 1rem 0;
     font-weight: 600; 
     color: #222; 
 }
@@ -45,9 +49,11 @@ h1 { font-size: 2.2rem; }
 h2 { font-size: 1.8rem; }
 h3 { font-size: 1.4rem; }
 h4 { font-size: 1.2rem; }
+h5 { font-size: 1rem; }
+h6 { font-size: 0.9rem; }
 
 p { 
-    margin-bottom: 1rem; 
+    margin: 0 0 1rem 0;
     line-height: 1.6; 
 }
 
@@ -58,6 +64,14 @@ a {
 }
 a:hover { 
     color: #5568d3; 
+}
+
+/* Default form element styling */
+input,
+select,
+textarea {
+    font-family: inherit;
+    font-size: 1rem;
 }
 
 /* ========================================================================
@@ -115,9 +129,9 @@ a:hover {
 #navbar[style*="display: none"] {
     visibility: hidden;
     height: 0;
-    padding: 0;
-    margin: 0;
-    border: none;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
 }
 
 /* Prevent "ghost frames" */
@@ -138,6 +152,7 @@ a:hover {
         radial-gradient(900px 500px at 20% 15%, rgba(102,126,234,0.18), transparent 60%),
         radial-gradient(900px 500px at 80% 20%, rgba(118,75,162,0.14), transparent 60%),
         linear-gradient(180deg, #f7f8fc 0%, #f3f6fb 100%);
+    flex: 1;
 }
 
 .login-container { 
@@ -159,13 +174,12 @@ a:hover {
 }
 
 .login-card h1 { 
-    margin-bottom: 0.6rem; 
+    margin: 0 0 0.6rem 0;
     font-size: 1.9rem; 
 }
 
 .login-card h2 { 
-    margin-top: 0.15rem; 
-    margin-bottom: 0.75rem; 
+    margin: 0.15rem 0 0.75rem 0;
     font-size: 1.4rem;
     color: #667eea;
 }
@@ -180,24 +194,29 @@ a:hover {
 
 .login-form .form-group label { 
     display: block; 
-    margin-bottom: 8px; 
+    margin: 0 0 8px 0;
     font-weight: 500;
     color: #333;
 }
 
-.login-form .form-control,
-.login-form input[type="password"],
 .login-form input[type="text"],
-.login-form input[type="email"] {
+.login-form input[type="password"],
+.login-form input[type="email"],
+.login-form .form-control {
     width: 100%;
     padding: 0.75rem;
     border: 1px solid #ddd;
     border-radius: 10px;
     font-size: 1rem;
     transition: all 0.3s ease;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
-.login-form input:focus {
+.login-form input[type="text"]:focus,
+.login-form input[type="password"]:focus,
+.login-form input[type="email"]:focus,
+.login-form .form-control:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 4px rgba(102,126,234,0.18);
@@ -220,7 +239,7 @@ a:hover {
 }
 
 .login-footer .footer-text {
-    margin-bottom: 0;
+    margin: 0;
     font-size: 12px;
     color: #999;
     text-align: center;
@@ -233,30 +252,39 @@ a:hover {
     padding: 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
+    border: 1px solid;
+}
+
+.alert p {
+    margin: 0;
+}
+
+.alert strong {
+    font-weight: 600;
 }
 
 .alert-success {
     background: #d4edda;
     color: #155724;
-    border: 1px solid #c3e6cb;
+    border-color: #c3e6cb;
 }
 
 .alert-danger {
     background: #f8d7da;
     color: #721c24;
-    border: 1px solid #f5c6cb;
+    border-color: #f5c6cb;
 }
 
 .alert-info {
     background: #d1ecf1;
     color: #0c5460;
-    border: 1px solid #bee5eb;
+    border-color: #bee5eb;
 }
 
 .alert-warning {
     background: #fff3cd;
     color: #856404;
-    border: 1px solid #ffeaa7;
+    border-color: #ffeaa7;
 }
 
 /* ========================================================================
@@ -268,7 +296,7 @@ a:hover {
 
 .form-group label {
     display: block;
-    margin-bottom: 0.5rem;
+    margin: 0 0 0.5rem 0;
     font-weight: 500;
     color: #333;
 }
@@ -279,10 +307,49 @@ input[type="email"],
 input[type="date"],
 input[type="number"],
 input[type="time"],
+input[type="search"],
+input[type="url"],
+input[type="tel"],
 select,
 textarea {
-    /* Prevent XSS via placeholder */
     font-size: 16px;
+    font-family: inherit;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="date"],
+input[type="number"],
+input[type="time"],
+input[type="search"],
+input[type="url"],
+input[type="tel"],
+select,
+textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+input[type="date"]:focus,
+input[type="number"]:focus,
+input[type="time"]:focus,
+input[type="search"]:focus,
+input[type="url"]:focus,
+input[type="tel"]:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.15);
 }
 
 /* ========================================================================
@@ -293,8 +360,12 @@ textarea {
     border-radius: 8px;
     padding: 0.75rem 1.5rem;
     font-weight: 500;
+    font-size: 1rem;
     cursor: pointer;
     transition: all 0.3s ease;
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-block;
 }
 
 .btn-primary {
@@ -308,13 +379,23 @@ textarea {
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
+.btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+}
+
 .btn-secondary {
     background: #eee;
     color: #333;
+    border: 1px solid #ddd;
 }
 
 .btn-secondary:hover:not(:disabled) {
     background: #ddd;
+    border-color: #bbb;
+}
+
+.btn-secondary:active:not(:disabled) {
+    background: #ccc;
 }
 
 .btn:disabled {
@@ -327,7 +408,7 @@ textarea {
    ======================================================================== */
 .section-desc {
     color: #666;
-    margin-bottom: 1.5rem;
+    margin: 0 0 1.5rem 0;
     font-size: 0.95rem;
 }
 
@@ -341,14 +422,24 @@ textarea {
 /* ========================================================================
    BLOCK 9: RESPONSIVE
    ======================================================================== */
+@media (max-width: 768px) {
+    h1 { font-size: 1.8rem; }
+    h2 { font-size: 1.4rem; }
+    h3 { font-size: 1.2rem; }
+
+    .view-container {
+        padding: 1.5rem;
+    }
+}
+
 @media (max-width: 480px) {
     #container, 
     #app-container { 
-        padding: 14px; 
+        padding: 12px; 
     }
 
     .view-container { 
-        padding: 18px; 
+        padding: 1rem; 
     }
 
     .login-page { 
@@ -356,16 +447,30 @@ textarea {
     }
 
     .login-card { 
-        padding: 18px; 
+        padding: 1.5rem; 
         border-radius: 14px; 
     }
 
     .login-card h1 { 
-        font-size: 1.6rem; 
+        font-size: 1.5rem; 
     }
 
-    h1 { font-size: 1.8rem; }
-    h2 { font-size: 1.4rem; }
+    .login-card h2 {
+        font-size: 1.2rem;
+    }
+
+    h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.3rem; }
+    h3 { font-size: 1.1rem; }
+
+    .btn {
+        padding: 0.65rem 1.2rem;
+        font-size: 0.95rem;
+    }
+
+    .btn-login {
+        width: 100%;
+    }
 }
 
 /* ========================================================================
@@ -400,16 +505,39 @@ textarea {
 
     .login-card h1,
     .login-card h2,
-    .login-card h3,
-    .login-card h4,
-    .login-card p,
-    .login-card label,
-    .login-form label { 
+    .login-form .form-group label,
+    .login-form label,
+    .form-group label { 
         color: #e9ecf1; 
     }
 
     .login-footer .footer-text { 
         color: #a9b3c6; 
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="email"],
+    input[type="date"],
+    input[type="number"],
+    input[type="time"],
+    select,
+    textarea {
+        background: rgba(255,255,255,0.05);
+        color: #e9ecf1;
+        border-color: rgba(255,255,255,0.15);
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus,
+    input[type="email"]:focus,
+    input[type="date"]:focus,
+    input[type="number"]:focus,
+    input[type="time"]:focus,
+    select:focus,
+    textarea:focus {
+        background: rgba(255,255,255,0.08);
+        border-color: #667eea;
     }
 
     .alert-success {
@@ -428,6 +556,23 @@ textarea {
         background: #2a3f4a;
         color: #a9d9f5;
         border-color: #3a5a6a;
+    }
+
+    .alert-warning {
+        background: #4a4a2a;
+        color: #f5e9a9;
+        border-color: #6a6a3a;
+    }
+
+    .btn-secondary {
+        background: rgba(255,255,255,0.1);
+        color: #e9ecf1;
+        border-color: rgba(255,255,255,0.2);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+        background: rgba(255,255,255,0.15);
+        border-color: rgba(255,255,255,0.3);
     }
 }
 
@@ -460,4 +605,13 @@ nav ul {
     list-style: none; 
     margin: 0; 
     padding: 0; 
+}
+
+ul, ol {
+    margin: 0 0 1rem 0;
+    padding-left: 1.5rem;
+}
+
+li {
+    margin-bottom: 0.5rem;
 }
