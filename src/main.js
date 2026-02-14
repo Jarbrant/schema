@@ -6,7 +6,7 @@
  * 
  * Initialiserar:
  * 1. Diagnostics (global error handling)
- * 2. Store (state management)
+ * 2. Store (state management with localStorage)
  * 3. Router (navigation)
  * 4. App context
  * 
@@ -18,7 +18,7 @@
  */
 
 import { initRouter } from './router.js';
-import { createStore } from './app.js';
+import { getStore } from './store.js';  // Use Store with localStorage support
 import { diagnostics } from './diagnostics.js';
 import { renderError } from './ui.js';
 
@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     try {
         // 1. Initialize diagnostics (setup global error hooks)
+        diagnostics.init();
         console.log('✓ Diagnostics-system initialiserat');
         
         // Subscribe to error reports and show in error panel
@@ -38,37 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // 2. Create app store (state management)
-        const store = createStore({
-            // Authentication
-            user: null,
-            isLoggedIn: false,
-            
-            // Data: People & Groups
-            people: [],
-            groups: [],
-            
-            // Data: Shifts & Scheduling
-            shifts: [],
-            passes: [],
-            demands: [],
-            generatedShifts: [],  // Föreslagna shifts från schemagenerator
-            lastGenerationParams: null,  // Senaste generator-parametrar
-            
-            // Schedule configuration
-            schedule: {
-                year: new Date().getFullYear(),
-                startDate: null,
-                endDate: null
-            },
-            
-            // App metadata
-            meta: {
-                appVersion: '1.0.0',
-                appName: 'Schema-Program',
-                lastUpdated: new Date().toISOString()
-            }
-        });
+        // 2. Get store instance (with localStorage support)
+        const store = getStore();
         
         console.log('✓ Store skapad');
         console.log('✓ Initial state:', store.getState());
