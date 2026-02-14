@@ -10,14 +10,14 @@
 
 import { renderHome } from './views/home.js';
 import { renderPersonal } from './views/personal.js';
-import { renderCalendar } from './views/calendar.js';
+import { renderCalendar } from './views/calendar-new.js'; // FAS 1.2: New calendar view
 import { renderControl } from './views/control.js';
 import { renderSummary } from './views/summary.js';
 import { renderExport } from './views/export.js';
 import { renderRules } from './views/rules.js';
 import { renderShifts } from './views/shifts.js';
 import { renderGroups } from './views/groups.js';
-import { renderLogin, isLoggedIn } from './views/login.js';
+import { renderLogin, isLoggedIn } from './views/login-pin.js'; // FAS 1: PIN-login
 import { renderError, renderNavbar } from './ui.js';
 import { reportError } from './diagnostics.js';
 

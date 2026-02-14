@@ -1,0 +1,296 @@
+/* ========================================================================
+   SUMMARY VIEW — Kostnadsbild & Sammanställning
+   ======================================================================== */
+
+.summary-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+.summary-header {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.summary-header h1 {
+    font-size: 2.2rem;
+    margin: 0 0 0.5rem 0;
+    color: #333;
+}
+
+.summary-subtitle {
+    margin: 0;
+    color: #666;
+    font-size: 1rem;
+}
+
+/* Summary Sections */
+.summary-section {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.summary-section h2 {
+    margin: 0 0 1.5rem 0;
+    color: #333;
+    font-size: 1.6rem;
+}
+
+.empty-message {
+    text-align: center;
+    color: #999;
+    padding: 2rem;
+    font-size: 1rem;
+}
+
+.empty-message a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.empty-message a:hover {
+    text-decoration: underline;
+}
+
+/* Cost Overview */
+.cost-overview {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.cost-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.cost-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.cost-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.cost-card h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cost-card .card-value {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0.5rem 0;
+}
+
+.cost-card .card-description {
+    font-size: 0.85rem;
+    color: #999;
+    margin: 0.5rem 0 0 0;
+}
+
+/* Cost card variants */
+.cost-card.total .card-value {
+    color: #667eea;
+}
+
+.cost-card.salary .card-value {
+    color: #2ecc71;
+}
+
+.cost-card.tax .card-value {
+    color: #e74c3c;
+}
+
+.cost-card.people .card-value {
+    color: #f39c12;
+}
+
+/* Group Cost Table */
+.group-cost-table,
+.person-cost-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.group-cost-row,
+.person-cost-row {
+    display: grid;
+    align-items: center;
+    padding: 1rem;
+    border-radius: 8px;
+    background: #f9f9f9;
+    transition: background 0.2s ease;
+}
+
+.group-cost-row {
+    grid-template-columns: 2fr 1fr 1.5fr 1.5fr;
+    gap: 1rem;
+}
+
+.person-cost-row {
+    grid-template-columns: 2fr 0.8fr 1.2fr 1.2fr 1.2fr;
+    gap: 1rem;
+}
+
+.group-cost-row.header,
+.person-cost-row.header {
+    background: #667eea;
+    color: white;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.group-cost-row:not(.header):hover,
+.person-cost-row:not(.header):hover {
+    background: #f0f0f0;
+}
+
+/* Column styling */
+.col-group,
+.col-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.col-people,
+.col-employment {
+    text-align: center;
+    color: #666;
+}
+
+.col-cost,
+.col-salary,
+.col-tax,
+.col-total,
+.col-avg {
+    text-align: right;
+    font-weight: 600;
+}
+
+.col-total {
+    color: #667eea;
+    font-size: 1.05rem;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .cost-grid {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+
+    .group-cost-row,
+    .person-cost-row {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .group-cost-row.header,
+    .person-cost-row.header {
+        display: none;
+    }
+
+    .group-cost-row > div,
+    .person-cost-row > div {
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .group-cost-row > div::before,
+    .person-cost-row > div::before {
+        content: attr(class);
+        font-weight: 600;
+        color: #666;
+        text-transform: capitalize;
+    }
+
+    .col-group::before { content: 'Grupp: '; }
+    .col-people::before { content: 'Personer: '; }
+    .col-cost::before { content: 'Total: '; }
+    .col-avg::before { content: 'Snitt: '; }
+    .col-name::before { content: 'Namn: '; }
+    .col-employment::before { content: 'Anställning: '; }
+    .col-salary::before { content: 'Månadslön: '; }
+    .col-tax::before { content: 'Arb.avg: '; }
+    .col-total::before { content: 'Total: '; }
+}
+
+@media (max-width: 768px) {
+    .summary-container {
+        padding: 1rem;
+    }
+
+    .summary-header {
+        padding: 1.5rem;
+    }
+
+    .summary-header h1 {
+        font-size: 1.6rem;
+    }
+
+    .summary-section {
+        padding: 1.5rem;
+    }
+
+    .summary-section h2 {
+        font-size: 1.3rem;
+    }
+
+    .cost-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .cost-card .card-value {
+        font-size: 1.6rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .summary-container {
+        padding: 0.5rem;
+    }
+
+    .summary-header {
+        padding: 1rem;
+    }
+
+    .summary-header h1 {
+        font-size: 1.3rem;
+    }
+
+    .summary-section {
+        padding: 1rem;
+    }
+
+    .cost-card {
+        padding: 1rem;
+    }
+
+    .cost-card .card-value {
+        font-size: 1.4rem;
+    }
+
+    .group-cost-row,
+    .person-cost-row {
+        padding: 0.75rem;
+    }
+}

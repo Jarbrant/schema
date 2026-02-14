@@ -1,0 +1,346 @@
+/* ========================================================================
+   CALENDAR VIEW — FAS 1.2
+   ======================================================================== */
+
+.calendar-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+.calendar-header {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.calendar-header h1 {
+    font-size: 2.2rem;
+    margin: 0 0 0.5rem 0;
+    color: #333;
+}
+
+.calendar-subtitle {
+    margin: 0;
+    color: #666;
+    font-size: 1rem;
+}
+
+/* Month Selector */
+.month-selector {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 2rem;
+}
+
+.current-month-display {
+    font-size: 1.8rem;
+    margin: 0;
+    color: #667eea;
+    font-weight: 700;
+    flex: 1;
+    text-align: center;
+}
+
+.month-nav-btn {
+    min-width: 150px;
+    white-space: nowrap;
+}
+
+/* Calendar Grid */
+.calendar-grid {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+/* Day Headers */
+.calendar-day-header {
+    font-weight: 700;
+    text-align: center;
+    padding: 1rem 0.5rem;
+    background: #f0f0f0;
+    border-radius: 6px;
+    color: #333;
+    font-size: 0.9rem;
+}
+
+/* Day Cells */
+.calendar-day-cell {
+    min-height: 120px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 0.5rem;
+    background: white;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.calendar-day-cell:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+    transform: translateY(-2px);
+}
+
+.calendar-day-cell.empty {
+    border: none;
+    background: transparent;
+}
+
+.calendar-day-cell.today {
+    border-color: #667eea;
+    border-width: 3px;
+    background: #f0f4ff;
+}
+
+.calendar-day-cell.weekend {
+    background: #fffbf0;
+}
+
+.day-number {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 0.5rem;
+    text-align: right;
+}
+
+.calendar-day-cell.today .day-number {
+    color: #667eea;
+}
+
+/* Day Entries */
+.day-entries {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    overflow-y: auto;
+    max-height: 200px;
+}
+
+.calendar-entry {
+    background: #f9f9f9;
+    border-radius: 4px;
+    padding: 0.5rem;
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border-left: 4px solid #ccc;
+}
+
+.entry-person {
+    font-weight: 600;
+    color: #333;
+}
+
+.entry-time {
+    color: #666;
+    font-size: 0.75rem;
+}
+
+.no-entries {
+    text-align: center;
+    color: #ccc;
+    font-size: 1.5rem;
+    padding: 1rem 0;
+}
+
+/* Status Badges */
+.status-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    align-self: flex-start;
+}
+
+.status-A {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-L {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-SEM {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.status-SJ {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-VAB {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.status-X,
+.status-PERM,
+.status-UTB,
+.status-EXTRA {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+/* Legend */
+.calendar-legend {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem 2rem;
+}
+
+.calendar-legend h3 {
+    margin: 0 0 1rem 0;
+    color: #333;
+    font-size: 1.2rem;
+}
+
+.legend-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legend-badge {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .calendar-grid {
+        gap: 0.5rem;
+        padding: 1rem;
+    }
+
+    .calendar-day-cell {
+        min-height: 100px;
+    }
+
+    .month-selector {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .month-nav-btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .calendar-container {
+        padding: 1rem;
+    }
+
+    .calendar-header {
+        padding: 1.5rem;
+    }
+
+    .calendar-header h1 {
+        font-size: 1.6rem;
+    }
+
+    .current-month-display {
+        font-size: 1.4rem;
+    }
+
+    .calendar-day-header {
+        font-size: 0.75rem;
+        padding: 0.5rem 0.25rem;
+    }
+
+    .calendar-day-cell {
+        min-height: 80px;
+        padding: 0.25rem;
+    }
+
+    .day-number {
+        font-size: 1rem;
+    }
+
+    .calendar-entry {
+        font-size: 0.7rem;
+        padding: 0.3rem;
+    }
+
+    .legend-items {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .calendar-header h1 {
+        font-size: 1.3rem;
+    }
+
+    .current-month-display {
+        font-size: 1.1rem;
+    }
+
+    .calendar-grid {
+        gap: 0.25rem;
+        padding: 0.5rem;
+    }
+
+    .calendar-day-header {
+        font-size: 0.6rem;
+        padding: 0.3rem 0.1rem;
+    }
+
+    .calendar-day-cell {
+        min-height: 60px;
+    }
+
+    .day-number {
+        font-size: 0.9rem;
+    }
+
+    .day-entries {
+        gap: 0.25rem;
+        max-height: 100px;
+    }
+
+    .calendar-entry {
+        font-size: 0.6rem;
+        padding: 0.2rem;
+    }
+
+    .entry-time {
+        font-size: 0.6rem;
+    }
+}
