@@ -9,6 +9,46 @@
  * - Navigering mellan månader
  */
 
+/**
+ * Render empty calendar with helpful message
+ */
+function renderEmptyCalendar(container, message) {
+    // Clear container
+    while (container.firstChild) {
+        container.removeChild(container.firstChild);
+    }
+
+    const emptyContainer = document.createElement('div');
+    emptyContainer.className = 'calendar-container';
+
+    const emptyCard = document.createElement('div');
+    emptyCard.className = 'calendar-empty-state';
+    emptyCard.style.cssText = 'background: white; border-radius: 12px; padding: 3rem; text-align: center; margin: 2rem auto; max-width: 600px;';
+
+    const icon = document.createElement('div');
+    icon.style.cssText = 'font-size: 4rem; margin-bottom: 1rem;';
+    icon.textContent = '📅';
+
+    const title = document.createElement('h2');
+    title.textContent = 'Kalender 2026';
+    title.style.cssText = 'margin: 0 0 1rem 0; color: #333;';
+
+    const messageEl = document.createElement('p');
+    messageEl.textContent = message;
+    messageEl.style.cssText = 'color: #666; margin: 0 0 2rem 0; line-height: 1.6;';
+
+    const helpText = document.createElement('p');
+    helpText.style.cssText = 'color: #999; font-size: 0.9rem; margin: 2rem 0 0 0;';
+    helpText.textContent = '💡 Gå till Kontroll → Schemaläggning för att generera ett schema.';
+
+    emptyCard.appendChild(icon);
+    emptyCard.appendChild(title);
+    emptyCard.appendChild(messageEl);
+    emptyCard.appendChild(helpText);
+    emptyContainer.appendChild(emptyCard);
+    container.appendChild(emptyContainer);
+}
+
 export function renderCalendar(container, ctx) {
     const store = ctx?.store;
     if (!store) {
@@ -18,9 +58,15 @@ export function renderCalendar(container, ctx) {
 
     const state = store.getState();
 
+    // Validate schedule data exists and is correct year
     if (!state.schedule || state.schedule.year !== 2026) {
-        container.innerHTML =
-            '<div class="view-container"><h2>Kalender</h2><p class="error-text">Schedule är korrupt eller fel år. Kan inte visa kalender.</p></div>';
+        renderEmptyCalendar(container, 'Schedule är inte initierat eller fel år. Skapa schema först.');
+        return;
+    }
+
+    // Validate months array exists and has correct length
+    if (!state.schedule.months || !Array.isArray(state.schedule.months) || state.schedule.months.length !== 12) {
+        renderEmptyCalendar(container, 'Schemaläggningsdata saknas eller är ofullständig. Gå till Kontroll → Schemaläggning för att generera schema.');
         return;
     }
 
