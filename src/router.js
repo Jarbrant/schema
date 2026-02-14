@@ -17,7 +17,7 @@ import { renderExport } from './views/export.js';
 import { renderRules } from './views/rules.js';
 import { renderShifts } from './views/shifts.js';
 import { renderGroups } from './views/groups.js';
-import { renderLogin, isLoggedIn } from './views/login.js';
+import { renderLogin, isLoggedIn } from './views/login-pin.js'; // FAS 1: PIN-login
 import { renderError, renderNavbar } from './ui.js';
 import { reportError } from './diagnostics.js';
 
