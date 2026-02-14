@@ -1,5 +1,5 @@
 /*
- * PERSONAL.JS — Personal Management with Tabs (COMPLETE v5)
+ * PERSONAL.JS — Personal Management with Tabs (COMPLETE v6 — BUGFIXED)
  * 
  * TAB 1: ➕ Lägg till ny personal (formulär)
  * TAB 2: 🔍 Hantera personal (sök + redigera)
@@ -865,7 +865,9 @@ function addPerson(form, errorDiv, store, ctx, mainContainer) {
         console.log('✓ Person tillagd:', newPerson);
         showSuccess('✓ Personal tillagd');
         form.reset();
-        renderPersonal(mainContainer.closest('[class*="container"]'), ctx);
+        
+        // ✅ BUGFIX: Använd mainContainer direkt
+        renderPersonal(mainContainer, ctx);
 
     } catch (err) {
         console.error('❌ Error adding person:', err);
@@ -908,7 +910,9 @@ function editPerson(person, store, ctx, mainContainer) {
         store.setState({ ...state, people: updatedPeople });
         console.log('✓ Person uppdaterad');
         showSuccess('✓ Personal uppdaterad');
-        renderPersonal(mainContainer.closest('[class*="container"]'), ctx);
+        
+        // ✅ BUGFIX: Använd mainContainer direkt
+        renderPersonal(mainContainer, ctx);
 
     } catch (err) {
         console.error('❌ Error editing person:', err);
@@ -931,7 +935,9 @@ function deletePerson(personId, store, ctx, mainContainer) {
 
         console.log('✓ Person borttagen');
         showSuccess('✓ Personal borttagen');
-        renderPersonal(mainContainer.closest('[class*="container"]'), ctx);
+        
+        // ✅ BUGFIX: Använd mainContainer direkt
+        renderPersonal(mainContainer, ctx);
 
     } catch (err) {
         console.error('❌ Error deleting person:', err);
