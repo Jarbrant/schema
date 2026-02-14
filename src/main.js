@@ -18,7 +18,7 @@
  */
 
 import { initRouter } from './router.js';
-import { createStore } from './app.js';
+import store from './store.js';
 import { diagnostics } from './diagnostics.js';
 import { renderError } from './ui.js';
 
@@ -38,39 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // 2. Create app store (state management)
-        const store = createStore({
-            // Authentication
-            user: null,
-            isLoggedIn: false,
-            
-            // Data: People & Groups
-            people: [],
-            groups: [],
-            
-            // Data: Shifts & Scheduling
-            shifts: [],
-            passes: [],
-            demands: [],
-            generatedShifts: [],  // Föreslagna shifts från schemagenerator
-            lastGenerationParams: null,  // Senaste generator-parametrar
-            
-            // Schedule configuration
-            schedule: {
-                year: new Date().getFullYear(),
-                startDate: null,
-                endDate: null
-            },
-            
-            // App metadata
-            meta: {
-                appVersion: '1.0.0',
-                appName: 'Schema-Program',
-                lastUpdated: new Date().toISOString()
-            }
-        });
-        
-        console.log('✓ Store skapad');
+        // 2. Use app store from store.js (state management)
+        console.log('✓ Store initialiserad från store.js');
         console.log('✓ Initial state:', store.getState());
         
         // 3. Get DOM elements
