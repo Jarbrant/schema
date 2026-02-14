@@ -1,16 +1,15 @@
 /*
- * PERSONAL.JS — Personal Management with Tabs (COMPLETE v6 — BUGFIXED)
- * 
- * TAB 1: ➕ Lägg till ny personal (formulär)
- * TAB 2: 🔍 Hantera personal (sök + redigera)
+ * PERSONAL.JS — Personal Management with HR System (COMPLETE v4)
  * 
  * Features:
  * - Add/Edit/Delete person
  * - Sector selection (Private/Municipal)
  * - Start date → Auto vacation calc
- * - Search & filter
+ * - Employment record with dates
+ * - Salary, saved vacation days, saved leave days
+ * - Employment degree (%), workdays per week
  * - Multi-group assignment
- * - Availability calendar
+ * - Availability calendar (Mon-Sun)
  */
 
 import { showSuccess, showWarning } from '../ui.js';
@@ -18,6 +17,7 @@ import { reportError } from '../diagnostics.js';
 import {
     getVacationDaysPerYear,
     calculateYearsEmployed,
+    getPersonVacationYearInfo,
     SECTOR_TYPES
 } from '../hr-rules.js';
 
@@ -51,11 +51,10 @@ export function renderPersonal(container, ctx) {
         title.textContent = '👤 Personal';
 
         const subtitle = document.createElement('p');
-        subtitle.textContent = 'Lägg till eller hantera personal, semesterdagar och löner';
+        subtitle.textContent = 'Hantera personal, semesterdagar, löner, sektor och tillgänglighet';
 
         header.appendChild(title);
         header.appendChild(subtitle);
-        viewContainer.appendChild(header);
 
         // === STATUS ROW ===
         const statusRow = document.createElement('div');
@@ -75,123 +74,24 @@ export function renderPersonal(container, ctx) {
         statusItem.appendChild(statusLabel);
         statusItem.appendChild(statusValue);
         statusRow.appendChild(statusItem);
-        viewContainer.appendChild(statusRow);
 
-        // === TAB NAVIGATION ===
-        const tabNav = document.createElement('div');
-        tabNav.className = 'tab-navigation';
-        tabNav.style.display = 'flex';
-        tabNav.style.gap = '0.5rem';
-        tabNav.style.marginTop = '2rem';
-        tabNav.style.marginBottom = '0';
-        tabNav.style.borderBottom = '2px solid #eee';
+        // === FORM SECTION ===
+        const formSection = document.createElement('div');
+        formSection.className = 'section-header';
+        formSection.style.marginTop = '2rem';
 
-        // Tab 1: Add
-        const addTab = document.createElement('button');
-        addTab.className = 'tab-button active';
-        addTab.textContent = '➕ Lägg till ny';
-        addTab.style.padding = '1rem 1.5rem';
-        addTab.style.border = 'none';
-        addTab.style.background = 'transparent';
-        addTab.style.cursor = 'pointer';
-        addTab.style.fontWeight = '600';
-        addTab.style.color = '#667eea';
-        addTab.style.borderBottom = '3px solid #667eea';
-        addTab.style.transition = 'all 0.2s';
-        addTab.dataset.tab = 'add';
+        const formTitle = document.createElement('h2');
+        formTitle.textContent = '➕ Lägg till ny personal';
 
-        // Tab 2: Search
-        const searchTab = document.createElement('button');
-        searchTab.className = 'tab-button';
-        searchTab.textContent = '🔍 Hantera personal';
-        searchTab.style.padding = '1rem 1.5rem';
-        searchTab.style.border = 'none';
-        searchTab.style.background = 'transparent';
-        searchTab.style.cursor = 'pointer';
-        searchTab.style.fontWeight = '600';
-        searchTab.style.color = '#999';
-        searchTab.style.borderBottom = '3px solid transparent';
-        searchTab.style.transition = 'all 0.2s';
-        searchTab.dataset.tab = 'search';
+        formSection.appendChild(formTitle);
 
-        tabNav.appendChild(addTab);
-        tabNav.appendChild(searchTab);
-        viewContainer.appendChild(tabNav);
+        // Form
+        const form = document.createElement('form');
+        form.id = 'personal-form';
+        form.style.background = '#f9f9f9';
+        form.style.padding = '1.5rem';
+        form.style.borderRadius = '8px';
 
-        // === TAB CONTENT ===
-        const tabContent = document.createElement('div');
-        tabContent.className = 'tab-content';
-
-        // --- ADD TAB ---
-        const addPanel = document.createElement('div');
-        addPanel.id = 'tab-add';
-        addPanel.className = 'tab-panel active';
-        addPanel.style.padding = '2rem';
-        addPanel.style.background = '#f9f9f9';
-        addPanel.style.borderRadius = '0 0 8px 8px';
-
-        renderAddForm(addPanel, store, ctx, container, groups);
-        tabContent.appendChild(addPanel);
-
-        // --- SEARCH TAB ---
-        const searchPanel = document.createElement('div');
-        searchPanel.id = 'tab-search';
-        searchPanel.className = 'tab-panel';
-        searchPanel.style.padding = '2rem';
-        searchPanel.style.background = '#f9f9f9';
-        searchPanel.style.borderRadius = '0 0 8px 8px';
-        searchPanel.style.display = 'none';
-
-        renderSearchPanel(searchPanel, store, ctx, container, groups, people);
-        tabContent.appendChild(searchPanel);
-
-        viewContainer.appendChild(tabContent);
-
-        // === TAB SWITCHING ===
-        addTab.onclick = () => switchTab('add', addTab, searchTab, addPanel, searchPanel);
-        searchTab.onclick = () => switchTab('search', addTab, searchTab, addPanel, searchPanel);
-
-        container.appendChild(viewContainer);
-
-        console.log('✓ Personal view rendered with tabs');
-
-    } catch (err) {
-        console.error('❌ Error rendering personal:', err);
-        reportError(
-            'PERSONAL_RENDER_ERROR',
-            'PERSONAL_VIEW',
-            'src/views/personal.js',
-            err.message
-        );
-    }
-}
-
-/**
- * Switch between tabs
- */
-function switchTab(tabName, addTab, searchTab, addPanel, searchPanel) {
-    if (tabName === 'add') {
-        addTab.style.color = '#667eea';
-        addTab.style.borderBottomColor = '#667eea';
-        searchTab.style.color = '#999';
-        searchTab.style.borderBottomColor = 'transparent';
-        addPanel.style.display = 'block';
-        searchPanel.style.display = 'none';
-    } else {
-        searchTab.style.color = '#667eea';
-        searchTab.style.borderBottomColor = '#667eea';
-        addTab.style.color = '#999';
-        addTab.style.borderBottomColor = 'transparent';
-        searchPanel.style.display = 'block';
-        addPanel.style.display = 'none';
-    }
-}
-
-/**
- * Render ADD FORM tab
- */
-function renderAddForm(container, store, ctx, mainContainer, groups) {
-    try {
         // === BASIC INFO ===
         const basicInfo = document.createElement('fieldset');
         basicInfo.style.border = 'none';
@@ -215,7 +115,7 @@ function renderAddForm(container, store, ctx, mainContainer, groups) {
         const phoneGroup = createFormGroup('personal-phone', 'Telefon', 'tel', '+46 70 123 45 67');
         basicInfo.appendChild(phoneGroup);
 
-        container.appendChild(basicInfo);
+        form.appendChild(basicInfo);
 
         // === EMPLOYMENT INFO ===
         const employmentInfo = document.createElement('fieldset');
@@ -248,7 +148,7 @@ function renderAddForm(container, store, ctx, mainContainer, groups) {
         workdaysInput.value = '5';
         employmentInfo.appendChild(workdaysGroup);
 
-        container.appendChild(employmentInfo);
+        form.appendChild(employmentInfo);
 
         // === SECTOR SELECTION ===
         const sectorInfo = document.createElement('fieldset');
@@ -285,6 +185,7 @@ function renderAddForm(container, store, ctx, mainContainer, groups) {
         privateRadio.name = 'sector';
         privateRadio.value = 'private';
         privateRadio.checked = true;
+        privateRadio.id = 'sector-private';
         privateRadio.style.cursor = 'pointer';
 
         const privateSpan = document.createElement('span');
@@ -325,6 +226,7 @@ function renderAddForm(container, store, ctx, mainContainer, groups) {
         municipalRadio.type = 'radio';
         municipalRadio.name = 'sector';
         municipalRadio.value = 'municipal';
+        municipalRadio.id = 'sector-municipal';
         municipalRadio.style.cursor = 'pointer';
 
         const municipalSpan = document.createElement('span');
@@ -351,7 +253,7 @@ function renderAddForm(container, store, ctx, mainContainer, groups) {
         sectorContainer.appendChild(municipalLabel);
 
         sectorInfo.appendChild(sectorContainer);
-        container.appendChild(sectorInfo);
+        form.appendChild(sectorInfo);
 
         // === SALARY & VACATION ===
         const salaryInfo = document.createElement('fieldset');
@@ -376,7 +278,7 @@ function renderAddForm(container, store, ctx, mainContainer, groups) {
         const savedLeaveGroup = createFormGroup('personal-saved-leave', 'Sparade ledighetsdagar', 'number', '0');
         salaryInfo.appendChild(savedLeaveGroup);
 
-        container.appendChild(salaryInfo);
+        form.appendChild(salaryInfo);
 
         // === GROUPS ===
         const groupsInfo = document.createElement('fieldset');
@@ -440,7 +342,7 @@ function renderAddForm(container, store, ctx, mainContainer, groups) {
         }
 
         groupsInfo.appendChild(groupsContainer);
-        container.appendChild(groupsInfo);
+        form.appendChild(groupsInfo);
 
         // === AVAILABILITY ===
         const availabilityInfo = document.createElement('fieldset');
@@ -501,7 +403,7 @@ function renderAddForm(container, store, ctx, mainContainer, groups) {
         });
 
         availabilityInfo.appendChild(availabilityContainer);
-        container.appendChild(availabilityInfo);
+        form.appendChild(availabilityInfo);
 
         // === BUTTONS ===
         const buttonGroup = document.createElement('div');
@@ -521,237 +423,68 @@ function renderAddForm(container, store, ctx, mainContainer, groups) {
 
         buttonGroup.appendChild(submitBtn);
         buttonGroup.appendChild(resetBtn);
+        form.appendChild(buttonGroup);
 
         // Error message
         const errorDiv = document.createElement('div');
         errorDiv.id = 'personal-error';
         errorDiv.style.marginTop = '1rem';
-
-        // Create form wrapper
-        const form = document.createElement('form');
-        form.id = 'personal-form';
-
-        form.appendChild(basicInfo);
-        form.appendChild(employmentInfo);
-        form.appendChild(sectorInfo);
-        form.appendChild(salaryInfo);
-        form.appendChild(groupsInfo);
-        form.appendChild(availabilityInfo);
-        form.appendChild(buttonGroup);
         form.appendChild(errorDiv);
-
-        container.appendChild(form);
 
         // Setup form listener
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            addPerson(form, errorDiv, store, ctx, mainContainer);
+            addPerson(form, errorDiv, store, ctx, container);
         });
 
-    } catch (err) {
-        console.error('❌ Error rendering add form:', err);
-        throw err;
-    }
-}
+        // === PEOPLE LIST ===
+        const listSection = document.createElement('div');
+        listSection.className = 'section-header';
+        listSection.style.marginTop = '2rem';
 
-/**
- * Render SEARCH/MANAGE tab
- */
-function renderSearchPanel(container, store, ctx, mainContainer, groups, people) {
-    try {
-        // === SEARCH BAR ===
-        const searchDiv = document.createElement('div');
-        searchDiv.style.marginBottom = '1.5rem';
-        searchDiv.style.padding = '1rem';
-        searchDiv.style.background = '#fff';
-        searchDiv.style.borderRadius = '6px';
+        const listTitle = document.createElement('h2');
+        listTitle.textContent = `👥 Personal (${people.length})`;
+        listSection.appendChild(listTitle);
 
-        const searchLabel = document.createElement('label');
-        searchLabel.textContent = 'Sök personal:';
-        searchLabel.style.display = 'block';
-        searchLabel.style.marginBottom = '0.5rem';
-        searchLabel.style.fontWeight = '600';
+        // People list
+        const list = document.createElement('div');
+        list.id = 'personal-list';
+        list.style.marginTop = '1rem';
 
-        const searchInput = document.createElement('input');
-        searchInput.type = 'text';
-        searchInput.id = 'personal-search';
-        searchInput.placeholder = 'Skriv namn eller e-post...';
-        searchInput.style.width = '100%';
-        searchInput.style.padding = '0.75rem';
-        searchInput.style.border = '1px solid #ddd';
-        searchInput.style.borderRadius = '6px';
-        searchInput.style.fontSize = '1rem';
+        if (people.length === 0) {
+            const emptyMsg = document.createElement('p');
+            emptyMsg.textContent = 'Ingen personal.';
+            emptyMsg.style.color = '#999';
+            emptyMsg.style.fontStyle = 'italic';
+            list.appendChild(emptyMsg);
+        } else {
+            people.forEach(person => {
+                const card = createPersonCard(person, store, ctx, container, groups);
+                list.appendChild(card);
+            });
+        }
 
-        searchDiv.appendChild(searchLabel);
-        searchDiv.appendChild(searchInput);
-        container.appendChild(searchDiv);
+        // Assemble page
+        viewContainer.appendChild(header);
+        viewContainer.appendChild(statusRow);
+        viewContainer.appendChild(formSection);
+        viewContainer.appendChild(form);
+        viewContainer.appendChild(listSection);
+        viewContainer.appendChild(list);
 
-        // === RESULTS AREA ===
-        const resultsDiv = document.createElement('div');
-        resultsDiv.id = 'personal-results';
+        container.appendChild(viewContainer);
 
-        container.appendChild(resultsDiv);
-
-        // Initial render
-        renderPersonList(resultsDiv, people, groups, store, ctx, mainContainer, '');
-
-        // Search listener
-        searchInput.addEventListener('input', (e) => {
-            const query = (e.target.value || '').toLowerCase();
-            renderPersonList(resultsDiv, people, groups, store, ctx, mainContainer, query);
-        });
+        console.log('✓ Personal view rendered');
 
     } catch (err) {
-        console.error('❌ Error rendering search panel:', err);
-        throw err;
+        console.error('❌ Error rendering personal:', err);
+        reportError(
+            'PERSONAL_RENDER_ERROR',
+            'PERSONAL_VIEW',
+            'src/views/personal.js',
+            err.message
+        );
     }
-}
-
-/**
- * Render person list with search filter
- */
-function renderPersonList(container, people, groups, store, ctx, mainContainer, searchQuery) {
-    while (container.firstChild) {
-        container.removeChild(container.firstChild);
-    }
-
-    // Filter people based on search
-    const filtered = people.filter(p => {
-        if (!searchQuery) return true;
-        const name = (p.name || '').toLowerCase();
-        const email = (p.email || '').toLowerCase();
-        return name.includes(searchQuery) || email.includes(searchQuery);
-    });
-
-    if (filtered.length === 0) {
-        const emptyMsg = document.createElement('p');
-        emptyMsg.textContent = searchQuery 
-            ? `Ingen personal hittad med "${searchQuery}"`
-            : 'Ingen personal definierad';
-        emptyMsg.style.color = '#999';
-        emptyMsg.style.fontStyle = 'italic';
-        emptyMsg.style.padding = '2rem 1rem';
-        emptyMsg.style.textAlign = 'center';
-        container.appendChild(emptyMsg);
-        return;
-    }
-
-    // Create table
-    const table = document.createElement('table');
-    table.style.width = '100%';
-    table.style.borderCollapse = 'collapse';
-    table.style.background = '#fff';
-    table.style.borderRadius = '6px';
-    table.style.overflow = 'hidden';
-
-    // Table head
-    const thead = document.createElement('thead');
-    const headRow = document.createElement('tr');
-    headRow.style.background = '#f0f0f0';
-    headRow.style.borderBottom = '2px solid #ddd';
-
-    const headers = ['Namn', 'E-post', 'Sektor', 'År', 'Tjänstgöringsgrad', 'Åtgärder'];
-    headers.forEach(header => {
-        const th = document.createElement('th');
-        th.textContent = header;
-        th.style.padding = '1rem';
-        th.style.textAlign = 'left';
-        th.style.fontWeight = '600';
-        th.style.color = '#333';
-        headRow.appendChild(th);
-    });
-    thead.appendChild(headRow);
-    table.appendChild(thead);
-
-    // Table body
-    const tbody = document.createElement('tbody');
-    filtered.forEach((person, index) => {
-        const row = document.createElement('tr');
-        row.style.borderBottom = '1px solid #eee';
-        if (index % 2 === 0) row.style.background = '#fafafa';
-
-        // Name
-        const nameCell = document.createElement('td');
-        nameCell.textContent = person.name;
-        nameCell.style.padding = '1rem';
-        row.appendChild(nameCell);
-
-        // Email
-        const emailCell = document.createElement('td');
-        emailCell.textContent = person.email;
-        emailCell.style.padding = '1rem';
-        emailCell.style.fontSize = '0.9rem';
-        emailCell.style.color = '#666';
-        row.appendChild(emailCell);
-
-        // Sector
-        const sectorCell = document.createElement('td');
-        const sectorName = person.sector === 'municipal' ? 'Kommunal' : 'Privat';
-        sectorCell.textContent = sectorName;
-        sectorCell.style.padding = '1rem';
-        sectorCell.style.fontSize = '0.9rem';
-        row.appendChild(sectorCell);
-
-        // Years
-        const yearsEmployed = calculateYearsEmployed(person.startDate, person.sector || 'private');
-        const yearsCell = document.createElement('td');
-        yearsCell.textContent = yearsEmployed;
-        yearsCell.style.padding = '1rem';
-        yearsCell.style.fontSize = '0.9rem';
-        row.appendChild(yearsCell);
-
-        // Degree
-        const degreeCell = document.createElement('td');
-        degreeCell.textContent = `${person.degree || 100}%`;
-        degreeCell.style.padding = '1rem';
-        degreeCell.style.fontSize = '0.9rem';
-        row.appendChild(degreeCell);
-
-        // Actions
-        const actionsCell = document.createElement('td');
-        actionsCell.style.padding = '1rem';
-        actionsCell.style.whiteSpace = 'nowrap';
-
-        const editBtn = document.createElement('button');
-        editBtn.textContent = '✏️ Redigera';
-        editBtn.className = 'btn btn-secondary';
-        editBtn.style.padding = '0.5rem 0.75rem';
-        editBtn.style.fontSize = '0.85rem';
-        editBtn.style.marginRight = '0.5rem';
-        editBtn.onclick = (e) => {
-            e.preventDefault();
-            editPerson(person, store, ctx, mainContainer);
-        };
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = '🗑️ Ta bort';
-        deleteBtn.className = 'btn btn-secondary';
-        deleteBtn.style.padding = '0.5rem 0.75rem';
-        deleteBtn.style.fontSize = '0.85rem';
-        deleteBtn.style.background = '#f8d7da';
-        deleteBtn.style.color = '#721c24';
-        deleteBtn.onclick = (e) => {
-            e.preventDefault();
-            deletePerson(person.id, store, ctx, mainContainer);
-        };
-
-        actionsCell.appendChild(editBtn);
-        actionsCell.appendChild(deleteBtn);
-        row.appendChild(actionsCell);
-
-        // Hover effect
-        row.onmouseover = () => {
-            row.style.background = '#f0f4ff';
-        };
-        row.onmouseout = () => {
-            row.style.background = index % 2 === 0 ? '#fafafa' : '#fff';
-        };
-
-        tbody.appendChild(row);
-    });
-
-    table.appendChild(tbody);
-    container.appendChild(table);
 }
 
 /**
@@ -778,6 +511,136 @@ function createFormGroup(id, label, type, placeholder) {
 }
 
 /**
+ * Create person card with all info including sector
+ */
+function createPersonCard(person, store, ctx, container, groups) {
+    const card = document.createElement('div');
+    card.style.background = '#fff';
+    card.style.border = '1px solid #ddd';
+    card.style.borderRadius = '8px';
+    card.style.padding = '1.5rem';
+    card.style.marginBottom = '1rem';
+
+    // Header
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'start';
+    header.style.marginBottom = '1rem';
+    header.style.paddingBottom = '1rem';
+    header.style.borderBottom = '2px solid #f0f0f0';
+
+    const name = document.createElement('h3');
+    name.style.margin = '0';
+    name.textContent = person.name;
+
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '0.5rem';
+
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✏️ Redigera';
+    editBtn.className = 'btn btn-secondary';
+    editBtn.style.padding = '0.5rem 0.75rem';
+    editBtn.style.fontSize = '0.85rem';
+    editBtn.onclick = (e) => {
+        e.preventDefault();
+        editPerson(person, store, ctx, container);
+    };
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = '🗑️ Ta bort';
+    deleteBtn.className = 'btn btn-secondary';
+    deleteBtn.style.padding = '0.5rem 0.75rem';
+    deleteBtn.style.fontSize = '0.85rem';
+    deleteBtn.style.background = '#f8d7da';
+    deleteBtn.style.color = '#721c24';
+    deleteBtn.onclick = (e) => {
+        e.preventDefault();
+        deletePerson(person.id, store, ctx, container);
+    };
+
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+
+    header.appendChild(name);
+    header.appendChild(actions);
+    card.appendChild(header);
+
+    // Content grid
+    const content = document.createElement('div');
+    content.style.display = 'grid';
+    content.style.gridTemplateColumns = 'repeat(auto-fit, minmax(250px, 1fr))';
+    content.style.gap = '1.5rem';
+
+    // Basic info
+    const basicSection = document.createElement('div');
+    basicSection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Kontakt</h4>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>E-post:</strong> ${person.email}</p>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>Telefon:</strong> ${person.phone || '-'}</p>
+    `;
+    content.appendChild(basicSection);
+
+    // Employment info
+    const employmentSection = document.createElement('div');
+    const yearsEmployed = calculateYearsEmployed(person.startDate, person.sector || 'private');
+    const vacationDays = getVacationDaysPerYear(yearsEmployed, person.degree || 100, person.sector || 'private');
+
+    employmentSection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Anställning</h4>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Startdatum:</strong> ${formatDate(person.startDate)}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>År:</strong> ${yearsEmployed}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Tjänstgöringsgrad:</strong> ${person.degree || 100}%</p>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>Arbetsdagar/vecka:</strong> ${person.workdaysPerWeek || 5}</p>
+    `;
+    content.appendChild(employmentSection);
+
+    // Sector & Vacation
+    const salarySection = document.createElement('div');
+    const sectorName = person.sector === 'municipal' ? 'Kommunal' : 'Privat';
+    salarySection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Löner & Semesterdagar</h4>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sektor:</strong> ${sectorName}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Månadslön:</strong> ${(person.salary || 0).toLocaleString('sv')} SEK</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sparade semesterdagar:</strong> ${person.savedVacationDays || 0}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Nya semesterdagar:</strong> ${vacationDays}</p>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>Sparade ledighetsdagar:</strong> ${person.savedLeaveDays || 0}</p>
+    `;
+    content.appendChild(salarySection);
+
+    // Groups
+    const groupsSection = document.createElement('div');
+    const personGroups = (person.groupIds || [])
+        .map(gid => groups.find(g => g.id === gid)?.name)
+        .filter(Boolean)
+        .join(', ') || '-';
+
+    groupsSection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Arbetgrupper</h4>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>${personGroups}</strong></p>
+    `;
+    content.appendChild(groupsSection);
+
+    // Availability
+    const availabilitySection = document.createElement('div');
+    const availableDays = (person.availability || [])
+        .map((available, i) => available ? DAYS_OF_WEEK[i] : null)
+        .filter(Boolean)
+        .join(', ') || '-';
+
+    availabilitySection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Tillgänglig</h4>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>${availableDays}</strong></p>
+    `;
+    content.appendChild(availabilitySection);
+
+    card.appendChild(content);
+
+    return card;
+}
+
+/**
  * Format date to Swedish format
  */
 function formatDate(dateStr) {
@@ -792,7 +655,7 @@ function formatDate(dateStr) {
 /**
  * Add new person
  */
-function addPerson(form, errorDiv, store, ctx, mainContainer) {
+function addPerson(form, errorDiv, store, ctx, container) {
     try {
         while (errorDiv.firstChild) {
             errorDiv.removeChild(errorDiv.firstChild);
@@ -865,9 +728,7 @@ function addPerson(form, errorDiv, store, ctx, mainContainer) {
         console.log('✓ Person tillagd:', newPerson);
         showSuccess('✓ Personal tillagd');
         form.reset();
-        
-        // ✅ BUGFIX: Använd mainContainer direkt
-        renderPersonal(mainContainer, ctx);
+        renderPersonal(container.closest('[class*="container"]'), ctx);
 
     } catch (err) {
         console.error('❌ Error adding person:', err);
@@ -879,7 +740,7 @@ function addPerson(form, errorDiv, store, ctx, mainContainer) {
 /**
  * Edit person
  */
-function editPerson(person, store, ctx, mainContainer) {
+function editPerson(person, store, ctx, container) {
     try {
         console.log('✏️ Redigerar person:', person.id);
         const newName = prompt('Namn:', person.name);
@@ -910,9 +771,7 @@ function editPerson(person, store, ctx, mainContainer) {
         store.setState({ ...state, people: updatedPeople });
         console.log('✓ Person uppdaterad');
         showSuccess('✓ Personal uppdaterad');
-        
-        // ✅ BUGFIX: Använd mainContainer direkt
-        renderPersonal(mainContainer, ctx);
+        renderPersonal(container.closest('[class*="container"]'), ctx);
 
     } catch (err) {
         console.error('❌ Error editing person:', err);
@@ -923,7 +782,7 @@ function editPerson(person, store, ctx, mainContainer) {
 /**
  * Delete person
  */
-function deletePerson(personId, store, ctx, mainContainer) {
+function deletePerson(personId, store, ctx, container) {
     try {
         if (!confirm('Är du säker på att du vill ta bort denna person?')) return;
 
@@ -935,9 +794,7 @@ function deletePerson(personId, store, ctx, mainContainer) {
 
         console.log('✓ Person borttagen');
         showSuccess('✓ Personal borttagen');
-        
-        // ✅ BUGFIX: Använd mainContainer direkt
-        renderPersonal(mainContainer, ctx);
+        renderPersonal(container.closest('[class*="container"]'), ctx);
 
     } catch (err) {
         console.error('❌ Error deleting person:', err);
