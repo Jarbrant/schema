@@ -100,6 +100,35 @@
     color: #667eea;
 }
 
+/* Cost Widget in Status Row */
+.status-item.cost-widget {
+    grid-column: 1 / -1;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    color: white;
+    margin-top: 0.5rem;
+}
+
+.status-item.cost-widget .status-label {
+    color: white;
+    font-size: 1rem;
+}
+
+.status-item.cost-widget .status-value.cost-value {
+    color: white;
+    font-size: 2rem;
+    margin: 0.5rem 0;
+}
+
+.cost-breakdown {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.9);
+    margin-top: 0.25rem;
+}
+
 /* Sections */
 .control-sections {
     display: flex;

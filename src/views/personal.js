@@ -10,6 +10,8 @@
  * - Employment degree (%), workdays per week
  * - Multi-group assignment
  * - Availability calendar (Mon-Sun)
+ * 
+ * FAS 3.3: Cost display added
  */
 
 import { showSuccess, showWarning } from '../ui.js';
@@ -20,6 +22,7 @@ import {
     getPersonVacationYearInfo,
     SECTOR_TYPES
 } from '../hr-rules.js';
+import { calculatePersonMonthlyCost, formatCurrency, formatCurrencyDetailed } from '../lib/cost-utils.js';
 
 const DAYS_OF_WEEK = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 
@@ -599,13 +602,30 @@ function createPersonCard(person, store, ctx, container, groups) {
     // Sector & Vacation
     const salarySection = document.createElement('div');
     const sectorName = person.sector === 'municipal' ? 'Kommunal' : 'Privat';
+    
+    // Calculate costs
+    const costs = calculatePersonMonthlyCost(person);
+    
     salarySection.innerHTML = `
-        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Löner & Semesterdagar</h4>
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Löner & Kostnader</h4>
         <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sektor:</strong> ${sectorName}</p>
         <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Månadslön:</strong> ${(person.salary || 0).toLocaleString('sv')} SEK</p>
-        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sparade semesterdagar:</strong> ${person.savedVacationDays || 0}</p>
-        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Nya semesterdagar:</strong> ${vacationDays}</p>
-        <p style="margin: 0; font-size: 0.9rem;"><strong>Sparade ledighetsdagar:</strong> ${person.savedLeaveDays || 0}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #667eea;"><strong>💰 Total Månadskostnad:</strong> ${formatCurrency(costs.totalCost)}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #999;">
+            <span style="display: inline-block; margin-left: 1rem;">
+                Lön: ${formatCurrency(costs.adjustedSalary)} + 
+                Arb.avg (${(costs.employerTaxRate * 100).toFixed(1)}%): ${formatCurrency(costs.employerTax)}
+            </span>
+        </p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #666;">
+            <strong>Timlön:</strong> ${formatCurrencyDetailed(costs.hourlyRate)}/h | 
+            <strong>Timkostnad:</strong> ${formatCurrencyDetailed(costs.hourlyCost)}/h
+        </p>
+        <div style="border-top: 1px solid #f0f0f0; padding-top: 0.5rem; margin-top: 0.5rem;">
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sparade semesterdagar:</strong> ${person.savedVacationDays || 0}</p>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Nya semesterdagar:</strong> ${vacationDays}</p>
+            <p style="margin: 0; font-size: 0.9rem;"><strong>Sparade ledighetsdagar:</strong> ${person.savedLeaveDays || 0}</p>
+        </div>
     `;
     content.appendChild(salarySection);
 

@@ -9,9 +9,12 @@
  * 2. Grupp-skift
  * 3. Bemanningsbehov
  * 4. Schemagenerator
+ * 
+ * FAS 3.2: Kostnadswidget tillagd
  */
 
 import { reportError, diagnostics } from '../diagnostics.js';
+import { calculateTotalMonthlyCost, calculateCostPerGroup, formatCurrency } from '../lib/cost-utils.js';
 
 // Import sections
 import { renderGroupFilterSection } from './control/sections/groupFilter.js';
@@ -28,6 +31,10 @@ export function renderControl(container, ctx) {
 
     const state = store.getState();
     const currentTab = ctx?.controlTab || 'control';
+    
+    // Calculate costs for active people
+    const activePeople = (state.people || []).filter(p => p.isActive);
+    const totalCosts = calculateTotalMonthlyCost(activePeople);
 
     const html = `
         <div class="control-container">
@@ -37,7 +44,7 @@ export function renderControl(container, ctx) {
                     Validera schema, hantera bemanningsbehov och generera automatiska scheman
                 </p>
 
-                <!-- Status Row -->
+                <!-- Status Row with Cost Widget -->
                 <div class="control-status">
                     <div class="status-item">
                         <span class="status-label">Schemalägd personal:</span>
@@ -54,6 +61,14 @@ export function renderControl(container, ctx) {
                     <div class="status-item">
                         <span class="status-label">Bemanningsbehov:</span>
                         <span class="status-value">${state.demands?.length || 0}</span>
+                    </div>
+                    <div class="status-item cost-widget">
+                        <span class="status-label">💰 Total Månadskostnad:</span>
+                        <span class="status-value cost-value">${formatCurrency(totalCosts.totalCost)}</span>
+                        <span class="cost-breakdown">
+                            Lön: ${formatCurrency(totalCosts.totalSalary)} + 
+                            Arb.avg: ${formatCurrency(totalCosts.totalEmployerTax)}
+                        </span>
                     </div>
                 </div>
 
