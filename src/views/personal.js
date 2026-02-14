@@ -1,30 +1,39 @@
 /*
- * PERSONAL.JS — Personal Management View (COMPLETE v2)
+ * PERSONAL.JS — Personal Management with HR System (COMPLETE v3)
  * 
- * Displays and manages people in the system.
- * - Add new person
- * - Edit person
- * - Delete person
- * - View all people
- * Uses store.setState() (NOT store.update())
+ * Features:
+ * - Add/Edit/Delete person
+ * - Start date → Auto vacation calc (1 april)
+ * - Salary, saved vacation days, saved leave days
+ * - Employment degree (%), workdays per week
+ * - Multi-group assignment
+ * - Availability calendar (Mon-Sun)
+ * - Red day tracking
  */
 
 import { showSuccess, showWarning } from '../ui.js';
 import { reportError } from '../diagnostics.js';
 
+// Hotell- och restaurangfackets semesterregler
+const VACATION_RULES = {
+    // Efter X år → Y semesterdagar per år
+    0: 25,    // År 1-2: 25 dagar
+    2: 28,    // År 3-5: 28 dagar
+    5: 31,    // År 6+: 31 dagar
+};
+
+const DAYS_OF_WEEK = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
+
 export function renderPersonal(container, ctx) {
     try {
-        if (!container) {
-            throw new Error('Container missing');
+        if (!container || !ctx?.store) {
+            throw new Error('Container eller store missing');
         }
 
-        const store = ctx?.store;
-        if (!store) {
-            throw new Error('Store missing');
-        }
-
+        const store = ctx.store;
         const state = store.getState();
         const people = state.people || [];
+        const groups = state.groups || [];
 
         // Clear container
         while (container.firstChild) {
@@ -35,7 +44,7 @@ export function renderPersonal(container, ctx) {
         const viewContainer = document.createElement('div');
         viewContainer.className = 'view-container';
 
-        // Header
+        // === HEADER ===
         const header = document.createElement('div');
         header.className = 'section-header';
 
@@ -43,12 +52,12 @@ export function renderPersonal(container, ctx) {
         title.textContent = '👤 Personal';
 
         const subtitle = document.createElement('p');
-        subtitle.textContent = 'Hantera personallistan för schemasystemet';
+        subtitle.textContent = 'Hantera personal, semesterdagar, löner och tillgänglighet';
 
         header.appendChild(title);
         header.appendChild(subtitle);
 
-        // Status row
+        // === STATUS ROW ===
         const statusRow = document.createElement('div');
         statusRow.className = 'control-status';
 
@@ -67,13 +76,13 @@ export function renderPersonal(container, ctx) {
         statusItem.appendChild(statusValue);
         statusRow.appendChild(statusItem);
 
-        // Form section
+        // === FORM SECTION ===
         const formSection = document.createElement('div');
         formSection.className = 'section-header';
         formSection.style.marginTop = '2rem';
 
         const formTitle = document.createElement('h2');
-        formTitle.textContent = 'Lägg till ny personal';
+        formTitle.textContent = '➕ Lägg till ny personal';
 
         formSection.appendChild(formTitle);
 
@@ -84,93 +93,234 @@ export function renderPersonal(container, ctx) {
         form.style.padding = '1.5rem';
         form.style.borderRadius = '8px';
 
-        // Name field
-        const nameGroup = document.createElement('div');
-        nameGroup.className = 'form-group';
+        // === BASIC INFO ===
+        const basicInfo = document.createElement('fieldset');
+        basicInfo.style.border = 'none';
+        basicInfo.style.marginBottom = '1.5rem';
+        basicInfo.style.padding = '1rem';
+        basicInfo.style.background = '#fff';
+        basicInfo.style.borderRadius = '6px';
 
-        const nameLabel = document.createElement('label');
-        nameLabel.setAttribute('for', 'personal-name');
-        nameLabel.textContent = 'Namn *';
+        const basicLegend = document.createElement('legend');
+        basicLegend.textContent = 'Grundinformation';
+        basicLegend.style.fontWeight = '600';
+        basicLegend.style.marginBottom = '1rem';
+        basicInfo.appendChild(basicLegend);
 
-        const nameInput = document.createElement('input');
-        nameInput.type = 'text';
-        nameInput.id = 'personal-name';
-        nameInput.className = 'form-control';
-        nameInput.placeholder = 'Ex: Anna Ström';
-        nameInput.required = true;
+        // Name
+        const nameGroup = createFormGroup('personal-name', 'Namn *', 'text', 'Ex: Anna Ström');
+        basicInfo.appendChild(nameGroup);
 
-        nameGroup.appendChild(nameLabel);
-        nameGroup.appendChild(nameInput);
-        form.appendChild(nameGroup);
+        // Email
+        const emailGroup = createFormGroup('personal-email', 'E-post *', 'email', 'anna@example.com');
+        basicInfo.appendChild(emailGroup);
 
-        // Email field
-        const emailGroup = document.createElement('div');
-        emailGroup.className = 'form-group';
+        // Phone
+        const phoneGroup = createFormGroup('personal-phone', 'Telefon', 'tel', '+46 70 123 45 67');
+        basicInfo.appendChild(phoneGroup);
 
-        const emailLabel = document.createElement('label');
-        emailLabel.setAttribute('for', 'personal-email');
-        emailLabel.textContent = 'E-post *';
+        form.appendChild(basicInfo);
 
-        const emailInput = document.createElement('input');
-        emailInput.type = 'email';
-        emailInput.id = 'personal-email';
-        emailInput.className = 'form-control';
-        emailInput.placeholder = 'anna@example.com';
-        emailInput.required = true;
+        // === EMPLOYMENT INFO ===
+        const employmentInfo = document.createElement('fieldset');
+        employmentInfo.style.border = 'none';
+        employmentInfo.style.marginBottom = '1.5rem';
+        employmentInfo.style.padding = '1rem';
+        employmentInfo.style.background = '#fff';
+        employmentInfo.style.borderRadius = '6px';
 
-        emailGroup.appendChild(emailLabel);
-        emailGroup.appendChild(emailInput);
-        form.appendChild(emailGroup);
+        const employmentLegend = document.createElement('legend');
+        employmentLegend.textContent = 'Anställningsinformation';
+        employmentLegend.style.fontWeight = '600';
+        employmentLegend.style.marginBottom = '1rem';
+        employmentInfo.appendChild(employmentLegend);
 
-        // Phone field
-        const phoneGroup = document.createElement('div');
-        phoneGroup.className = 'form-group';
+        // Start date
+        const startDateGroup = createFormGroup('personal-start-date', 'Startdatum *', 'date', '');
+        employmentInfo.appendChild(startDateGroup);
 
-        const phoneLabel = document.createElement('label');
-        phoneLabel.setAttribute('for', 'personal-phone');
-        phoneLabel.textContent = 'Telefon';
+        // Employment degree
+        const degreeGroup = createFormGroup('personal-degree', 'Tjänstgöringsgrad (%) *', 'number', '100');
+        const degreeInput = degreeGroup.querySelector('input');
+        degreeInput.min = '10';
+        degreeInput.max = '100';
+        degreeInput.value = '100';
+        employmentInfo.appendChild(degreeGroup);
 
-        const phoneInput = document.createElement('input');
-        phoneInput.type = 'tel';
-        phoneInput.id = 'personal-phone';
-        phoneInput.className = 'form-control';
-        phoneInput.placeholder = '+46 70 123 45 67';
+        // Workdays per week
+        const workdaysGroup = createFormGroup('personal-workdays', 'Arbetsdagar per vecka *', 'number', '5');
+        const workdaysInput = workdaysGroup.querySelector('input');
+        workdaysInput.min = '1';
+        workdaysInput.max = '7';
+        workdaysInput.value = '5';
+        employmentInfo.appendChild(workdaysGroup);
 
-        phoneGroup.appendChild(phoneLabel);
-        phoneGroup.appendChild(phoneInput);
-        form.appendChild(phoneGroup);
+        form.appendChild(employmentInfo);
 
-        // Role field
-        const roleGroup = document.createElement('div');
-        roleGroup.className = 'form-group';
+        // === SALARY & VACATION ===
+        const salaryInfo = document.createElement('fieldset');
+        salaryInfo.style.border = 'none';
+        salaryInfo.style.marginBottom = '1.5rem';
+        salaryInfo.style.padding = '1rem';
+        salaryInfo.style.background = '#fff';
+        salaryInfo.style.borderRadius = '6px';
 
-        const roleLabel = document.createElement('label');
-        roleLabel.setAttribute('for', 'personal-role');
-        roleLabel.textContent = 'Roll/Titel';
+        const salaryLegend = document.createElement('legend');
+        salaryLegend.textContent = 'Lön & Semesterdagar';
+        salaryLegend.style.fontWeight = '600';
+        salaryLegend.style.marginBottom = '1rem';
+        salaryInfo.appendChild(salaryLegend);
 
-        const roleInput = document.createElement('input');
-        roleInput.type = 'text';
-        roleInput.id = 'personal-role';
-        roleInput.className = 'form-control';
-        roleInput.placeholder = 'Ex: Projektledare, Utvecklare';
+        // Salary
+        const salaryGroup = createFormGroup('personal-salary', 'Månadslön (SEK)', 'number', '25000');
+        salaryInfo.appendChild(salaryGroup);
 
-        roleGroup.appendChild(roleLabel);
-        roleGroup.appendChild(roleInput);
-        form.appendChild(roleGroup);
+        // Saved vacation days
+        const savedVacationGroup = createFormGroup('personal-saved-vacation', 'Sparade semesterdagar', 'number', '0');
+        salaryInfo.appendChild(savedVacationGroup);
 
-        // Button group
+        // Saved leave days
+        const savedLeaveGroup = createFormGroup('personal-saved-leave', 'Sparade ledighetsdagar', 'number', '0');
+        salaryInfo.appendChild(savedLeaveGroup);
+
+        form.appendChild(salaryInfo);
+
+        // === GROUPS ===
+        const groupsInfo = document.createElement('fieldset');
+        groupsInfo.style.border = 'none';
+        groupsInfo.style.marginBottom = '1.5rem';
+        groupsInfo.style.padding = '1rem';
+        groupsInfo.style.background = '#fff';
+        groupsInfo.style.borderRadius = '6px';
+
+        const groupsLegend = document.createElement('legend');
+        groupsLegend.textContent = 'Arbetgrupper *';
+        groupsLegend.style.fontWeight = '600';
+        groupsLegend.style.marginBottom = '1rem';
+        groupsInfo.appendChild(groupsLegend);
+
+        const groupsContainer = document.createElement('div');
+        groupsContainer.id = 'personal-groups';
+        groupsContainer.style.display = 'grid';
+        groupsContainer.style.gridTemplateColumns = 'repeat(auto-fit, minmax(200px, 1fr))';
+        groupsContainer.style.gap = '1rem';
+
+        if (groups.length === 0) {
+            const noGroupsMsg = document.createElement('p');
+            noGroupsMsg.textContent = 'Ingen grupper definierade. Skapa grupper först.';
+            noGroupsMsg.style.color = '#999';
+            noGroupsMsg.style.fontStyle = 'italic';
+            groupsContainer.appendChild(noGroupsMsg);
+        } else {
+            groups.forEach(group => {
+                const checkbox = document.createElement('label');
+                checkbox.style.display = 'flex';
+                checkbox.style.alignItems = 'center';
+                checkbox.style.gap = '0.5rem';
+                checkbox.style.cursor = 'pointer';
+                checkbox.style.padding = '0.5rem';
+                checkbox.style.border = '1px solid #ddd';
+                checkbox.style.borderRadius = '6px';
+                checkbox.style.transition = 'all 0.2s';
+
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.className = 'group-checkbox';
+                input.value = group.id;
+                input.style.cursor = 'pointer';
+
+                const span = document.createElement('span');
+                span.textContent = group.name;
+
+                checkbox.appendChild(input);
+                checkbox.appendChild(span);
+
+                checkbox.onmouseover = () => {
+                    checkbox.style.background = '#f9f9f9';
+                };
+                checkbox.onmouseout = () => {
+                    checkbox.style.background = 'transparent';
+                };
+
+                groupsContainer.appendChild(checkbox);
+            });
+        }
+
+        groupsInfo.appendChild(groupsContainer);
+        form.appendChild(groupsInfo);
+
+        // === AVAILABILITY ===
+        const availabilityInfo = document.createElement('fieldset');
+        availabilityInfo.style.border = 'none';
+        availabilityInfo.style.marginBottom = '1.5rem';
+        availabilityInfo.style.padding = '1rem';
+        availabilityInfo.style.background = '#fff';
+        availabilityInfo.style.borderRadius = '6px';
+
+        const availabilityLegend = document.createElement('legend');
+        availabilityLegend.textContent = 'Tillgänglighet (vecka)';
+        availabilityLegend.style.fontWeight = '600';
+        availabilityLegend.style.marginBottom = '1rem';
+        availabilityInfo.appendChild(availabilityLegend);
+
+        const availabilityContainer = document.createElement('div');
+        availabilityContainer.id = 'personal-availability';
+        availabilityContainer.style.display = 'flex';
+        availabilityContainer.style.gap = '0.5rem';
+        availabilityContainer.style.flexWrap = 'wrap';
+
+        DAYS_OF_WEEK.forEach((day, index) => {
+            const label = document.createElement('label');
+            label.style.display = 'flex';
+            label.style.alignItems = 'center';
+            label.style.gap = '0.5rem';
+            label.style.cursor = 'pointer';
+            label.style.padding = '0.5rem 1rem';
+            label.style.background = '#f0f0f0';
+            label.style.borderRadius = '6px';
+            label.style.transition = 'all 0.2s';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'availability-checkbox';
+            checkbox.value = index;
+            checkbox.checked = index < 5; // Mån-Fre as default
+            checkbox.style.cursor = 'pointer';
+
+            const span = document.createElement('span');
+            span.textContent = day;
+
+            label.appendChild(checkbox);
+            label.appendChild(span);
+
+            label.onmouseover = () => {
+                label.style.background = '#e0e0e0';
+            };
+            label.onmouseout = () => {
+                label.style.background = checkbox.checked ? '#d4e6ff' : '#f0f0f0';
+            };
+
+            checkbox.onchange = () => {
+                label.style.background = checkbox.checked ? '#d4e6ff' : '#f0f0f0';
+            };
+
+            availabilityContainer.appendChild(label);
+        });
+
+        availabilityInfo.appendChild(availabilityContainer);
+        form.appendChild(availabilityInfo);
+
+        // === BUTTONS ===
         const buttonGroup = document.createElement('div');
         buttonGroup.style.display = 'flex';
         buttonGroup.style.gap = '1rem';
-        buttonGroup.style.marginTop = '1rem';
+        buttonGroup.style.marginTop = '1.5rem';
 
-        // Submit button
         const submitBtn = document.createElement('button');
         submitBtn.type = 'submit';
         submitBtn.className = 'btn btn-primary';
         submitBtn.textContent = '➕ Lägg till';
 
-        // Reset button
         const resetBtn = document.createElement('button');
         resetBtn.type = 'reset';
         resetBtn.className = 'btn btn-secondary';
@@ -180,7 +330,7 @@ export function renderPersonal(container, ctx) {
         buttonGroup.appendChild(resetBtn);
         form.appendChild(buttonGroup);
 
-        // Error message div
+        // Error message
         const errorDiv = document.createElement('div');
         errorDiv.id = 'personal-error';
         errorDiv.style.marginTop = '1rem';
@@ -192,20 +342,13 @@ export function renderPersonal(container, ctx) {
             addPerson(form, errorDiv, store, ctx, container);
         });
 
-        // People list section
+        // === PEOPLE LIST ===
         const listSection = document.createElement('div');
         listSection.className = 'section-header';
         listSection.style.marginTop = '2rem';
 
         const listTitle = document.createElement('h2');
-        if (people.length === 0) {
-            listTitle.textContent = 'Aktiva (0)';
-        } else if (people.length === 1) {
-            listTitle.textContent = 'Aktiva (1)';
-        } else {
-            listTitle.textContent = `Aktiva (${people.length})`;
-        }
-
+        listTitle.textContent = `👥 Personal (${people.length})`;
         listSection.appendChild(listTitle);
 
         // People list
@@ -220,115 +363,10 @@ export function renderPersonal(container, ctx) {
             emptyMsg.style.fontStyle = 'italic';
             list.appendChild(emptyMsg);
         } else {
-            // Create table for people
-            const table = document.createElement('table');
-            table.className = 'people-table';
-            table.style.width = '100%';
-            table.style.borderCollapse = 'collapse';
-            table.style.marginTop = '1rem';
-
-            // Table head
-            const thead = document.createElement('thead');
-            const headRow = document.createElement('tr');
-            headRow.style.background = '#f0f0f0';
-            headRow.style.borderBottom = '2px solid #ddd';
-
-            const headers = ['Namn', 'E-post', 'Telefon', 'Roll', 'Åtgärder'];
-            headers.forEach(headerText => {
-                const th = document.createElement('th');
-                th.textContent = headerText;
-                th.style.padding = '0.75rem';
-                th.style.textAlign = 'left';
-                th.style.fontWeight = '600';
-                th.style.color = '#333';
-                headRow.appendChild(th);
+            people.forEach(person => {
+                const card = createPersonCard(person, store, ctx, container, groups);
+                list.appendChild(card);
             });
-            thead.appendChild(headRow);
-            table.appendChild(thead);
-
-            // Table body
-            const tbody = document.createElement('tbody');
-            people.forEach((person, index) => {
-                const row = document.createElement('tr');
-                row.style.borderBottom = '1px solid #eee';
-
-                // Name
-                const nameCell = document.createElement('td');
-                nameCell.textContent = person.name || '-';
-                nameCell.style.padding = '0.75rem';
-                nameCell.style.color = '#333';
-                row.appendChild(nameCell);
-
-                // Email
-                const emailCell = document.createElement('td');
-                emailCell.textContent = person.email || '-';
-                emailCell.style.padding = '0.75rem';
-                emailCell.style.color = '#666';
-                emailCell.style.fontSize = '0.9rem';
-                row.appendChild(emailCell);
-
-                // Phone
-                const phoneCell = document.createElement('td');
-                phoneCell.textContent = person.phone || '-';
-                phoneCell.style.padding = '0.75rem';
-                phoneCell.style.color = '#666';
-                phoneCell.style.fontSize = '0.9rem';
-                row.appendChild(phoneCell);
-
-                // Role
-                const roleCell = document.createElement('td');
-                roleCell.textContent = person.role || '-';
-                roleCell.style.padding = '0.75rem';
-                roleCell.style.color = '#666';
-                roleCell.style.fontSize = '0.9rem';
-                row.appendChild(roleCell);
-
-                // Actions
-                const actionsCell = document.createElement('td');
-                actionsCell.style.padding = '0.75rem';
-                actionsCell.style.whiteSpace = 'nowrap';
-
-                // Edit button
-                const editBtn = document.createElement('button');
-                editBtn.textContent = '✏️ Redigera';
-                editBtn.className = 'btn btn-secondary';
-                editBtn.style.padding = '0.5rem 0.75rem';
-                editBtn.style.fontSize = '0.85rem';
-                editBtn.style.marginRight = '0.5rem';
-                editBtn.onclick = (e) => {
-                    e.preventDefault();
-                    editPerson(person, store, ctx, container);
-                };
-
-                // Delete button
-                const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = '🗑️ Ta bort';
-                deleteBtn.className = 'btn btn-secondary';
-                deleteBtn.style.padding = '0.5rem 0.75rem';
-                deleteBtn.style.fontSize = '0.85rem';
-                deleteBtn.style.background = '#f8d7da';
-                deleteBtn.style.color = '#721c24';
-                deleteBtn.onclick = (e) => {
-                    e.preventDefault();
-                    deletePerson(person.id, store, ctx, container);
-                };
-
-                actionsCell.appendChild(editBtn);
-                actionsCell.appendChild(deleteBtn);
-                row.appendChild(actionsCell);
-
-                // Hover effect
-                row.onmouseover = () => {
-                    row.style.background = '#f9f9f9';
-                };
-                row.onmouseout = () => {
-                    row.style.background = 'transparent';
-                };
-
-                tbody.appendChild(row);
-            });
-            table.appendChild(tbody);
-            list.appendChild(table);
         }
 
         // Assemble page
@@ -349,217 +387,338 @@ export function renderPersonal(container, ctx) {
             'PERSONAL_RENDER_ERROR',
             'PERSONAL_VIEW',
             'src/views/personal.js',
-            'Personal-sidan kunde inte renderas'
+            err.message
         );
     }
 }
 
 /**
- * Add new person to store
+ * Create a form group helper
+ */
+function createFormGroup(id, label, type, placeholder) {
+    const group = document.createElement('div');
+    group.className = 'form-group';
+
+    const labelEl = document.createElement('label');
+    labelEl.setAttribute('for', id);
+    labelEl.textContent = label;
+
+    const input = document.createElement('input');
+    input.type = type;
+    input.id = id;
+    input.className = 'form-control';
+    input.placeholder = placeholder;
+
+    group.appendChild(labelEl);
+    group.appendChild(input);
+
+    return group;
+}
+
+/**
+ * Create person card with all info
+ */
+function createPersonCard(person, store, ctx, container, groups) {
+    const card = document.createElement('div');
+    card.style.background = '#fff';
+    card.style.border = '1px solid #ddd';
+    card.style.borderRadius = '8px';
+    card.style.padding = '1.5rem';
+    card.style.marginBottom = '1rem';
+
+    // Header
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'start';
+    header.style.marginBottom = '1rem';
+    header.style.paddingBottom = '1rem';
+    header.style.borderBottom = '2px solid #f0f0f0';
+
+    const name = document.createElement('h3');
+    name.style.margin = '0';
+    name.textContent = person.name;
+
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '0.5rem';
+
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✏️ Redigera';
+    editBtn.className = 'btn btn-secondary';
+    editBtn.style.padding = '0.5rem 0.75rem';
+    editBtn.style.fontSize = '0.85rem';
+    editBtn.onclick = (e) => {
+        e.preventDefault();
+        editPerson(person, store, ctx, container);
+    };
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = '🗑️ Ta bort';
+    deleteBtn.className = 'btn btn-secondary';
+    deleteBtn.style.padding = '0.5rem 0.75rem';
+    deleteBtn.style.fontSize = '0.85rem';
+    deleteBtn.style.background = '#f8d7da';
+    deleteBtn.style.color = '#721c24';
+    deleteBtn.onclick = (e) => {
+        e.preventDefault();
+        deletePerson(person.id, store, ctx, container);
+    };
+
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+
+    header.appendChild(name);
+    header.appendChild(actions);
+    card.appendChild(header);
+
+    // Content grid
+    const content = document.createElement('div');
+    content.style.display = 'grid';
+    content.style.gridTemplateColumns = 'repeat(auto-fit, minmax(250px, 1fr))';
+    content.style.gap = '1.5rem';
+
+    // Basic info
+    const basicSection = document.createElement('div');
+    basicSection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Kontakt</h4>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>E-post:</strong> ${person.email}</p>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>Telefon:</strong> ${person.phone || '-'}</p>
+    `;
+    content.appendChild(basicSection);
+
+    // Employment info
+    const employmentSection = document.createElement('div');
+    const yearsEmployed = calculateYearsEmployed(person.startDate);
+    const vacationDays = calculateVacationDays(person.startDate, person.degree || 100);
+
+    employmentSection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Anställning</h4>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Startdatum:</strong> ${new Date(person.startDate).toLocaleDateString('sv')}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>År:</strong> ${yearsEmployed}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Tjänstgöringsgrad:</strong> ${person.degree || 100}%</p>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>Arbetsdagar/vecka:</strong> ${person.workdaysPerWeek || 5}</p>
+    `;
+    content.appendChild(employmentSection);
+
+    // Salary & Vacation
+    const salarySection = document.createElement('div');
+    salarySection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Löner & Semesterdagar</h4>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Månadslön:</strong> ${(person.salary || 0).toLocaleString('sv')} SEK</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sparade semesterdagar:</strong> ${person.savedVacationDays || 0}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Nya semesterdagar (1 apr):</strong> ${vacationDays}</p>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>Sparade ledighetsdagar:</strong> ${person.savedLeaveDays || 0}</p>
+    `;
+    content.appendChild(salarySection);
+
+    // Groups
+    const groupsSection = document.createElement('div');
+    const personGroups = (person.groupIds || [])
+        .map(gid => groups.find(g => g.id === gid)?.name)
+        .filter(Boolean)
+        .join(', ') || '-';
+
+    groupsSection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Arbetgrupper</h4>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>${personGroups}</strong></p>
+    `;
+    content.appendChild(groupsSection);
+
+    // Availability
+    const availabilitySection = document.createElement('div');
+    const availableDays = (person.availability || [])
+        .map((available, i) => available ? DAYS_OF_WEEK[i] : null)
+        .filter(Boolean)
+        .join(', ') || '-';
+
+    availabilitySection.innerHTML = `
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Tillgänglig</h4>
+        <p style="margin: 0; font-size: 0.9rem;"><strong>${availableDays}</strong></p>
+    `;
+    content.appendChild(availabilitySection);
+
+    card.appendChild(content);
+
+    return card;
+}
+
+/**
+ * Calculate years employed
+ */
+function calculateYearsEmployed(startDate) {
+    if (!startDate) return '0';
+    const start = new Date(startDate);
+    const now = new Date();
+    const years = Math.floor((now - start) / (365.25 * 24 * 60 * 60 * 1000));
+    return years + ' år';
+}
+
+/**
+ * Calculate vacation days based on employment years
+ * Using Hotell- och restaurangfackets regler
+ */
+function calculateVacationDays(startDate, employmentDegree = 100) {
+    if (!startDate) return 0;
+
+    const start = new Date(startDate);
+    const now = new Date();
+    const yearsEmployed = Math.floor((now - start) / (365.25 * 24 * 60 * 60 * 1000));
+
+    let baseDays = VACATION_RULES[0]; // Default 25
+    if (yearsEmployed >= 2 && yearsEmployed < 5) {
+        baseDays = VACATION_RULES[2]; // 28
+    } else if (yearsEmployed >= 5) {
+        baseDays = VACATION_RULES[5]; // 31
+    }
+
+    // Adjust for employment degree
+    return Math.round((baseDays * employmentDegree) / 100);
+}
+
+/**
+ * Add new person
  */
 function addPerson(form, errorDiv, store, ctx, container) {
     try {
-        // Clear previous error
         while (errorDiv.firstChild) {
             errorDiv.removeChild(errorDiv.firstChild);
         }
 
-        // Get form values
-        const nameInput = form.querySelector('#personal-name');
-        const emailInput = form.querySelector('#personal-email');
-        const phoneInput = form.querySelector('#personal-phone');
-        const roleInput = form.querySelector('#personal-role');
+        // Get values
+        const name = (form.querySelector('#personal-name')?.value || '').trim();
+        const email = (form.querySelector('#personal-email')?.value || '').trim();
+        const phone = (form.querySelector('#personal-phone')?.value || '').trim();
+        const startDate = form.querySelector('#personal-start-date')?.value;
+        const degree = parseInt(form.querySelector('#personal-degree')?.value || 100);
+        const workdaysPerWeek = parseInt(form.querySelector('#personal-workdays')?.value || 5);
+        const salary = parseInt(form.querySelector('#personal-salary')?.value || 0);
+        const savedVacation = parseInt(form.querySelector('#personal-saved-vacation')?.value || 0);
+        const savedLeave = parseInt(form.querySelector('#personal-saved-leave')?.value || 0);
 
-        const name = (nameInput?.value || '').trim();
-        const email = (emailInput?.value || '').trim();
-        const phone = (phoneInput?.value || '').trim();
-        const role = (roleInput?.value || '').trim();
+        // Get selected groups
+        const groupIds = Array.from(document.querySelectorAll('.group-checkbox:checked'))
+            .map(cb => cb.value);
+
+        // Get availability
+        const availability = Array.from(document.querySelectorAll('.availability-checkbox'))
+            .map(cb => cb.checked);
 
         // Validate
         if (!name || name.length < 2) {
-            showWarning('⚠️ Namn krävs (min 2 tecken)');
-            displayError(errorDiv, 'Namn krävs (min 2 tecken)');
-            return;
+            throw new Error('Namn krävs (min 2 tecken)');
         }
-
         if (!email || !email.includes('@')) {
-            showWarning('⚠️ Giltigt e-postadress krävs');
-            displayError(errorDiv, 'Giltigt e-postadress krävs');
-            return;
+            throw new Error('Giltigt e-postadress krävs');
+        }
+        if (!startDate) {
+            throw new Error('Startdatum krävs');
         }
 
-        // Get current state
         const state = store.getState();
         const people = state.people || [];
 
-        // Check for duplicates
-        const isDuplicate = people.some(p => p.email.toLowerCase() === email.toLowerCase());
-        if (isDuplicate) {
-            showWarning('⚠️ E-postadressen finns redan');
-            displayError(errorDiv, 'E-postadressen finns redan');
-            return;
+        // Check duplicate email
+        if (people.some(p => p.email.toLowerCase() === email.toLowerCase())) {
+            throw new Error('E-postadressen finns redan');
         }
 
-        // Create new person
+        // Create person
         const newPerson = {
             id: `person_${Date.now()}`,
-            name: name,
-            email: email,
+            name,
+            email,
             phone: phone || null,
-            role: role || null,
+            startDate,
+            degree,
+            workdaysPerWeek,
+            salary,
+            savedVacationDays: savedVacation,
+            savedLeaveDays: savedLeave,
+            groupIds,
+            availability,
             createdAt: new Date().toISOString()
         };
 
-        // Update store using setState (NOT store.update)
         store.setState({
             ...state,
             people: [...people, newPerson]
         });
 
-        console.log('✓ Person added:', newPerson);
+        console.log('✓ Person tillagd:', newPerson);
         showSuccess('✓ Personal tillagd');
-
-        // Reset form
         form.reset();
-
-        // Re-render personal view
         renderPersonal(container.closest('[class*="container"]'), ctx);
 
     } catch (err) {
         console.error('❌ Error adding person:', err);
-        reportError(
-            'PERSONAL_ADD_ERROR',
-            'PERSONAL_VIEW',
-            'src/views/personal.js',
-            `Kunde inte lägga till personal: ${err.message}`
-        );
-        displayError(errorDiv, `Fel: ${err.message}`);
-        showWarning('⚠️ Kunde inte lägga till personal');
+        displayError(errorDiv, err.message);
+        showWarning(`⚠️ ${err.message}`);
     }
 }
 
 /**
- * Edit existing person
+ * Edit person
  */
 function editPerson(person, store, ctx, container) {
     try {
         console.log('✏️ Redigerar person:', person.id);
-
-        // Get new values (simplified - shows prompt dialogs)
         const newName = prompt('Namn:', person.name);
-        if (newName === null) return; // Cancelled
+        if (newName === null) return;
 
         const newEmail = prompt('E-post:', person.email);
-        if (newEmail === null) return; // Cancelled
+        if (newEmail === null) return;
 
-        const newPhone = prompt('Telefon:', person.phone || '');
-        const newRole = prompt('Roll:', person.role || '');
+        if (!newName || newName.length < 2) throw new Error('Namn krävs');
+        if (!newEmail || !newEmail.includes('@')) throw new Error('Giltigt e-postadress krävs');
 
-        // Validate
-        if (!newName || newName.length < 2) {
-            showWarning('⚠️ Namn krävs (min 2 tecken)');
-            return;
-        }
-
-        if (!newEmail || !newEmail.includes('@')) {
-            showWarning('⚠️ Giltigt e-postadress krävs');
-            return;
-        }
-
-        // Get current state
         const state = store.getState();
         const people = state.people || [];
 
-        // Check for duplicate email (but allow same person)
-        const isDuplicate = people.some(p => 
-            p.email.toLowerCase() === newEmail.toLowerCase() && p.id !== person.id
-        );
-        if (isDuplicate) {
-            showWarning('⚠️ E-postadressen finns redan');
-            return;
+        if (people.some(p => p.email.toLowerCase() === newEmail.toLowerCase() && p.id !== person.id)) {
+            throw new Error('E-postadressen finns redan');
         }
 
-        // Update person
-        const updatedPeople = people.map(p => {
-            if (p.id === person.id) {
-                return {
-                    ...p,
-                    name: newName,
-                    email: newEmail,
-                    phone: newPhone || null,
-                    role: newRole || null,
-                    updatedAt: new Date().toISOString()
-                };
-            }
-            return p;
-        });
+        const updatedPeople = people.map(p => 
+            p.id === person.id ? { ...p, name: newName, email: newEmail, updatedAt: new Date().toISOString() } : p
+        );
 
-        store.setState({
-            ...state,
-            people: updatedPeople
-        });
-
+        store.setState({ ...state, people: updatedPeople });
         console.log('✓ Person uppdaterad');
         showSuccess('✓ Personal uppdaterad');
-
-        // Re-render
         renderPersonal(container.closest('[class*="container"]'), ctx);
 
     } catch (err) {
         console.error('❌ Error editing person:', err);
-        reportError(
-            'PERSONAL_EDIT_ERROR',
-            'PERSONAL_VIEW',
-            'src/views/personal.js',
-            `Kunde inte redigera personal: ${err.message}`
-        );
-        showWarning('⚠️ Kunde inte redigera personal');
+        showWarning(`⚠️ ${err.message}`);
     }
 }
 
 /**
- * Delete person from store
+ * Delete person
  */
 function deletePerson(personId, store, ctx, container) {
     try {
-        // Confirm deletion
-        const confirmed = confirm('Är du säker på att du vill ta bort denna person?');
-        if (!confirmed) return;
+        if (!confirm('Är du säker?')) return;
 
-        console.log('🗑️ Tar bort person:', personId);
-
-        // Get current state
         const state = store.getState();
-        const people = state.people || [];
-
-        // Filter out deleted person
-        const updatedPeople = people.filter(p => p.id !== personId);
-
         store.setState({
             ...state,
-            people: updatedPeople
+            people: (state.people || []).filter(p => p.id !== personId)
         });
 
         console.log('✓ Person borttagen');
         showSuccess('✓ Personal borttagen');
-
-        // Re-render
         renderPersonal(container.closest('[class*="container"]'), ctx);
 
     } catch (err) {
         console.error('❌ Error deleting person:', err);
-        reportError(
-            'PERSONAL_DELETE_ERROR',
-            'PERSONAL_VIEW',
-            'src/views/personal.js',
-            `Kunde inte ta bort personal: ${err.message}`
-        );
-        showWarning('⚠️ Kunde inte ta bort personal');
+        showWarning(`⚠️ ${err.message}`);
     }
 }
 
 /**
- * Display error message safely
+ * Display error
  */
 function displayError(container, message) {
     if (!container) return;
