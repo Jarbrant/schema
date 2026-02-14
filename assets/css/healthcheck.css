@@ -1,1 +1,129 @@
+/* ========================================================================
+   HEALTHCHECK — Module health status styling
+   ======================================================================== */
 
+/* Module Health Section */
+.module-health {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.module-health summary {
+    font-weight: 600;
+    color: #667eea;
+    cursor: pointer;
+    user-select: none;
+    padding: 0.5rem;
+}
+
+.module-health summary:hover {
+    color: #5568d3;
+}
+
+.module-list {
+    margin-top: 1rem;
+    padding: 0.75rem 0;
+    border-top: 1px solid #ddd;
+}
+
+/* Module Item */
+.module-item {
+    display: grid;
+    grid-template-columns: 30px 200px 1fr 60px;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-family: 'Courier New', monospace;
+}
+
+.module-item.module-ok {
+    background: #d4edda;
+    border-left: 4px solid #28a745;
+    color: #155724;
+}
+
+.module-item.module-failed {
+    background: #f8d7da;
+    border-left: 4px solid #d63031;
+    color: #721c24;
+}
+
+.module-item.module-initializing {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    color: #856404;
+}
+
+.module-item.module-pending {
+    background: #e2e3e5;
+    border-left: 4px solid #6c757d;
+    color: #383d41;
+}
+
+.module-emoji {
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.module-id {
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.module-status {
+    text-align: right;
+    font-size: 0.85rem;
+    opacity: 0.8;
+}
+
+.module-duration {
+    text-align: right;
+    font-size: 0.8rem;
+    opacity: 0.6;
+    white-space: nowrap;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .module-item {
+        grid-template-columns: 30px 1fr;
+        gap: 0.75rem;
+    }
+
+    .module-status,
+    .module-duration {
+        grid-column: 2;
+        text-align: left;
+        opacity: 0.7;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .module-item {
+        grid-template-columns: 25px 1fr;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    .module-emoji {
+        font-size: 1rem;
+    }
+
+    .module-id {
+        word-break: break-word;
+    }
+
+    .module-health summary {
+        font-size: 0.9rem;
+    }
+}
