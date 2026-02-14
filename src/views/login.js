@@ -1,23 +1,33 @@
 /*
- * LOGIN.JS — Login View
+ * LOGIN.JS — Login View (BUGFIX v2)
  * 
  * AO-06 Update:
  * - Secure rendering (no innerHTML with user input)
  * - Fail-closed validation
  * - Safe error handling via Diagnostics
+ * - BUGFIX: Fixed sessionStorage parsing, form reset, and error fallback
  */
 
 import { showSuccess, showWarning } from '../ui.js';
-import { reportError, diagnostics } from '../diagnostics.js';
+import { reportError } from '../diagnostics.js';
 
 /**
  * Check if user is logged in
  */
 export function isLoggedIn() {
-    const state = typeof window !== 'undefined' 
-        ? sessionStorage.getItem('schema_user') 
-        : null;
-    return state ? JSON.parse(state).isLoggedIn === true : false;
+    try {
+        const state = typeof window !== 'undefined' 
+            ? sessionStorage.getItem('schema_user') 
+            : null;
+        
+        if (!state) return false;
+        
+        const parsed = JSON.parse(state);
+        return parsed?.isLoggedIn === true;
+    } catch (err) {
+        console.warn('⚠️ Error checking login status:', err);
+        return false;
+    }
 }
 
 /**
@@ -34,27 +44,24 @@ export function renderLogin(container, ctx) {
             container.removeChild(container.firstChild);
         }
 
-        // Create login form elements (NO innerHTML with user input)
+        // Create login page wrapper
+        const loginPage = document.createElement('div');
+        loginPage.className = 'login-page';
+
+        // Create login container
         const loginContainer = document.createElement('div');
         loginContainer.className = 'login-container';
 
-        const loginBox = document.createElement('div');
-        loginBox.className = 'login-box';
+        // Create login card
+        const loginCard = document.createElement('div');
+        loginCard.className = 'login-card';
 
         // Header
-        const header = document.createElement('div');
-        header.className = 'login-header';
-
         const title = document.createElement('h1');
         title.textContent = '📅 Schema-Program';
-        title.className = 'login-title';
 
-        const subtitle = document.createElement('p');
-        subtitle.textContent = 'Logga in för att komma igång';
-        subtitle.className = 'login-subtitle';
-
-        header.appendChild(title);
-        header.appendChild(subtitle);
+        const subtitle = document.createElement('h2');
+        subtitle.textContent = 'Logga in';
 
         // Form
         const form = document.createElement('form');
@@ -72,8 +79,8 @@ export function renderLogin(container, ctx) {
         const usernameInput = document.createElement('input');
         usernameInput.type = 'text';
         usernameInput.id = 'login-username';
-        usernameInput.className = 'login-input';
-        usernameInput.placeholder = 'Ex: anna.ström';
+        usernameInput.className = 'form-control';
+        usernameInput.placeholder = 'Ex: demo';
         usernameInput.required = true;
         usernameInput.autocomplete = 'username';
 
@@ -91,7 +98,7 @@ export function renderLogin(container, ctx) {
         const passwordInput = document.createElement('input');
         passwordInput.type = 'password';
         passwordInput.id = 'login-password';
-        passwordInput.className = 'login-input';
+        passwordInput.className = 'form-control';
         passwordInput.placeholder = 'Ditt lösenord';
         passwordInput.required = true;
         passwordInput.autocomplete = 'current-password';
@@ -102,14 +109,14 @@ export function renderLogin(container, ctx) {
         // Submit button
         const submitBtn = document.createElement('button');
         submitBtn.type = 'submit';
-        submitBtn.className = 'btn btn-primary login-btn';
+        submitBtn.className = 'btn btn-primary btn-login';
         submitBtn.textContent = '🔓 Logga in';
 
         form.appendChild(usernameGroup);
         form.appendChild(passwordGroup);
         form.appendChild(submitBtn);
 
-        // Error/Status message (initially hidden)
+        // Status message (initially hidden)
         const statusDiv = document.createElement('div');
         statusDiv.className = 'login-status';
         statusDiv.id = 'login-status';
@@ -117,27 +124,45 @@ export function renderLogin(container, ctx) {
 
         // Demo info
         const demoInfo = document.createElement('div');
-        demoInfo.className = 'login-demo-info';
+        demoInfo.className = 'alert alert-info';
+        demoInfo.style.marginTop = '1rem';
 
         const demoTitle = document.createElement('strong');
         demoTitle.textContent = 'Demo-inloggning:';
 
         const demoParagraph = document.createElement('p');
-        demoParagraph.className = 'demo-credentials';
+        demoParagraph.style.margin = '0.5rem 0 0 0';
         demoParagraph.textContent = 'Användarnamn: demo | Lösenord: demo123';
 
         demoInfo.appendChild(demoTitle);
         demoInfo.appendChild(demoParagraph);
 
-        // Assemble login box
-        loginBox.appendChild(header);
-        loginBox.appendChild(form);
-        loginBox.appendChild(statusDiv);
-        loginBox.appendChild(demoInfo);
+        // Footer
+        const footer = document.createElement('div');
+        footer.className = 'login-footer';
+
+        const footerText = document.createElement('p');
+        footerText.className = 'footer-text';
+        footerText.textContent = '© 2026 Schema-Program. All rights reserved.';
+
+        footer.appendChild(footerText);
+
+        // Assemble card
+        loginCard.appendChild(title);
+        loginCard.appendChild(subtitle);
+        loginCard.appendChild(form);
+        loginCard.appendChild(statusDiv);
+        loginCard.appendChild(demoInfo);
+        loginCard.appendChild(footer);
 
         // Assemble container
-        loginContainer.appendChild(loginBox);
-        container.appendChild(loginContainer);
+        loginContainer.appendChild(loginCard);
+
+        // Assemble page
+        loginPage.appendChild(loginContainer);
+
+        // Add to DOM
+        container.appendChild(loginPage);
 
         console.log('✓ Login form rendered');
 
@@ -153,9 +178,37 @@ export function renderLogin(container, ctx) {
             'Inloggningssidan kunde inte renderas'
         );
 
-        // Fallback rendering
-        if (container) {
-            container.innerHTML = '<div style="padding: 2rem; text-align: center;"><h2>⚠️ Ett fel uppstod</h2><p>Inloggningssidan kunde inte läsas in.</p><button onclick="window.location.reload()">Ladda om</button></div>';
+        // Fallback: Safe DOM-based error display
+        try {
+            if (container) {
+                while (container.firstChild) {
+                    container.removeChild(container.firstChild);
+                }
+
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = 'padding: 2rem; text-align: center; background: #ffe8e8; border-radius: 8px; margin: 2rem;';
+
+                const errorTitle = document.createElement('h2');
+                errorTitle.textContent = '⚠️ Ett fel uppstod';
+                errorTitle.style.color = '#721c24';
+
+                const errorMsg = document.createElement('p');
+                errorMsg.textContent = 'Inloggningssidan kunde inte läsas in. Försök ladda om sidan.';
+                errorMsg.style.color = '#721c24';
+
+                const reloadBtn = document.createElement('button');
+                reloadBtn.className = 'btn btn-primary';
+                reloadBtn.textContent = '🔄 Ladda om';
+                reloadBtn.onclick = () => window.location.reload();
+
+                errorDiv.appendChild(errorTitle);
+                errorDiv.appendChild(errorMsg);
+                errorDiv.appendChild(reloadBtn);
+
+                container.appendChild(errorDiv);
+            }
+        } catch (fallbackErr) {
+            console.error('❌ CRITICAL: Fallback error rendering failed:', fallbackErr);
         }
     }
 }
@@ -188,20 +241,29 @@ function setupLoginListeners(form, statusDiv, ctx) {
  */
 function handleLogin(form, statusDiv, ctx) {
     try {
-        // Get input values (sanitize automatically by textContent/value)
-        const username = form.querySelector('#login-username')?.value?.trim() || '';
-        const password = form.querySelector('#login-password')?.value || '';
+        // Get input values (safe extraction)
+        const usernameInput = form.querySelector('#login-username');
+        const passwordInput = form.querySelector('#login-password');
+
+        if (!usernameInput || !passwordInput) {
+            throw new Error('Form inputs not found');
+        }
+
+        const username = (usernameInput.value || '').trim();
+        const password = passwordInput.value || '';
 
         // Fail-closed validation
         if (!username || username.length < 2) {
             showWarning('⚠️ Användarnamn krävs (min 2 tecken)');
             displayStatus(statusDiv, 'error', 'Användarnamn krävs');
+            usernameInput.focus();
             return;
         }
 
         if (!password || password.length < 4) {
             showWarning('⚠️ Lösenord krävs (min 4 tecken)');
             displayStatus(statusDiv, 'error', 'Lösenord krävs');
+            passwordInput.focus();
             return;
         }
 
@@ -215,28 +277,36 @@ function handleLogin(form, statusDiv, ctx) {
         // Simulate API call (in real app: call backend)
         setTimeout(() => {
             try {
-                // Simple demo validation (fail-closed: only demo/demo123)
+                // Fail-closed: only demo/demo123
                 const isValid = username.toLowerCase() === 'demo' && password === 'demo123';
 
                 if (isValid) {
                     console.log('✓ Login successful');
 
-                    // Save login state
-                    const loginData = {
-                        isLoggedIn: true,
-                        username: username,
-                        loginTime: new Date().toISOString()
-                    };
-                    sessionStorage.setItem('schema_user', JSON.stringify(loginData));
+                    // Save login state safely
+                    try {
+                        const loginData = {
+                            isLoggedIn: true,
+                            username: username,
+                            loginTime: new Date().toISOString()
+                        };
+                        sessionStorage.setItem('schema_user', JSON.stringify(loginData));
+                    } catch (storageErr) {
+                        console.warn('⚠️ sessionStorage not available:', storageErr);
+                    }
 
                     // Update app context
                     if (ctx?.store) {
-                        const state = ctx.store.getState();
-                        ctx.store.setState({
-                            ...state,
-                            isLoggedIn: true,
-                            user: { name: username }
-                        });
+                        try {
+                            const state = ctx.store.getState();
+                            ctx.store.setState({
+                                ...state,
+                                isLoggedIn: true,
+                                user: { name: username }
+                            });
+                        } catch (stateErr) {
+                            console.warn('⚠️ Failed to update state:', stateErr);
+                        }
                     }
 
                     showSuccess('✓ Inloggning lyckades!');
@@ -252,9 +322,13 @@ function handleLogin(form, statusDiv, ctx) {
                     displayStatus(statusDiv, 'error', '❌ Ogiltiga inloggningsuppgifter');
                     showWarning('⚠️ Ogiltiga inloggningsuppgifter');
 
-                    // Reset form
-                    form.reset();
-                    form.querySelector('#login-username')?.focus();
+                    // Reset form safely
+                    try {
+                        form.reset();
+                        usernameInput.focus();
+                    } catch (resetErr) {
+                        console.warn('⚠️ Failed to reset form:', resetErr);
+                    }
                 }
 
             } catch (err) {
@@ -283,25 +357,30 @@ function handleLogin(form, statusDiv, ctx) {
 }
 
 /**
- * Display status message safely
+ * Display status message safely (DOM-based, no innerHTML)
  */
 function displayStatus(statusDiv, type, message) {
     if (!statusDiv) return;
 
-    // Clear previous content
-    while (statusDiv.firstChild) {
-        statusDiv.removeChild(statusDiv.firstChild);
+    try {
+        // Clear previous content safely
+        while (statusDiv.firstChild) {
+            statusDiv.removeChild(statusDiv.firstChild);
+        }
+
+        // Create status element
+        const statusElement = document.createElement('div');
+        statusElement.className = `alert alert-${type === 'success' ? 'success' : 'danger'}`;
+
+        const messageElement = document.createElement('p');
+        messageElement.textContent = message;
+        messageElement.style.margin = '0';
+
+        statusElement.appendChild(messageElement);
+        statusDiv.appendChild(statusElement);
+        statusDiv.style.display = 'block';
+
+    } catch (err) {
+        console.error('❌ Error displaying status:', err);
     }
-
-    // Create status element
-    const statusElement = document.createElement('div');
-    statusElement.className = `login-status-${type}`;
-
-    const messageElement = document.createElement('p');
-    messageElement.textContent = message;
-    messageElement.style.margin = '0';
-
-    statusElement.appendChild(messageElement);
-    statusDiv.appendChild(statusElement);
-    statusDiv.style.display = 'block';
 }
