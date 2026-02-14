@@ -10,7 +10,7 @@
 
 import { renderHome } from './views/home.js';
 import { renderPersonal } from './views/personal.js';
-import { renderCalendar } from './views/calendar.js';
+import { renderCalendar } from './views/calendar-new.js'; // FAS 1.2: New calendar view
 import { renderControl } from './views/control.js';
 import { renderSummary } from './views/summary.js';
 import { renderExport } from './views/export.js';

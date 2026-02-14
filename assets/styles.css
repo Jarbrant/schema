@@ -66,14 +66,17 @@
 /* Step 12: Schedule Generator (Schemagenerator) */
 @import url('./css/generator.css');
 
-/* Step 13: Navbar (Navigation bar) */
+/* Step 13: Calendar View (FAS 1.2) */
+@import url('./css/calendar.css');
+
+/* Step 14: Navbar (Navigation bar) */
 @import url('./css/navbar.css');
 
-/* Step 14: Diagnostics (Error Panel & System Health) */
+/* Step 15: Diagnostics (Error Panel & System Health) */
 @import url('./css/diagnostics.css');
 
-/* Step 15: Healthcheck (Module Health Status — AO-05) */
+/* Step 16: Healthcheck (Module Health Status — AO-05) */
 @import url('./css/healthcheck.css');
 
-/* Step 16: Responsive Design (ALLTID SIST!) */
+/* Step 17: Responsive Design (ALLTID SIST!) */
 @import url('./css/responsive.css');
