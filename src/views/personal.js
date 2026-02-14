@@ -1,26 +1,25 @@
 /*
- * PERSONAL.JS — Personal Management with HR System (COMPLETE v3)
+ * PERSONAL.JS — Personal Management with HR System (COMPLETE v4)
  * 
  * Features:
  * - Add/Edit/Delete person
- * - Start date → Auto vacation calc (1 april)
+ * - Sector selection (Private/Municipal)
+ * - Start date → Auto vacation calc
+ * - Employment record with dates
  * - Salary, saved vacation days, saved leave days
  * - Employment degree (%), workdays per week
  * - Multi-group assignment
  * - Availability calendar (Mon-Sun)
- * - Red day tracking
  */
 
 import { showSuccess, showWarning } from '../ui.js';
 import { reportError } from '../diagnostics.js';
-
-// Hotell- och restaurangfackets semesterregler
-const VACATION_RULES = {
-    // Efter X år → Y semesterdagar per år
-    0: 25,    // År 1-2: 25 dagar
-    2: 28,    // År 3-5: 28 dagar
-    5: 31,    // År 6+: 31 dagar
-};
+import {
+    getVacationDaysPerYear,
+    calculateYearsEmployed,
+    getPersonVacationYearInfo,
+    SECTOR_TYPES
+} from '../hr-rules.js';
 
 const DAYS_OF_WEEK = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 
@@ -52,7 +51,7 @@ export function renderPersonal(container, ctx) {
         title.textContent = '👤 Personal';
 
         const subtitle = document.createElement('p');
-        subtitle.textContent = 'Hantera personal, semesterdagar, löner och tillgänglighet';
+        subtitle.textContent = 'Hantera personal, semesterdagar, löner, sektor och tillgänglighet';
 
         header.appendChild(title);
         header.appendChild(subtitle);
@@ -107,15 +106,12 @@ export function renderPersonal(container, ctx) {
         basicLegend.style.marginBottom = '1rem';
         basicInfo.appendChild(basicLegend);
 
-        // Name
         const nameGroup = createFormGroup('personal-name', 'Namn *', 'text', 'Ex: Anna Ström');
         basicInfo.appendChild(nameGroup);
 
-        // Email
         const emailGroup = createFormGroup('personal-email', 'E-post *', 'email', 'anna@example.com');
         basicInfo.appendChild(emailGroup);
 
-        // Phone
         const phoneGroup = createFormGroup('personal-phone', 'Telefon', 'tel', '+46 70 123 45 67');
         basicInfo.appendChild(phoneGroup);
 
@@ -135,11 +131,9 @@ export function renderPersonal(container, ctx) {
         employmentLegend.style.marginBottom = '1rem';
         employmentInfo.appendChild(employmentLegend);
 
-        // Start date
         const startDateGroup = createFormGroup('personal-start-date', 'Startdatum *', 'date', '');
         employmentInfo.appendChild(startDateGroup);
 
-        // Employment degree
         const degreeGroup = createFormGroup('personal-degree', 'Tjänstgöringsgrad (%) *', 'number', '100');
         const degreeInput = degreeGroup.querySelector('input');
         degreeInput.min = '10';
@@ -147,7 +141,6 @@ export function renderPersonal(container, ctx) {
         degreeInput.value = '100';
         employmentInfo.appendChild(degreeGroup);
 
-        // Workdays per week
         const workdaysGroup = createFormGroup('personal-workdays', 'Arbetsdagar per vecka *', 'number', '5');
         const workdaysInput = workdaysGroup.querySelector('input');
         workdaysInput.min = '1';
@@ -156,6 +149,111 @@ export function renderPersonal(container, ctx) {
         employmentInfo.appendChild(workdaysGroup);
 
         form.appendChild(employmentInfo);
+
+        // === SECTOR SELECTION ===
+        const sectorInfo = document.createElement('fieldset');
+        sectorInfo.style.border = 'none';
+        sectorInfo.style.marginBottom = '1.5rem';
+        sectorInfo.style.padding = '1rem';
+        sectorInfo.style.background = '#fff';
+        sectorInfo.style.borderRadius = '6px';
+
+        const sectorLegend = document.createElement('legend');
+        sectorLegend.textContent = 'Sektor *';
+        sectorLegend.style.fontWeight = '600';
+        sectorLegend.style.marginBottom = '1rem';
+        sectorInfo.appendChild(sectorLegend);
+
+        const sectorContainer = document.createElement('div');
+        sectorContainer.style.display = 'grid';
+        sectorContainer.style.gridTemplateColumns = 'repeat(auto-fit, minmax(200px, 1fr))';
+        sectorContainer.style.gap = '1rem';
+
+        // Private sector
+        const privateLabel = document.createElement('label');
+        privateLabel.style.display = 'flex';
+        privateLabel.style.alignItems = 'center';
+        privateLabel.style.gap = '0.5rem';
+        privateLabel.style.cursor = 'pointer';
+        privateLabel.style.padding = '0.75rem';
+        privateLabel.style.border = '2px solid #ddd';
+        privateLabel.style.borderRadius = '6px';
+        privateLabel.style.transition = 'all 0.2s';
+
+        const privateRadio = document.createElement('input');
+        privateRadio.type = 'radio';
+        privateRadio.name = 'sector';
+        privateRadio.value = 'private';
+        privateRadio.checked = true;
+        privateRadio.id = 'sector-private';
+        privateRadio.style.cursor = 'pointer';
+
+        const privateSpan = document.createElement('span');
+        privateSpan.innerHTML = '<strong>Privat sektor</strong><br><small>25/28/31 dagar</small>';
+
+        privateLabel.appendChild(privateRadio);
+        privateLabel.appendChild(privateSpan);
+
+        privateLabel.onmouseover = () => {
+            privateLabel.style.borderColor = '#667eea';
+            privateLabel.style.background = '#f9f9f9';
+        };
+        privateLabel.onmouseout = () => {
+            privateLabel.style.borderColor = privateRadio.checked ? '#667eea' : '#ddd';
+            privateLabel.style.background = 'transparent';
+        };
+        privateRadio.onchange = () => {
+            privateLabel.style.borderColor = '#667eea';
+            privateLabel.style.background = '#f0f4ff';
+            municipalLabel.style.borderColor = '#ddd';
+            municipalLabel.style.background = 'transparent';
+        };
+
+        sectorContainer.appendChild(privateLabel);
+
+        // Municipal sector
+        const municipalLabel = document.createElement('label');
+        municipalLabel.style.display = 'flex';
+        municipalLabel.style.alignItems = 'center';
+        municipalLabel.style.gap = '0.5rem';
+        municipalLabel.style.cursor = 'pointer';
+        municipalLabel.style.padding = '0.75rem';
+        municipalLabel.style.border = '2px solid #ddd';
+        municipalLabel.style.borderRadius = '6px';
+        municipalLabel.style.transition = 'all 0.2s';
+
+        const municipalRadio = document.createElement('input');
+        municipalRadio.type = 'radio';
+        municipalRadio.name = 'sector';
+        municipalRadio.value = 'municipal';
+        municipalRadio.id = 'sector-municipal';
+        municipalRadio.style.cursor = 'pointer';
+
+        const municipalSpan = document.createElement('span');
+        municipalSpan.innerHTML = '<strong>Kommunal sektor</strong><br><small>28/30/32 dagar</small>';
+
+        municipalLabel.appendChild(municipalRadio);
+        municipalLabel.appendChild(municipalSpan);
+
+        municipalLabel.onmouseover = () => {
+            municipalLabel.style.borderColor = '#667eea';
+            municipalLabel.style.background = '#f9f9f9';
+        };
+        municipalLabel.onmouseout = () => {
+            municipalLabel.style.borderColor = municipalRadio.checked ? '#667eea' : '#ddd';
+            municipalLabel.style.background = 'transparent';
+        };
+        municipalRadio.onchange = () => {
+            municipalLabel.style.borderColor = '#667eea';
+            municipalLabel.style.background = '#f0f4ff';
+            privateLabel.style.borderColor = '#ddd';
+            privateLabel.style.background = 'transparent';
+        };
+
+        sectorContainer.appendChild(municipalLabel);
+
+        sectorInfo.appendChild(sectorContainer);
+        form.appendChild(sectorInfo);
 
         // === SALARY & VACATION ===
         const salaryInfo = document.createElement('fieldset');
@@ -171,15 +269,12 @@ export function renderPersonal(container, ctx) {
         salaryLegend.style.marginBottom = '1rem';
         salaryInfo.appendChild(salaryLegend);
 
-        // Salary
         const salaryGroup = createFormGroup('personal-salary', 'Månadslön (SEK)', 'number', '25000');
         salaryInfo.appendChild(salaryGroup);
 
-        // Saved vacation days
         const savedVacationGroup = createFormGroup('personal-saved-vacation', 'Sparade semesterdagar', 'number', '0');
         salaryInfo.appendChild(savedVacationGroup);
 
-        // Saved leave days
         const savedLeaveGroup = createFormGroup('personal-saved-leave', 'Sparade ledighetsdagar', 'number', '0');
         salaryInfo.appendChild(savedLeaveGroup);
 
@@ -416,7 +511,7 @@ function createFormGroup(id, label, type, placeholder) {
 }
 
 /**
- * Create person card with all info
+ * Create person card with all info including sector
  */
 function createPersonCard(person, store, ctx, container, groups) {
     const card = document.createElement('div');
@@ -489,25 +584,27 @@ function createPersonCard(person, store, ctx, container, groups) {
 
     // Employment info
     const employmentSection = document.createElement('div');
-    const yearsEmployed = calculateYearsEmployed(person.startDate);
-    const vacationDays = calculateVacationDays(person.startDate, person.degree || 100);
+    const yearsEmployed = calculateYearsEmployed(person.startDate, person.sector || 'private');
+    const vacationDays = getVacationDaysPerYear(yearsEmployed, person.degree || 100, person.sector || 'private');
 
     employmentSection.innerHTML = `
         <h4 style="margin: 0 0 0.75rem 0; color: #333;">Anställning</h4>
-        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Startdatum:</strong> ${new Date(person.startDate).toLocaleDateString('sv')}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Startdatum:</strong> ${formatDate(person.startDate)}</p>
         <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>År:</strong> ${yearsEmployed}</p>
         <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Tjänstgöringsgrad:</strong> ${person.degree || 100}%</p>
         <p style="margin: 0; font-size: 0.9rem;"><strong>Arbetsdagar/vecka:</strong> ${person.workdaysPerWeek || 5}</p>
     `;
     content.appendChild(employmentSection);
 
-    // Salary & Vacation
+    // Sector & Vacation
     const salarySection = document.createElement('div');
+    const sectorName = person.sector === 'municipal' ? 'Kommunal' : 'Privat';
     salarySection.innerHTML = `
         <h4 style="margin: 0 0 0.75rem 0; color: #333;">Löner & Semesterdagar</h4>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sektor:</strong> ${sectorName}</p>
         <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Månadslön:</strong> ${(person.salary || 0).toLocaleString('sv')} SEK</p>
         <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sparade semesterdagar:</strong> ${person.savedVacationDays || 0}</p>
-        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Nya semesterdagar (1 apr):</strong> ${vacationDays}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Nya semesterdagar:</strong> ${vacationDays}</p>
         <p style="margin: 0; font-size: 0.9rem;"><strong>Sparade ledighetsdagar:</strong> ${person.savedLeaveDays || 0}</p>
     `;
     content.appendChild(salarySection);
@@ -544,36 +641,15 @@ function createPersonCard(person, store, ctx, container, groups) {
 }
 
 /**
- * Calculate years employed
+ * Format date to Swedish format
  */
-function calculateYearsEmployed(startDate) {
-    if (!startDate) return '0';
-    const start = new Date(startDate);
-    const now = new Date();
-    const years = Math.floor((now - start) / (365.25 * 24 * 60 * 60 * 1000));
-    return years + ' år';
-}
-
-/**
- * Calculate vacation days based on employment years
- * Using Hotell- och restaurangfackets regler
- */
-function calculateVacationDays(startDate, employmentDegree = 100) {
-    if (!startDate) return 0;
-
-    const start = new Date(startDate);
-    const now = new Date();
-    const yearsEmployed = Math.floor((now - start) / (365.25 * 24 * 60 * 60 * 1000));
-
-    let baseDays = VACATION_RULES[0]; // Default 25
-    if (yearsEmployed >= 2 && yearsEmployed < 5) {
-        baseDays = VACATION_RULES[2]; // 28
-    } else if (yearsEmployed >= 5) {
-        baseDays = VACATION_RULES[5]; // 31
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    try {
+        return new Date(dateStr).toLocaleDateString('sv');
+    } catch {
+        return dateStr;
     }
-
-    // Adjust for employment degree
-    return Math.round((baseDays * employmentDegree) / 100);
 }
 
 /**
@@ -595,6 +671,7 @@ function addPerson(form, errorDiv, store, ctx, container) {
         const salary = parseInt(form.querySelector('#personal-salary')?.value || 0);
         const savedVacation = parseInt(form.querySelector('#personal-saved-vacation')?.value || 0);
         const savedLeave = parseInt(form.querySelector('#personal-saved-leave')?.value || 0);
+        const sector = document.querySelector('input[name="sector"]:checked')?.value || 'private';
 
         // Get selected groups
         const groupIds = Array.from(document.querySelectorAll('.group-checkbox:checked'))
@@ -635,9 +712,12 @@ function addPerson(form, errorDiv, store, ctx, container) {
             salary,
             savedVacationDays: savedVacation,
             savedLeaveDays: savedLeave,
+            sector,
             groupIds,
             availability,
-            createdAt: new Date().toISOString()
+            usedVacationDays: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         };
 
         store.setState({
@@ -680,7 +760,12 @@ function editPerson(person, store, ctx, container) {
         }
 
         const updatedPeople = people.map(p => 
-            p.id === person.id ? { ...p, name: newName, email: newEmail, updatedAt: new Date().toISOString() } : p
+            p.id === person.id ? { 
+                ...p, 
+                name: newName, 
+                email: newEmail, 
+                updatedAt: new Date().toISOString() 
+            } : p
         );
 
         store.setState({ ...state, people: updatedPeople });
@@ -699,7 +784,7 @@ function editPerson(person, store, ctx, container) {
  */
 function deletePerson(personId, store, ctx, container) {
     try {
-        if (!confirm('Är du säker?')) return;
+        if (!confirm('Är du säker på att du vill ta bort denna person?')) return;
 
         const state = store.getState();
         store.setState({
