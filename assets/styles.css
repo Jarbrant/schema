@@ -69,14 +69,17 @@
 /* Step 13: Calendar View (FAS 1.2) */
 @import url('./css/calendar.css');
 
-/* Step 14: Navbar (Navigation bar) */
+/* Step 14: Summary View (Cost Overview) */
+@import url('./css/summary.css');
+
+/* Step 15: Navbar (Navigation bar) */
 @import url('./css/navbar.css');
 
-/* Step 15: Diagnostics (Error Panel & System Health) */
+/* Step 16: Diagnostics (Error Panel & System Health) */
 @import url('./css/diagnostics.css');
 
-/* Step 16: Healthcheck (Module Health Status — AO-05) */
+/* Step 17: Healthcheck (Module Health Status — AO-05) */
 @import url('./css/healthcheck.css');
 
-/* Step 17: Responsive Design (ALLTID SIST!) */
+/* Step 18: Responsive Design (ALLTID SIST!) */
 @import url('./css/responsive.css');
