@@ -712,6 +712,11 @@ function addPerson(form, errorDiv, store, ctx, container) {
             throw new Error('Startdatum krävs');
         }
 
+        // Split name into firstName and lastName
+        const nameParts = name.split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || nameParts[0]; // If only one name, use it for both
+
         const state = store.getState();
         const people = state.people || [];
 
@@ -720,10 +725,22 @@ function addPerson(form, errorDiv, store, ctx, container) {
             throw new Error('E-postadressen finns redan');
         }
 
-        // Create person
+        // Calculate hourlyWage from salary (167 hours per month standard)
+        const hourlyWage = salary > 0 ? salary / 167 : 0;
+
+        // Create person with correct schema
         const newPerson = {
             id: `person_${Date.now()}`,
-            name,
+            firstName,
+            lastName,
+            hourlyWage,
+            employmentPct: degree,
+            isActive: true,
+            vacationDaysPerYear: 25, // Default
+            extraDaysStartBalance: savedVacation,
+            groups: groupIds,
+            // Additional fields for HR system
+            name, // Keep for display
             email,
             phone: phone || null,
             startDate,
@@ -779,9 +796,16 @@ function editPerson(person, store, ctx, container) {
             throw new Error('E-postadressen finns redan');
         }
 
+        // Split name into firstName and lastName
+        const nameParts = newName.split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || nameParts[0];
+
         const updatedPeople = people.map(p => 
             p.id === person.id ? { 
-                ...p, 
+                ...p,
+                firstName,
+                lastName,
                 name: newName, 
                 email: newEmail, 
                 updatedAt: new Date().toISOString() 
