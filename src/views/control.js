@@ -109,7 +109,6 @@ function setupTabListeners(container, ctx) {
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             const tabName = tab.dataset.tab;
-            console.log(`🔄 Växlar till flik: ${tabName}`);
             
             // Update context
             ctx.controlTab = tabName;
