@@ -20,76 +20,121 @@ export function renderDemandTableSection(container, ctx) {
         const passes = state.passes || [];
         const demands = state.demands || [];
 
-        const html = `
-            <div class="section-header">
-                <h2>👥 Bemanningsbehov</h2>
-                <p>Definiera hur många personer som behövs per grupp och pass.</p>
-            </div>
+        // Build HTML safely
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'section-header';
 
-            <div class="section-content">
-                ${groups.length > 0 && passes.length > 0 ? `
-                    <div class="demand-table-wrapper">
-                        <table class="demand-table">
-                            <thead>
-                                <tr>
-                                    <th>Grupp</th>
-                                    ${passes.map(pass => `<th>${pass.name}</th>`).join('')}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${groups.map(group => `
-                                    <tr>
-                                        <td class="demand-group-name">${group.name}</td>
-                                        ${passes.map(pass => {
-                                            const demandKey = \`\${group.id}_\${pass.id}\`;
-                                            const currentDemand = demands.find(d => d.key === demandKey);
-                                            const value = currentDemand?.count || 0;
-                                            
-                                            return \`
-                                                <td>
-                                                    <input 
-                                                        type="number" 
-                                                        class="demand-input" 
-                                                        data-group-id="\${group.id}"
-                                                        data-pass-id="\${pass.id}"
-                                                        data-demand-key="\${demandKey}"
-                                                        value="\${value}"
-                                                        min="0"
-                                                        max="99"
-                                                    >
-                                                </td>
-                                            \`;
-                                        }).join('')}
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+        const h2 = document.createElement('h2');
+        h2.textContent = '👥 Bemanningsbehov';
 
-                    <div class="demand-actions">
-                        <button id="demand-save-btn" class="btn btn-primary">
-                            💾 Spara bemanningsbehov
-                        </button>
-                        <button id="demand-reset-btn" class="btn btn-secondary">
-                            🔄 Återställ
-                        </button>
-                    </div>
+        const p = document.createElement('p');
+        p.textContent = 'Definiera hur många personer som behövs per grupp och pass.';
 
-                    <div id="demand-status" class="demand-status"></div>
-                ` : `
-                    <div class="empty-state">
-                        ${groups.length === 0 ? 'Inga grupper skapade ännu.' : ''}
-                        ${passes.length === 0 ? 'Inga grundpass skapade ännu.' : ''}
-                        <br>
-                        Gå till <a href="#/groups">Grupper</a> för att skapa grupper och grundpass.
-                    </div>
-                `}
-            </div>
-        `;
+        headerDiv.appendChild(h2);
+        headerDiv.appendChild(p);
 
-        container.innerHTML = html;
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'section-content';
 
-        // Setup event listeners
+        if (groups.length > 0 && passes.length > 0) {
+            // Build table
+            const tableWrapper = document.createElement('div');
+            tableWrapper.className = 'demand-table-wrapper';
+
+            const table = document.createElement('table');
+            table.className = 'demand-table';
+
+            // Table head
+            const thead = document.createElement('thead');
+            const tr = document.createElement('tr');
+
+            const th = document.createElement('th');
+            th.textContent = 'Grupp';
+            tr.appendChild(th);
+
+            passes.forEach(pass => {
+                const passHeader = document.createElement('th');
+                passHeader.textContent = pass.name || 'Pass';
+                tr.appendChild(passHeader);
+            });
+
+            thead.appendChild(tr);
+            table.appendChild(thead);
+
+            // Table body
+            const tbody = document.createElement('tbody');
+
+            groups.forEach(group => {
+                const bodyRow = document.createElement('tr');
+
+                const groupCell = document.createElement('td');
+                groupCell.className = 'demand-group-name';
+                groupCell.textContent = group.name || 'Grupp';
+                bodyRow.appendChild(groupCell);
+
+                passes.forEach(pass => {
+                    const demandKey = `${group.id}_${pass.id}`;
+                    const currentDemand = demands.find(d => d.key === demandKey);
+                    const value = currentDemand?.count || 0;
+
+                    const demandCell = document.createElement('td');
+
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.className = 'demand-input';
+                    input.dataset.groupId = group.id;
+                    input.dataset.passId = pass.id;
+                    input.dataset.demandKey = demandKey;
+                    input.value = value;
+                    input.min = '0';
+                    input.max = '99';
+
+                    demandCell.appendChild(input);
+                    bodyRow.appendChild(demandCell);
+                });
+
+                tbody.appendChild(bodyRow);
+            });
+
+            table.appendChild(tbody);
+            tableWrapper.appendChild(table);
+            contentDiv.appendChild(tableWrapper);
+
+            // Action buttons
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'demand-actions';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.id = 'demand-save-btn';
+            saveBtn.className = 'btn btn-primary';
+            saveBtn.textContent = '💾 Spara bemanningsbehov';
+
+            const resetBtn = document.createElement('button');
+            resetBtn.id = 'demand-reset-btn';
+            resetBtn.className = 'btn btn-secondary';
+            resetBtn.textContent = '🔄 Återställ';
+
+            actionsDiv.appendChild(saveBtn);
+            actionsDiv.appendChild(resetBtn);
+            contentDiv.appendChild(actionsDiv);
+
+            // Status div
+            const statusDiv = document.createElement('div');
+            statusDiv.id = 'demand-status';
+            statusDiv.className = 'demand-status';
+            contentDiv.appendChild(statusDiv);
+
+        } else {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'empty-state';
+            emptyDiv.textContent = 'Inga grupper eller grundpass skapade ännu. Gå till Grupper för att skapa dem.';
+            contentDiv.appendChild(emptyDiv);
+        }
+
+        container.appendChild(headerDiv);
+        container.appendChild(contentDiv);
+
+        // Setup listeners
         setupDemandListeners(container, ctx);
 
     } catch (err) {
@@ -98,9 +143,6 @@ export function renderDemandTableSection(container, ctx) {
     }
 }
 
-/**
- * Setup event listeners för bemanningsbehov
- */
 function setupDemandListeners(container, ctx) {
     try {
         const saveBtn = container.querySelector('#demand-save-btn');
@@ -125,9 +167,6 @@ function setupDemandListeners(container, ctx) {
     }
 }
 
-/**
- * Spara bemanningsbehov till store
- */
 function saveDemands(container, ctx, statusDiv) {
     try {
         console.log('💾 Sparar bemanningsbehov...');
@@ -135,19 +174,16 @@ function saveDemands(container, ctx, statusDiv) {
         const inputs = container.querySelectorAll('.demand-input');
         const newDemands = [];
 
-        // Samla alla demand-värden
         inputs.forEach(input => {
             const groupId = input.dataset.groupId;
             const passId = input.dataset.passId;
             const demandKey = input.dataset.demandKey;
             const count = parseInt(input.value, 10) || 0;
 
-            // Validera värde
             if (count < 0 || count > 99) {
                 throw new Error(`Ogiltigt värde för ${demandKey}: ${count}`);
             }
 
-            // Lägg till demand endast om count > 0
             if (count > 0) {
                 newDemands.push({
                     key: demandKey,
@@ -159,7 +195,6 @@ function saveDemands(container, ctx, statusDiv) {
             }
         });
 
-        // Uppdatera store
         const store = ctx?.store;
         if (!store) {
             throw new Error('Store saknas');
@@ -172,53 +207,58 @@ function saveDemands(container, ctx, statusDiv) {
         });
 
         console.log('✓ Bemanningsbehov sparade:', newDemands);
-
-        // Visa success-meddelande
         showSuccess('✓ Bemanningsbehov sparade');
 
-        // Visa status (kort, utan data)
         if (statusDiv) {
-            statusDiv.innerHTML = `
-                <div class="status-message status-success">
-                    ✓ ${newDemands.length} bemanningsbehov sparade
-                </div>
-            `;
+            while (statusDiv.firstChild) {
+                statusDiv.removeChild(statusDiv.firstChild);
+            }
+
+            const msg = document.createElement('div');
+            msg.className = 'status-message status-success';
+            msg.textContent = `✓ ${newDemands.length} bemanningsbehov sparade`;
+
+            statusDiv.appendChild(msg);
+
             setTimeout(() => {
-                statusDiv.innerHTML = '';
+                while (statusDiv.firstChild) {
+                    statusDiv.removeChild(statusDiv.firstChild);
+                }
             }, 3000);
         }
 
     } catch (err) {
         console.error('❌ Fel vid sparning av bemanningsbehov:', err);
 
-        // Rapportera via Diagnostics (säker feltext)
         reportError(
             'DEMAND_SAVE_ERROR',
             'CONTROL_SECTION',
             'control/sections/demandTable.js',
-            `Ett fel uppstod vid sparning av bemanningsbehov: ${err.message || 'Okänt fel'}`
+            `Ett fel uppstod vid sparning: ${err.message}`
         );
 
-        // Visa error-meddelande
         showWarning('⚠️ Kunde inte spara bemanningsbehov');
 
-        // Visa status
         if (statusDiv) {
-            statusDiv.innerHTML = `
-                <div class="status-message status-error">
-                    ⚠️ Ett fel uppstod vid sparning
-                </div>
-            `;
+            while (statusDiv.firstChild) {
+                statusDiv.removeChild(statusDiv.firstChild);
+            }
+
+            const msg = document.createElement('div');
+            msg.className = 'status-message status-error';
+            msg.textContent = '⚠️ Ett fel uppstod vid sparning';
+
+            statusDiv.appendChild(msg);
+
             setTimeout(() => {
-                statusDiv.innerHTML = '';
+                while (statusDiv.firstChild) {
+                    statusDiv.removeChild(statusDiv.firstChild);
+                }
             }, 5000);
         }
     }
 }
 
-/**
- * Återställ alla demand-värden
- */
 function resetDemands(container, ctx) {
     try {
         console.log('🔄 Återställer bemanningsbehov...');
@@ -231,7 +271,6 @@ function resetDemands(container, ctx) {
         const state = store.getState();
         const demands = state.demands || [];
 
-        // Återställ alla input-värden
         const inputs = container.querySelectorAll('.demand-input');
         inputs.forEach(input => {
             const demandKey = input.dataset.demandKey;
@@ -244,7 +283,7 @@ function resetDemands(container, ctx) {
         showSuccess('✓ Bemanningsbehov återställda');
 
     } catch (err) {
-        console.error('❌ Fel vid återställning av bemanningsbehov:', err);
+        console.error('❌ Fel vid återställning:', err);
         showWarning('⚠️ Kunde inte återställa bemanningsbehov');
     }
 }
