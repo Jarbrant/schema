@@ -765,7 +765,12 @@ function addPerson(form, errorDiv, store, ctx, container) {
         console.log('✓ Person tillagd:', newPerson);
         showSuccess('✓ Personal tillagd');
         form.reset();
-        renderPersonal(container.closest('[class*="container"]'), ctx);
+        
+        // Re-render the personal view
+        const mainContainer = document.querySelector('#app-container');
+        if (mainContainer && ctx) {
+            renderPersonal(mainContainer, ctx);
+        }
 
     } catch (err) {
         console.error('❌ Error adding person:', err);
@@ -815,7 +820,12 @@ function editPerson(person, store, ctx, container) {
         store.setState({ ...state, people: updatedPeople });
         console.log('✓ Person uppdaterad');
         showSuccess('✓ Personal uppdaterad');
-        renderPersonal(container.closest('[class*="container"]'), ctx);
+        
+        // Re-render the personal view
+        const mainContainer = document.querySelector('#app-container');
+        if (mainContainer && ctx) {
+            renderPersonal(mainContainer, ctx);
+        }
 
     } catch (err) {
         console.error('❌ Error editing person:', err);
@@ -838,7 +848,12 @@ function deletePerson(personId, store, ctx, container) {
 
         console.log('✓ Person borttagen');
         showSuccess('✓ Personal borttagen');
-        renderPersonal(container.closest('[class*="container"]'), ctx);
+        
+        // Re-render the personal view
+        const mainContainer = document.querySelector('#app-container');
+        if (mainContainer && ctx) {
+            renderPersonal(mainContainer, ctx);
+        }
 
     } catch (err) {
         console.error('❌ Error deleting person:', err);
