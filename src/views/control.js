@@ -27,6 +27,7 @@ export function renderControl(container, ctx) {
     }
 
     const state = store.getState();
+    const currentTab = ctx?.controlTab || 'control';
 
     const html = `
         <div class="control-container">
@@ -56,35 +57,75 @@ export function renderControl(container, ctx) {
                     </div>
                 </div>
 
-                <!-- Sections Container -->
-                <div class="control-sections">
-                    <!-- Group Filter Section -->
-                    <div id="section-group-filter" class="control-section"></div>
-
-                    <!-- Group Shifts Section -->
-                    <div id="section-group-shifts" class="control-section"></div>
-
-                    <!-- Demand Table Section -->
-                    <div id="section-demand-table" class="control-section"></div>
-
-                    <!-- Schedule Generator Section -->
-                    <div id="section-schedule-generator" class="control-section"></div>
+                <!-- Tab Navigation -->
+                <div class="control-tabs">
+                    <button class="control-tab ${currentTab === 'control' ? 'active' : ''}" data-tab="control">
+                        ✓ Kontroll
+                    </button>
+                    <button class="control-tab ${currentTab === 'scheduling' ? 'active' : ''}" data-tab="scheduling">
+                        📅 Schemaläggning
+                    </button>
                 </div>
+
+                <!-- TAB 1: KONTROLL -->
+                ${currentTab === 'control' ? `
+                    <div class="control-sections">
+                        <!-- Group Filter Section -->
+                        <div id="section-group-filter" class="control-section"></div>
+
+                        <!-- Group Shifts Section -->
+                        <div id="section-group-shifts" class="control-section"></div>
+                    </div>
+                ` : ''}
+
+                <!-- TAB 2: SCHEMALÄGGNING -->
+                ${currentTab === 'scheduling' ? `
+                    <div class="control-sections">
+                        <!-- Demand Table Section -->
+                        <div id="section-demand-table" class="control-section"></div>
+
+                        <!-- Schedule Generator Section -->
+                        <div id="section-schedule-generator" class="control-section"></div>
+                    </div>
+                ` : ''}
             </div>
         </div>
     `;
 
     container.innerHTML = html;
 
-    // Render all sections with error handling + healthcheck
-    renderAllSections(container, ctx);
+    // Setup tab switching
+    setupTabListeners(container, ctx);
+
+    // Render sections based on active tab
+    renderAllSections(container, ctx, currentTab);
+}
+
+/**
+ * Setup tab switching listeners
+ */
+function setupTabListeners(container, ctx) {
+    const tabs = container.querySelectorAll('.control-tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabName = tab.dataset.tab;
+            console.log(`🔄 Växlar till flik: ${tabName}`);
+            
+            // Update context
+            ctx.controlTab = tabName;
+            
+            // Re-render the view
+            renderControl(container, ctx);
+        });
+    });
 }
 
 /**
  * Render alla sektioner med error-handling + healthcheck
  */
-function renderAllSections(container, ctx) {
-    const sections = [
+function renderAllSections(container, ctx, currentTab) {
+    // Define sections for each tab
+    const controlSections = [
         {
             id: 'section-group-filter',
             name: 'Grupp-filter',
@@ -98,7 +139,10 @@ function renderAllSections(container, ctx) {
             moduleId: 'control.groupShifts',
             render: renderGroupShiftsSection,
             file: 'groupShifts.js'
-        },
+        }
+    ];
+
+    const schedulingSections = [
         {
             id: 'section-demand-table',
             name: 'Bemanningsbehov',
@@ -114,6 +158,9 @@ function renderAllSections(container, ctx) {
             file: 'scheduleGenerator.js'
         }
     ];
+
+    // Select sections based on current tab
+    const sections = currentTab === 'control' ? controlSections : schedulingSections;
 
     sections.forEach(section => {
         const sectionContainer = container.querySelector(`#${section.id}`);

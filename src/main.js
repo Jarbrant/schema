@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // View-specific tabs/modes
             shiftTab: 'schedule',        // 'schedule' eller 'validation'
             groupsTab: 'groups',         // 'groups' eller 'passes'
+            controlTab: 'control',       // 'control' eller 'scheduling'
             
             // Filtering
             selectedGroups: [],          // För grupp-filterering i Control
