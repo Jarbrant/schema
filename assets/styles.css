@@ -1,5 +1,5 @@
 /* ========================================================================
-   SCHEMA-PROGRAM: Master stylesheet (AUTOPATCH v7)
+   SCHEMA-PROGRAM: Master stylesheet (AUTOPATCH v8)
    
    Importordning är KRITISK:
    1. base.css — Global reset, typography, layout
@@ -15,8 +15,9 @@
    11. demand.css — Demand table (bemanningsbehov)
    12. generator.css — Schedule generator (schemagenerator)
    13. navbar.css — Navigation bar (topbar)
-   14. diagnostics.css — Error panel & diagnostics (INNAN responsive!)
-   15. responsive.css — Media queries (ALLTID SIST!)
+   14. diagnostics.css — Error panel & diagnostics
+   15. healthcheck.css — Module health status (AO-05)
+   16. responsive.css — Media queries (ALLTID SIST!)
    
    Varför denna ordning?
    - base.css måste komma FÖRST (reset, typography)
@@ -24,7 +25,8 @@
    - page-moduler (home, shifts, groups, control) innan navbar
    - demand.css och generator.css innan navbar (modulär styling)
    - navbar innan diagnostics (så diagnostics kan överskriva)
-   - diagnostics.css innan responsive.css (media queries kan överskriva)
+   - diagnostics.css innan healthcheck.css (healthcheck kan överskriva)
+   - healthcheck.css innan responsive.css (så media queries kan överskriva)
    - responsive.css SIST (högsta prioritet för media queries)
    ======================================================================== */
 
@@ -70,5 +72,8 @@
 /* Step 14: Diagnostics (Error Panel & System Health) */
 @import url('./css/diagnostics.css');
 
-/* Step 15: Responsive Design (ALLTID SIST!) */
+/* Step 15: Healthcheck (Module Health Status — AO-05) */
+@import url('./css/healthcheck.css');
+
+/* Step 16: Responsive Design (ALLTID SIST!) */
 @import url('./css/responsive.css');
