@@ -1,158 +1,293 @@
-/* ========================================================================
-   BLOCK 5-8: FORMS, INPUTS, BUTTONS, LABELS
-   ======================================================================== */
+/* ==========================================================================
+   FIL: assets/css/forms.css
+   SCHEMA-PROGRAM — Forms, Inputs, Buttons (AUTOPATCH v1)
+   Syfte: Enhetlig styling för knappar och formulär i hela appen.
+   Policy:
+   - Ingen funktion tas bort (endast säkrare/tydligare styling)
+   - A11y: focus-visible, disabled states, bättre kontrast
+   - Robust: fungerar även om andra CSS-filer saknas
+   ========================================================================== */
 
-/* Buttons */
-.btn {
-    display: inline-block;
-    padding: 0.75rem 1.5rem;
-    border: none;
-    border-radius: 4px;
-    font-size: 0.95rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-decoration: none;
-    text-align: center;
+/* --------------------------------------------------------------------------
+   BLOCK 1 — Bas: små defaultförbättringar
+   -------------------------------------------------------------------------- */
+
+/* Inline-note: Säkerställ att form-element ärver font i alla browsers */
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 
+/* Inline-note: Undvik zoom-jitter på iOS och olika box-models */
+input,
+select,
+textarea {
+  box-sizing: border-box;
+}
+
+/* --------------------------------------------------------------------------
+   BLOCK 2 — Buttons (.btn)
+   -------------------------------------------------------------------------- */
+
+.btn {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+  text-decoration: none;
+  text-align: center;
+  line-height: 1.1;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Inline-note: Tryckkänsla utan att ändra layout */
+.btn:active {
+  transform: translateY(1px);
+}
+
+/* A11y: tydlig fokusram för tangentbord */
+.btn:focus-visible {
+  outline: 3px solid rgba(102, 126, 234, 0.35);
+  outline-offset: 2px;
+}
+
+/* Disabled: tydligt + ingen hover/active */
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Primär knapp */
 .btn-primary {
-    background: #667eea;
-    color: white;
+  background: #667eea;
+  color: #ffffff;
 }
 
 .btn-primary:hover {
-    background: #5568d3;
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  background: #5568d3;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
+.btn-primary:disabled,
+.btn-primary[aria-disabled="true"] {
+  background: #667eea; /* behåll identitet men dämpad via opacity */
+}
+
+/* Sekundär knapp */
 .btn-secondary {
-    background: #95a5a6;
-    color: white;
+  background: #95a5a6;
+  color: #ffffff;
 }
 
 .btn-secondary:hover {
-    background: #7f8c8d;
+  background: #7f8c8d;
 }
 
+.btn-secondary:disabled,
+.btn-secondary[aria-disabled="true"] {
+  background: #95a5a6;
+}
+
+/* Små knappar */
 .btn-sm {
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
 }
 
-/* Form Groups */
+/* --------------------------------------------------------------------------
+   BLOCK 3 — Form groups
+   -------------------------------------------------------------------------- */
+
 .form-group {
-    margin-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .form-group label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-    color: #333;
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
 }
 
+/* Inputs/Select/Textarea */
 .form-group input,
 .form-group textarea,
 .form-group select {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 0.95rem;
-    font-family: inherit;
-    transition: border-color 0.2s;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  background: #fff;
+  color: #111;
 }
 
+/* Placeholder: lite mjukare */
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: #777;
+}
+
+/* Focus: tydlig men diskret */
 .form-group input:focus,
 .form-group textarea:focus,
 .form-group select:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
 }
 
+/* A11y: fokus syns bara vid tangentbord */
+.form-group input:focus-visible,
+.form-group textarea:focus-visible,
+.form-group select:focus-visible {
+  outline: 3px solid rgba(102, 126, 234, 0.18);
+  outline-offset: 1px;
+}
+
+/* Disabled inputs */
+.form-group input:disabled,
+.form-group textarea:disabled,
+.form-group select:disabled {
+  background: #f3f4f6;
+  color: #666;
+  cursor: not-allowed;
+}
+
+/* Textarea */
 textarea {
-    resize: vertical;
+  resize: vertical;
+  min-height: 90px; /* Inline-note: bättre default utan att låsa */
 }
 
-/* Form Error */
+/* --------------------------------------------------------------------------
+   BLOCK 4 — Form error
+   -------------------------------------------------------------------------- */
+
 .form-error {
-    background: #ffebee;
-    color: #c62828;
-    padding: 0.8rem;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-    border-left: 4px solid #c62828;
-    font-size: 0.9rem;
+  background: #ffebee;
+  color: #c62828;
+  padding: 0.8rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  border-left: 4px solid #c62828;
+  font-size: 0.9rem;
 }
 
 .form-error.hidden {
-    display: none;
+  display: none;
 }
 
-/* Inline Forms */
+/* --------------------------------------------------------------------------
+   BLOCK 5 — Inline forms + time inputs
+   -------------------------------------------------------------------------- */
+
 .form-group-inline {
-    display: flex;
-    align-items: flex-end;
-    gap: 1rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap; /* Inline-note: undvik overflow på smala skärmar */
 }
 
 .form-group-inline label {
-    min-width: 120px;
-    margin-bottom: 0;
+  min-width: 120px;
+  margin-bottom: 0;
 }
 
 .time-inputs {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 220px; /* Inline-note: håller ihop timmar/minuter */
 }
 
 .time-inputs input {
-    flex: 1;
-    max-width: 120px;
+  flex: 1;
+  max-width: 120px;
 }
 
 .separator {
-    color: #999;
-    font-weight: 600;
+  color: #999;
+  font-weight: 600;
 }
 
-/* Color Picker */
+/* --------------------------------------------------------------------------
+   BLOCK 6 — Color picker
+   -------------------------------------------------------------------------- */
+
 .color-picker {
-    display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 0.8rem;
-    margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0.8rem;
+  margin-top: 0.8rem;
 }
 
 .color-option {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: 3px solid transparent;
-    cursor: pointer;
-    transition: all 0.2s;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .color-option:hover {
-    transform: scale(1.1);
+  transform: scale(1.06);
+}
+
+.color-option:focus-visible {
+  outline: 3px solid rgba(17, 17, 17, 0.18);
+  outline-offset: 3px;
 }
 
 .color-option.selected {
-    border-color: #333;
-    box-shadow: 0 0 0 2px white, 0 0 0 4px #333;
+  border-color: #333;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #333;
 }
 
-/* Form Actions */
+/* --------------------------------------------------------------------------
+   BLOCK 7 — Form actions
+   -------------------------------------------------------------------------- */
+
 .form-actions {
-    display: flex;
-    gap: 0.8rem;
-    margin-top: 2rem;
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 2rem;
+  flex-wrap: wrap; /* Inline-note: bättre på mobil */
 }
 
 .form-actions .btn {
-    flex: 1;
+  flex: 1;
+  min-width: 160px; /* Inline-note: knappar blir inte för smala */
+}
+
+/* --------------------------------------------------------------------------
+   BLOCK 8 — Motion policy
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .color-option,
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    transition: none !important;
+  }
+
+  .btn:active {
+    transform: none;
+  }
 }
