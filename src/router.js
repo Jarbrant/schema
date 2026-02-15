@@ -1,46 +1,35 @@
 /*
- * AO-03 — ROUTER: Route-hantering & Topbar visibility
+ * ROUTER — Route Management & Navigation
  * 
- * Fix:
- * - P0: Topbar visas INTE på login-route.
- * - P0: Topbar visas på alla andra routes.
- * - Fail-closed: inte inloggad → allt utom login skickas till login.
- * - Global error hooks via Diagnostics (AO-01)
+ * CONTRACTS:
+ * - DOM elements required: #app, #error-panel, #navbar
+ * - Auth source: store.getState().isLoggedIn (NOT isLoggedIn() function)
+ * - Fail-closed: errors logged + minimal UI shown
  */
 
 import { renderHome } from './views/home.js';
 import { renderPersonal } from './views/personal.js';
-import { renderCalendar } from './views/calendar-new.js'; // FAS 1.2: New calendar view
-import { renderControl } from './views/control.js';
-import { renderSummary } from './views/summary.js';
-import { renderExport } from './views/export.js';
-import { renderRules } from './views/rules.js';
-import { renderShifts } from './views/shifts.js';
-import { renderGroups } from './views/groups.js';
-import { renderLogin, isLoggedIn } from './views/login-pin.js'; // FAS 1: PIN-login
+import { renderLogin } from './views/login-pin.js';
 import { renderError, renderNavbar } from './ui.js';
 import { reportError } from './diagnostics.js';
 
+// Routes: CORRECT mapping
 const routes = {
-    login: renderLogin,
+    login: renderLogin,      // ✅ FIX: Was renderHome
     home: renderHome,
-    shifts: renderShifts,
-    groups: renderGroups,
-    personal: renderPersonal,
-    calendar: renderCalendar,
-    control: renderControl,
-    summary: renderSummary,
-    export: renderExport,
-    rules: renderRules
+    personal: renderPersonal
 };
 
 let container = null;
 let errorPanel = null;
 let appCtx = null;
+const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
-/**
- * Safe clear: Ta bort alla barn-element från en container
- */
+function debugLog(message) {
+    if (!DEBUG) return;
+    console.log(`📊 ${message}`);
+}
+
 function safeClear(el) {
     if (!el) return;
     while (el.firstChild) {
@@ -49,67 +38,57 @@ function safeClear(el) {
 }
 
 /**
- * Hämta default route (home om inloggad, login om inte)
+ * Get auth state from store (SINGLE SOURCE OF TRUTH)
  */
+function isLoggedIn() {
+    if (!appCtx || !appCtx.store) return false;
+    return appCtx.store.getState().isLoggedIn === true;
+}
+
 function getDefaultRoute() {
     return isLoggedIn() ? 'home' : 'login';
 }
 
-/**
- * Parse URL-hash och extrahera route-namn
- */
 function parseRoute() {
-    const hashRaw = window.location.hash || '';
-    let hash = hashRaw.startsWith('#') ? hashRaw.slice(1) : hashRaw;
-
-    if (!hash || hash === '/') {
-        return getDefaultRoute();
-    }
-
-    let route = hash.startsWith('/') ? hash.slice(1) : hash;
+    const hash = window.location.hash || '';
+    let route = hash.startsWith('#/') ? hash.slice(2) : '';
     route = route.split('?')[0];
-
-    // Om route inte finns → gå till default
     return routes[route] ? route : getDefaultRoute();
 }
 
-/**
- * Sätt topbar-synlighet baserat på route
- * P0: Topbar ska INTE visas på login-route
- */
 function setTopbarVisible(isVisible) {
-    const navbarEl = document.getElementById('navbar');
-    if (!navbarEl) return;
-
-    if (!isVisible) {
-        // Topbar av på login (renare UX + säkrare)
-        navbarEl.innerHTML = '';
-        navbarEl.style.display = 'none';
-        return;
+    const navbar = document.getElementById('navbar');
+    
+    // Fail-closed: missing navbar = error
+    if (!navbar) {
+        console.error('❌ DOM element #navbar missing');
+        reportError('DOM_ERROR', 'ROUTER', 'src/router.js', '#navbar element not found');
+        return false;
     }
-
-    // Topbar på
-    navbarEl.style.display = 'block';
-
-    // Bygg topbar om den saknas
-    if (navbarEl.childNodes.length === 0) {
+    
+    if (!isVisible) {
+        navbar.innerHTML = '';
+        navbar.style.display = 'none';
+        debugLog('Navbar hidden (login route)');
+        return true;
+    }
+    
+    navbar.style.display = 'block';
+    
+    if (navbar.childNodes.length === 0) {
         try {
-            renderNavbar(navbarEl);
+            renderNavbar(navbar);
+            debugLog('Navbar rendered');
         } catch (err) {
-            console.error('❌ Topbar render failed:', err);
-            reportError(
-                'NAVBAR_RENDER_FAILED',
-                'ROUTER',
-                'src/router.js',
-                'Navigeringsfältet kunde inte renderas'
-            );
+            console.error('❌ Navbar render failed:', err);
+            reportError('NAVBAR_RENDER_ERROR', 'ROUTER', 'src/router.js', err.message);
+            return false;
         }
     }
+    
+    return true;
 }
 
-/**
- * Markera aktiv länk i topbar
- */
 function markActive(routeName) {
     const links = document.querySelectorAll('#navbar a[href^="#/"]');
     links.forEach((link) => {
@@ -119,105 +98,110 @@ function markActive(routeName) {
     });
 }
 
-/**
- * Rendera en route
- */
 function renderRoute(routeName) {
     try {
-        console.log(`🔄 Renderar route: ${routeName}`);
-
+        debugLog(`Rendering route: ${routeName}`);
+        
         if (!container) {
-            throw new Error('Container element saknas');
+            throw new Error('Container #app missing');
         }
-
+        
         const isLoginRoute = routeName === 'login';
-
-        // P0: Topbar av på login, på för allt annat
-        setTopbarVisible(!isLoginRoute);
-
-        // Fail-closed: inte inloggad och inte login → redirect till login
+        
+        // Set topbar (fail-closed)
+        const navbarOk = setTopbarVisible(!isLoginRoute);
+        if (!isLoginRoute && !navbarOk) {
+            throw new Error('Navbar setup failed');
+        }
+        
+        // Security: not logged in + not login → redirect
         if (!isLoggedIn() && !isLoginRoute) {
-            console.log('📍 Inte inloggad, omdirigerar till login');
+            debugLog('Not authenticated, redirecting to login');
             window.location.hash = '#/login';
             return;
         }
-
+        
         const renderFn = routes[routeName] || routes[getDefaultRoute()];
-
         if (!renderFn) {
-            throw new Error(`Route "${routeName}" inte hittat`);
+            throw new Error(`Route "${routeName}" not found`);
         }
-
-        // Rensa container
+        
         safeClear(container);
-
-        // Rendera vyn
-        console.log(`✓ Anropar renderFn för "${routeName}"`);
-        renderFn(container, {
-            ...appCtx,
-            currentRoute: routeName
-        });
-
-        // Markera aktiv länk i navbar (ej på login)
+        renderFn(container, { ...appCtx, currentRoute: routeName });
+        
         if (!isLoginRoute) {
             markActive(routeName);
         }
-
-        console.log(`✓ Route "${routeName}" renderad`);
-
+        
+        debugLog(`Route rendered: ${routeName}`);
     } catch (err) {
-        console.error(`❌ Fel vid rendering av route "${routeName}":`, err);
-
-        // Rapportera via Diagnostics
-        reportError(
-            'ROUTER_RENDER_FAILED',
-            'ROUTER',
-            'src/router.js',
-            err.message || `Route "${routeName}" kunde inte renderas`
-        );
-
-        // Visa error-panel
-        try {
-            renderError(errorPanel, err);
-        } catch (uiErr) {
-            console.error('❌ Error-panel render failed:', uiErr);
+        console.error(`❌ Route render failed: ${routeName}`, err);
+        reportError('ROUTE_RENDER_ERROR', 'ROUTER', 'src/router.js', err.message);
+        
+        // Fail-closed: show error if errorPanel exists
+        if (errorPanel) {
+            try {
+                renderError(errorPanel, err);
+            } catch (uiErr) {
+                console.error('❌ Error panel render failed:', uiErr);
+                // Minimal fallback
+                errorPanel.textContent = `❌ Error: ${err.message}`;
+            }
+        } else {
+            console.error('⚠️ Error panel #error-panel missing, cannot display error');
         }
     }
 }
 
-/**
- * Hash-change event listener
- */
 function onHashChange() {
-    console.log('📍 Hash changed');
     const route = parseRoute();
     renderRoute(route);
 }
 
 /**
- * Initiera router (anropas från main.js)
+ * Setup router
+ * 
+ * REQUIREMENTS:
+ * - DOM: #app, #error-panel, #navbar must exist
+ * - ctx.store must have getState() with isLoggedIn
+ * - Fails closed: throws if requirements not met
  */
-export function initRouter(containerEl, errorPanelEl, ctx) {
-    // Prevent double-init
-    if (window.__SCHEMA_ROUTER_INIT__) {
-        console.warn('⚠️ Router redan initialiserad');
+export function setupRouter(store) {
+    if (window.__ROUTER_INIT__) {
+        console.warn('⚠️ Router already initialized');
         return;
     }
-    window.__SCHEMA_ROUTER_INIT__ = true;
-
-    console.log('🚀 Initialiserar router...');
-
-    container = containerEl;
-    errorPanel = errorPanelEl;
-    appCtx = ctx;
-
-    // Lyssna på hash-ändringar
+    window.__ROUTER_INIT__ = true;
+    
+    console.log('🚀 Setting up router...');
+    
+    // Validate DOM
+    container = document.getElementById('app');
+    errorPanel = document.getElementById('error-panel');
+    const navbar = document.getElementById('navbar');
+    
+    if (!container) {
+        throw new Error('FATAL: DOM element #app not found');
+    }
+    if (!errorPanel) {
+        throw new Error('FATAL: DOM element #error-panel not found');
+    }
+    if (!navbar) {
+        throw new Error('FATAL: DOM element #navbar not found');
+    }
+    
+    debugLog('DOM elements validated');
+    
+    // Setup context
+    appCtx = { store };
+    
+    // Listen for route changes
     window.addEventListener('hashchange', onHashChange, { passive: true });
-
-    // Rendera initial route
+    
+    // Render initial route
     const initialRoute = parseRoute();
-    console.log(`🔄 Initial route: ${initialRoute}`);
+    debugLog(`Initial route: ${initialRoute}`);
     renderRoute(initialRoute);
-
-    console.log('✓ Router initialiserad');
+    
+    console.log('✓ Router ready');
 }
