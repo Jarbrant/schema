@@ -1,14 +1,11 @@
 /* ========================================================================
-   BASE.CSS — Global Styles (AUTOPATCH v6 — AO-06 Security + Bugfixes)
+   BASE.CSS — Global Styles (AUTOPATCH v7 — NAVBAR FIX)
    
    Förbättringar:
-   - P0: ALLA sidor får samma "ram" (även Home) → inga undantag kvar.
-   - P0: Stöd för både #container och #app-container.
-   - P0: Ram känns tydligare + stabil spacing utan att flytta layout.
-   - P0: Topbar fortsatt horisontell/sticky.
-   - P1: Mindre risk för "hopp" när scrollbar dyker upp (stabil gutter).
-   - AO-06: Login form säkerhet + navbar visibility control
-   - BUGFIX: Fixed form input styling, alert colors, input border defaults
+   - P0: Fixar kollapsad navbar (height ~2px) på home/personal.
+   - P0: Navbar får stabil min-höjd + synlig overflow.
+   - P0: Tar bort skör selector "#navbar[style*='display: none']" (router sköter display).
+   - Behåller övriga funktioner oförändrade.
    ======================================================================== */
 
 /* ========================================================================
@@ -114,29 +111,24 @@ textarea {
 }
 
 /* ========================================================================
-   BLOCK 3: NAVBAR (AO-06 Security Update)
+   BLOCK 3: NAVBAR (P0 FIX — undvik kollaps)
    ======================================================================== */
 #navbar {
     position: sticky;
     top: 0;
     z-index: 1000;
-    min-height: 0;
-    overflow: hidden;
-    transition: all 0.3s ease;
+
+    /* P0: Viktigt — förhindrar att navbar kollapsar till ~0px */
+    display: block;
+    min-height: var(--topbar-h);
+    overflow: visible;
+
+    transition: background-color 0.3s ease;
 }
 
-/* AO-06: Hide navbar safely on login */
-#navbar[style*="display: none"] {
-    visibility: hidden;
-    height: 0;
-    padding: 0 !important;
-    margin: 0 !important;
-    border: none !important;
-}
-
-/* Prevent "ghost frames" */
+/* P0: Base.css ska inte klippa navbar-content (navbar.css hanterar scroll i menyn) */
 .navbar-content {
-    overflow: hidden;
+    overflow: visible;
 }
 
 /* ========================================================================
