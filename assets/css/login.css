@@ -1,1 +1,158 @@
+/* ==========================================================================
+   FIL: assets/css/login.css
+   SCHEMA-PROGRAM — Login (AUTOPATCH v1)
+   Syfte: Traditionell inloggningssida (centrerad kort-layout + tydlig pin-pad)
+   ========================================================================== */
+
+/* BLOCK 1 — Page layout */
+.login-page {
+  min-height: calc(100vh - 0px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #f6f7fb;
+}
+
+/* BLOCK 2 — Container */
+.login-container {
+  width: 100%;
+  max-width: 420px;
+}
+
+/* BLOCK 3 — Card */
+.login-card {
+  background: #ffffff;
+  border: 1px solid #e7e7ee;
+  border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
+  padding: 22px;
+}
+
+/* Headings */
+.login-card h1 {
+  margin: 0 0 6px 0;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  color: #111;
+}
+
+.login-card h2 {
+  margin: 0 0 18px 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #444;
+}
+
+/* BLOCK 4 — PIN display (dots) */
+.pin-display {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 0 16px 0;
+}
+
+.pin-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid #b7bcc8;
+  background: transparent;
+}
+
+.pin-dot.filled {
+  background: #111;
+  border-color: #111;
+}
+
+/* BLOCK 5 — PIN pad */
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.pin-button {
+  height: 48px;
+  border-radius: 10px;
+  border: 1px solid #e1e3ea;
+  background: #fff;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.pin-button:hover {
+  background: #f3f4f8;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
+}
+
+.pin-button:active {
+  transform: translateY(1px);
+}
+
+.pin-button:focus-visible {
+  outline: 3px solid rgba(102, 126, 234, 0.25);
+  outline-offset: 2px;
+}
+
+/* Clear + Submit styling */
+.pin-button-clear {
+  background: #fff;
+}
+
+.pin-button-submit {
+  background: #667eea;
+  color: #fff;
+  border-color: #667eea;
+}
+
+.pin-button-submit:hover {
+  background: #5568d3;
+}
+
+.pin-button:disabled,
+.pin-button-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* BLOCK 6 — Status + alerts in login */
+.login-status {
+  margin-top: 14px;
+}
+
+/* BLOCK 7 — Demo info + footer */
+.login-card .alert {
+  margin-top: 14px;
+  border-radius: 10px;
+}
+
+.login-footer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eee;
+  text-align: center;
+}
+
+.footer-text {
+  margin: 0;
+  color: #777;
+  font-size: 0.85rem;
+}
+
+/* BLOCK 8 — Mobile tweaks */
+@media (max-width: 420px) {
+  .login-card {
+    padding: 18px;
+    border-radius: 12px;
+  }
+  .pin-button {
+    height: 46px;
+  }
+}
 
