@@ -10,6 +10,8 @@
  * - Employment degree (%), workdays per week
  * - Multi-group assignment
  * - Availability calendar (Mon-Sun)
+ * 
+ * FAS 3.3: Cost display added
  */
 
 import { showSuccess, showWarning } from '../ui.js';
@@ -20,6 +22,7 @@ import {
     getPersonVacationYearInfo,
     SECTOR_TYPES
 } from '../hr-rules.js';
+import { calculatePersonMonthlyCost, formatCurrency, formatCurrencyDetailed } from '../lib/cost-utils.js';
 
 const DAYS_OF_WEEK = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 
@@ -599,13 +602,30 @@ function createPersonCard(person, store, ctx, container, groups) {
     // Sector & Vacation
     const salarySection = document.createElement('div');
     const sectorName = person.sector === 'municipal' ? 'Kommunal' : 'Privat';
+    
+    // Calculate costs
+    const costs = calculatePersonMonthlyCost(person);
+    
     salarySection.innerHTML = `
-        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Löner & Semesterdagar</h4>
+        <h4 style="margin: 0 0 0.75rem 0; color: #333;">Löner & Kostnader</h4>
         <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sektor:</strong> ${sectorName}</p>
         <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Månadslön:</strong> ${(person.salary || 0).toLocaleString('sv')} SEK</p>
-        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sparade semesterdagar:</strong> ${person.savedVacationDays || 0}</p>
-        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Nya semesterdagar:</strong> ${vacationDays}</p>
-        <p style="margin: 0; font-size: 0.9rem;"><strong>Sparade ledighetsdagar:</strong> ${person.savedLeaveDays || 0}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #667eea;"><strong>💰 Total Månadskostnad:</strong> ${formatCurrency(costs.totalCost)}</p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #999;">
+            <span style="display: inline-block; margin-left: 1rem;">
+                Lön: ${formatCurrency(costs.adjustedSalary)} + 
+                Arb.avg (${(costs.employerTaxRate * 100).toFixed(1)}%): ${formatCurrency(costs.employerTax)}
+            </span>
+        </p>
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #666;">
+            <strong>Timlön:</strong> ${formatCurrencyDetailed(costs.hourlyRate)}/h | 
+            <strong>Timkostnad:</strong> ${formatCurrencyDetailed(costs.hourlyCost)}/h
+        </p>
+        <div style="border-top: 1px solid #f0f0f0; padding-top: 0.5rem; margin-top: 0.5rem;">
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Sparade semesterdagar:</strong> ${person.savedVacationDays || 0}</p>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;"><strong>Nya semesterdagar:</strong> ${vacationDays}</p>
+            <p style="margin: 0; font-size: 0.9rem;"><strong>Sparade ledighetsdagar:</strong> ${person.savedLeaveDays || 0}</p>
+        </div>
     `;
     content.appendChild(salarySection);
 
@@ -692,6 +712,11 @@ function addPerson(form, errorDiv, store, ctx, container) {
             throw new Error('Startdatum krävs');
         }
 
+        // Split name into firstName and lastName
+        const nameParts = name.split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || nameParts[0]; // If only one name, use it for both
+
         const state = store.getState();
         const people = state.people || [];
 
@@ -700,10 +725,22 @@ function addPerson(form, errorDiv, store, ctx, container) {
             throw new Error('E-postadressen finns redan');
         }
 
-        // Create person
+        // Calculate hourlyWage from salary (167 hours per month standard)
+        const hourlyWage = salary > 0 ? salary / 167 : 0;
+
+        // Create person with correct schema
         const newPerson = {
             id: `person_${Date.now()}`,
-            name,
+            firstName,
+            lastName,
+            hourlyWage,
+            employmentPct: degree,
+            isActive: true,
+            vacationDaysPerYear: 25, // Default
+            extraDaysStartBalance: savedVacation,
+            groups: groupIds,
+            // Additional fields for HR system
+            name, // Keep for display
             email,
             phone: phone || null,
             startDate,
@@ -728,7 +765,12 @@ function addPerson(form, errorDiv, store, ctx, container) {
         console.log('✓ Person tillagd:', newPerson);
         showSuccess('✓ Personal tillagd');
         form.reset();
-        renderPersonal(container.closest('[class*="container"]'), ctx);
+        
+        // Re-render the personal view
+        const mainContainer = document.querySelector('#app-container');
+        if (mainContainer && ctx) {
+            renderPersonal(mainContainer, ctx);
+        }
 
     } catch (err) {
         console.error('❌ Error adding person:', err);
@@ -759,9 +801,16 @@ function editPerson(person, store, ctx, container) {
             throw new Error('E-postadressen finns redan');
         }
 
+        // Split name into firstName and lastName
+        const nameParts = newName.split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || nameParts[0];
+
         const updatedPeople = people.map(p => 
             p.id === person.id ? { 
-                ...p, 
+                ...p,
+                firstName,
+                lastName,
                 name: newName, 
                 email: newEmail, 
                 updatedAt: new Date().toISOString() 
@@ -771,7 +820,12 @@ function editPerson(person, store, ctx, container) {
         store.setState({ ...state, people: updatedPeople });
         console.log('✓ Person uppdaterad');
         showSuccess('✓ Personal uppdaterad');
-        renderPersonal(container.closest('[class*="container"]'), ctx);
+        
+        // Re-render the personal view
+        const mainContainer = document.querySelector('#app-container');
+        if (mainContainer && ctx) {
+            renderPersonal(mainContainer, ctx);
+        }
 
     } catch (err) {
         console.error('❌ Error editing person:', err);
@@ -794,7 +848,12 @@ function deletePerson(personId, store, ctx, container) {
 
         console.log('✓ Person borttagen');
         showSuccess('✓ Personal borttagen');
-        renderPersonal(container.closest('[class*="container"]'), ctx);
+        
+        // Re-render the personal view
+        const mainContainer = document.querySelector('#app-container');
+        if (mainContainer && ctx) {
+            renderPersonal(mainContainer, ctx);
+        }
 
     } catch (err) {
         console.error('❌ Error deleting person:', err);

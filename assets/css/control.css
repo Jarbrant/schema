@@ -34,6 +34,41 @@
     margin-bottom: 2rem;
 }
 
+/* Tab Navigation */
+.control-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #eee;
+    overflow-x: auto;
+    padding-bottom: 1rem;
+}
+
+.control-tab {
+    padding: 0.75rem 1.5rem;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: #999;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.control-tab:hover {
+    color: #667eea;
+    border-color: #667eea;
+}
+
+.control-tab.active {
+    color: #667eea;
+    border-color: #667eea;
+    background: rgba(102, 126, 234, 0.05);
+}
+
 /* Status Row */
 .control-status {
     display: grid;
@@ -63,6 +98,35 @@
     font-size: 1.5rem;
     font-weight: 700;
     color: #667eea;
+}
+
+/* Cost Widget in Status Row */
+.status-item.cost-widget {
+    grid-column: 1 / -1;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    color: white;
+    margin-top: 0.5rem;
+}
+
+.status-item.cost-widget .status-label {
+    color: white;
+    font-size: 1rem;
+}
+
+.status-item.cost-widget .status-value.cost-value {
+    color: white;
+    font-size: 2rem;
+    margin: 0.5rem 0;
+}
+
+.cost-breakdown {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.9);
+    margin-top: 0.25rem;
 }
 
 /* Sections */
@@ -324,6 +388,16 @@
         font-size: 1.6rem;
     }
 
+    .control-tabs {
+        gap: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+
+    .control-tab {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
+
     .control-status {
         grid-template-columns: 1fr;
         gap: 1rem;
@@ -350,6 +424,15 @@
 
     .control-content h1 {
         font-size: 1.3rem;
+    }
+
+    .control-tabs {
+        gap: 0.25rem;
+    }
+
+    .control-tab {
+        padding: 0.5rem 0.8rem;
+        font-size: 0.75rem;
     }
 
     .section-header h2 {

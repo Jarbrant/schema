@@ -9,9 +9,12 @@
  * 2. Grupp-skift
  * 3. Bemanningsbehov
  * 4. Schemagenerator
+ * 
+ * FAS 3.2: Kostnadswidget tillagd
  */
 
 import { reportError, diagnostics } from '../diagnostics.js';
+import { calculateTotalMonthlyCost, calculateCostPerGroup, formatCurrency } from '../lib/cost-utils.js';
 
 // Import sections
 import { renderGroupFilterSection } from './control/sections/groupFilter.js';
@@ -27,6 +30,11 @@ export function renderControl(container, ctx) {
     }
 
     const state = store.getState();
+    const currentTab = ctx?.controlTab || 'control';
+    
+    // Calculate costs for active people
+    const activePeople = (state.people || []).filter(p => p.isActive);
+    const totalCosts = calculateTotalMonthlyCost(activePeople);
 
     const html = `
         <div class="control-container">
@@ -36,7 +44,7 @@ export function renderControl(container, ctx) {
                     Validera schema, hantera bemanningsbehov och generera automatiska scheman
                 </p>
 
-                <!-- Status Row -->
+                <!-- Status Row with Cost Widget -->
                 <div class="control-status">
                     <div class="status-item">
                         <span class="status-label">Schemalägd personal:</span>
@@ -54,37 +62,84 @@ export function renderControl(container, ctx) {
                         <span class="status-label">Bemanningsbehov:</span>
                         <span class="status-value">${state.demands?.length || 0}</span>
                     </div>
+                    <div class="status-item cost-widget">
+                        <span class="status-label">💰 Total Månadskostnad:</span>
+                        <span class="status-value cost-value">${formatCurrency(totalCosts.totalCost)}</span>
+                        <span class="cost-breakdown">
+                            Lön: ${formatCurrency(totalCosts.totalSalary)} + 
+                            Arb.avg: ${formatCurrency(totalCosts.totalEmployerTax)}
+                        </span>
+                    </div>
                 </div>
 
-                <!-- Sections Container -->
-                <div class="control-sections">
-                    <!-- Group Filter Section -->
-                    <div id="section-group-filter" class="control-section"></div>
-
-                    <!-- Group Shifts Section -->
-                    <div id="section-group-shifts" class="control-section"></div>
-
-                    <!-- Demand Table Section -->
-                    <div id="section-demand-table" class="control-section"></div>
-
-                    <!-- Schedule Generator Section -->
-                    <div id="section-schedule-generator" class="control-section"></div>
+                <!-- Tab Navigation -->
+                <div class="control-tabs">
+                    <button class="control-tab ${currentTab === 'control' ? 'active' : ''}" data-tab="control">
+                        ✓ Kontroll
+                    </button>
+                    <button class="control-tab ${currentTab === 'scheduling' ? 'active' : ''}" data-tab="scheduling">
+                        📅 Schemaläggning
+                    </button>
                 </div>
+
+                <!-- TAB 1: KONTROLL -->
+                ${currentTab === 'control' ? `
+                    <div class="control-sections">
+                        <!-- Group Filter Section -->
+                        <div id="section-group-filter" class="control-section"></div>
+
+                        <!-- Group Shifts Section -->
+                        <div id="section-group-shifts" class="control-section"></div>
+                    </div>
+                ` : ''}
+
+                <!-- TAB 2: SCHEMALÄGGNING -->
+                ${currentTab === 'scheduling' ? `
+                    <div class="control-sections">
+                        <!-- Demand Table Section -->
+                        <div id="section-demand-table" class="control-section"></div>
+
+                        <!-- Schedule Generator Section -->
+                        <div id="section-schedule-generator" class="control-section"></div>
+                    </div>
+                ` : ''}
             </div>
         </div>
     `;
 
     container.innerHTML = html;
 
-    // Render all sections with error handling + healthcheck
-    renderAllSections(container, ctx);
+    // Setup tab switching
+    setupTabListeners(container, ctx);
+
+    // Render sections based on active tab
+    renderAllSections(container, ctx, currentTab);
+}
+
+/**
+ * Setup tab switching listeners
+ */
+function setupTabListeners(container, ctx) {
+    const tabs = container.querySelectorAll('.control-tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabName = tab.dataset.tab;
+            
+            // Update context
+            ctx.controlTab = tabName;
+            
+            // Re-render the view
+            renderControl(container, ctx);
+        });
+    });
 }
 
 /**
  * Render alla sektioner med error-handling + healthcheck
  */
-function renderAllSections(container, ctx) {
-    const sections = [
+function renderAllSections(container, ctx, currentTab) {
+    // Define sections for each tab
+    const controlSections = [
         {
             id: 'section-group-filter',
             name: 'Grupp-filter',
@@ -98,7 +153,10 @@ function renderAllSections(container, ctx) {
             moduleId: 'control.groupShifts',
             render: renderGroupShiftsSection,
             file: 'groupShifts.js'
-        },
+        }
+    ];
+
+    const schedulingSections = [
         {
             id: 'section-demand-table',
             name: 'Bemanningsbehov',
@@ -114,6 +172,9 @@ function renderAllSections(container, ctx) {
             file: 'scheduleGenerator.js'
         }
     ];
+
+    // Select sections based on current tab
+    const sections = currentTab === 'control' ? controlSections : schedulingSections;
 
     sections.forEach(section => {
         const sectionContainer = container.querySelector(`#${section.id}`);

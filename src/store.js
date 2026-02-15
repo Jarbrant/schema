@@ -154,12 +154,14 @@ const DEFAULT_THEME = {
         A: '#c8e6c9',
         L: '#f0f0f0',
         X: '#bbdefb',
-        SEM: '#fff9c4',
-        SJ: '#ffcdd2',
-        VAB: '#ffe0b2',
-        PERM: '#b2dfdb',
-        UTB: '#e1bee7',
-        EXTRA: '#424242',
+        SEM: '#fff9c4',       // Semester (vacation)
+        SJ: '#ffcdd2',        // Sjukfrånvaro (sick leave)
+        VAB: '#ffe0b2',       // Vård av barn (parental care)
+        FÖR: '#f8bbd0',       // Föräldraledighet (parental leave) - NY
+        TJL: '#b2dfdb',       // Tjänstledighet (other leave) - NY (var PERM)
+        PERM: '#b2dfdb',      // Permanent (behåll för backward compatibility)
+        UTB: '#e1bee7',       // Utbildning (training)
+        EXTRA: '#424242',     // Extra
     },
     statusTextColors: {
         A: '#1b5e20',
@@ -168,6 +170,8 @@ const DEFAULT_THEME = {
         SEM: '#f57f17',
         SJ: '#b71c1c',
         VAB: '#e65100',
+        FÖR: '#880e4f',       // Föräldraledighet text - NY
+        TJL: '#004d40',       // Tjänstledighet text - NY
         PERM: '#004d40',
         UTB: '#4a148c',
         EXTRA: '#ffeb3b',
@@ -672,9 +676,33 @@ class Store {
         if (typeof person.lastName !== 'string') {
             throw new Error(`people[${idx}].lastName måste vara string`);
         }
+        
+        // Salary validation (optional, månadslön)
+        if (person.salary !== undefined && person.salary !== null) {
+            if (typeof person.salary !== 'number' || person.salary < 0) {
+                throw new Error(`people[${idx}].salary måste vara number >= 0`);
+            }
+        }
+        
+        // HourlyWage validation (fallback)
         if (typeof person.hourlyWage !== 'number' || person.hourlyWage < 0) {
             throw new Error(`people[${idx}].hourlyWage måste vara number >= 0`);
         }
+        
+        // Employer tax rate (optional, arbetsgivaravgift)
+        if (person.employerTaxRate !== undefined && person.employerTaxRate !== null) {
+            if (typeof person.employerTaxRate !== 'number' || person.employerTaxRate < 0 || person.employerTaxRate > 1) {
+                throw new Error(`people[${idx}].employerTaxRate måste vara 0–1 (decimal)`);
+            }
+        }
+        
+        // Tax rate (optional, preliminär skatt)
+        if (person.taxRate !== undefined && person.taxRate !== null) {
+            if (typeof person.taxRate !== 'number' || person.taxRate < 0 || person.taxRate > 1) {
+                throw new Error(`people[${idx}].taxRate måste vara 0–1 (decimal)`);
+            }
+        }
+        
         if (typeof person.employmentPct !== 'number' || person.employmentPct < 0 || person.employmentPct > 100) {
             throw new Error(`people[${idx}].employmentPct måste vara 0–100`);
         }
@@ -777,7 +805,7 @@ class Store {
         if (typeof entry.personId !== 'string') {
             throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}].personId måste vara string`);
         }
-        const validStatuses = ['A', 'L', 'X', 'SEM', 'SJ', 'VAB', 'PERM', 'UTB', 'EXTRA'];
+        const validStatuses = ['A', 'L', 'X', 'SEM', 'SJ', 'VAB', 'FÖR', 'TJL', 'PERM', 'UTB', 'EXTRA'];
         if (!validStatuses.includes(entry.status)) {
             throw new Error(`Entry [${monthIdx}][${dayIdx}][${entryIdx}].status måste vara en av: ${validStatuses.join(', ')}`);
         }
