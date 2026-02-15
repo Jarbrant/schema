@@ -2,10 +2,10 @@
  * ============================================================
  * APP.JS — App Initialization & State Management (AUTOPATCH)
  * Projekt: Schema-Program (UI-only / GitHub Pages)
- * Kontrakt:
- * - Store har SINGLE source of truth för state
- * - subscribe() måste triggas av setState()
- * - Inga tysta fel: fel i listener loggas men stoppar inte appen
+ *
+ * FIX (P0):
+ * - notifyListeners måste använda samma listeners-array som subscribe() fyller på.
+ * - Tar bort felaktig global "listeners" (dubbeldeklaration).
  * ============================================================
  */
 
@@ -29,20 +29,21 @@ function isValidStateUpdate(newState) {
 }
 
 /* ============================================================
-   BLOCK 2 — Store factory
-   Viktigt: notifyListeners måste använda SAMMA listeners-array
-   som subscribe() fyller på. (Fixar ditt P0-fel.)
+   BLOCK 2 — Store (SINGLE SOURCE OF TRUTH)
    ============================================================ */
 export function createStore(initialState) {
   let state = { ...initialState };
+
+  // SCOPE: dessa listeners ska endast leva i store-instansen
   const listeners = [];
 
-  // DEBUG: Freeze för att upptäcka oavsiktliga mutationer
+  // DEBUG: Freeze för att hitta mutationer i dev
   if (DEBUG) {
     Object.freeze(state);
     debugLog('log', 'State frozen in development mode');
   }
 
+  // IMPORTANT: notifyListeners ligger här så den ser rätt listeners-array
   function notifyListeners(nextState) {
     listeners.forEach((listener, index) => {
       try {
@@ -122,13 +123,13 @@ export const DEFAULT_STATE = {
 };
 
 /* ============================================================
-   BLOCK 4 — App init
+   BLOCK 4 — Init
    ============================================================ */
 export function initApp() {
   const store = createStore(DEFAULT_STATE);
   debugLog('log', 'Store created');
 
-  // Router kräver: #app, #navbar, #error-panel (du fixade detta i index.html)
+  // Router kräver: #app, #navbar, #error-panel
   setupRouter(store);
 
   debugLog('log', 'App initialized');
