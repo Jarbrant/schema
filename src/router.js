@@ -3,8 +3,13 @@
  * 
  * CONTRACTS:
  * - DOM elements required: #app, #error-panel, #navbar
- * - Auth source: store.getState().isLoggedIn (NOT isLoggedIn() function)
+ * - Auth source: store.getState().isLoggedIn
  * - Fail-closed: errors logged + minimal UI shown
+ * 
+ * CHANGELOG (autopatch, no features removed):
+ * - Hard-guard: store contract validation (getState required)
+ * - Fail-closed: isLoggedIn() now safe (try/catch + contract checks)
+ * - Clearer fatal errors when store is wrong (prevents “blank page”)
  */
 
 import { renderHome } from './views/home.js';
@@ -15,7 +20,7 @@ import { reportError } from './diagnostics.js';
 
 // Routes: CORRECT mapping
 const routes = {
-    login: renderLogin,      // ✅ FIX: Was renderHome
+    login: renderLogin,
     home: renderHome,
     personal: renderPersonal
 };
@@ -23,6 +28,7 @@ const routes = {
 let container = null;
 let errorPanel = null;
 let appCtx = null;
+
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
 function debugLog(message) {
@@ -38,11 +44,34 @@ function safeClear(el) {
 }
 
 /**
- * Get auth state from store (SINGLE SOURCE OF TRUTH)
+ * Fail-closed auth check (SINGLE SOURCE OF TRUTH: store)
  */
 function isLoggedIn() {
-    if (!appCtx || !appCtx.store) return false;
-    return appCtx.store.getState().isLoggedIn === true;
+    try {
+        if (!appCtx || !appCtx.store) return false;
+        const store = appCtx.store;
+
+        if (typeof store.getState !== 'function') {
+            reportError(
+                'STORE_CONTRACT_ERROR',
+                'ROUTER',
+                'src/router.js',
+                'Store saknar getState()'
+            );
+            return false;
+        }
+
+        const state = store.getState();
+        return state && state.isLoggedIn === true;
+    } catch (err) {
+        reportError(
+            'AUTH_STATE_READ_FAILED',
+            'ROUTER',
+            'src/router.js',
+            err?.message || 'Kunde inte läsa auth-state'
+        );
+        return false;
+    }
 }
 
 function getDefaultRoute() {
@@ -58,23 +87,23 @@ function parseRoute() {
 
 function setTopbarVisible(isVisible) {
     const navbar = document.getElementById('navbar');
-    
+
     // Fail-closed: missing navbar = error
     if (!navbar) {
         console.error('❌ DOM element #navbar missing');
         reportError('DOM_ERROR', 'ROUTER', 'src/router.js', '#navbar element not found');
         return false;
     }
-    
+
     if (!isVisible) {
         navbar.innerHTML = '';
         navbar.style.display = 'none';
         debugLog('Navbar hidden (login route)');
         return true;
     }
-    
+
     navbar.style.display = 'block';
-    
+
     if (navbar.childNodes.length === 0) {
         try {
             renderNavbar(navbar);
@@ -85,7 +114,7 @@ function setTopbarVisible(isVisible) {
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -101,50 +130,49 @@ function markActive(routeName) {
 function renderRoute(routeName) {
     try {
         debugLog(`Rendering route: ${routeName}`);
-        
+
         if (!container) {
             throw new Error('Container #app missing');
         }
-        
+
         const isLoginRoute = routeName === 'login';
-        
-        // Set topbar (fail-closed)
+
+        // Topbar (fail-closed)
         const navbarOk = setTopbarVisible(!isLoginRoute);
         if (!isLoginRoute && !navbarOk) {
             throw new Error('Navbar setup failed');
         }
-        
-        // Security: not logged in + not login → redirect
+
+        // Not logged in + not login → redirect
         if (!isLoggedIn() && !isLoginRoute) {
             debugLog('Not authenticated, redirecting to login');
             window.location.hash = '#/login';
             return;
         }
-        
+
         const renderFn = routes[routeName] || routes[getDefaultRoute()];
         if (!renderFn) {
             throw new Error(`Route "${routeName}" not found`);
         }
-        
+
         safeClear(container);
         renderFn(container, { ...appCtx, currentRoute: routeName });
-        
+
         if (!isLoginRoute) {
             markActive(routeName);
         }
-        
+
         debugLog(`Route rendered: ${routeName}`);
     } catch (err) {
         console.error(`❌ Route render failed: ${routeName}`, err);
         reportError('ROUTE_RENDER_ERROR', 'ROUTER', 'src/router.js', err.message);
-        
+
         // Fail-closed: show error if errorPanel exists
         if (errorPanel) {
             try {
                 renderError(errorPanel, err);
             } catch (uiErr) {
                 console.error('❌ Error panel render failed:', uiErr);
-                // Minimal fallback
                 errorPanel.textContent = `❌ Error: ${err.message}`;
             }
         } else {
@@ -163,7 +191,7 @@ function onHashChange() {
  * 
  * REQUIREMENTS:
  * - DOM: #app, #error-panel, #navbar must exist
- * - ctx.store must have getState() with isLoggedIn
+ * - store must implement getState() (and preferably setState/subscribe)
  * - Fails closed: throws if requirements not met
  */
 export function setupRouter(store) {
@@ -172,14 +200,25 @@ export function setupRouter(store) {
         return;
     }
     window.__ROUTER_INIT__ = true;
-    
+
     console.log('🚀 Setting up router...');
-    
+
+    // Validate store contract (fail-closed)
+    if (!store || typeof store.getState !== 'function') {
+        reportError(
+            'STORE_CONTRACT_FATAL',
+            'ROUTER',
+            'src/router.js',
+            'setupRouter() fick fel input: store saknar getState()'
+        );
+        throw new Error('FATAL: Invalid store (getState missing)');
+    }
+
     // Validate DOM
     container = document.getElementById('app');
     errorPanel = document.getElementById('error-panel');
     const navbar = document.getElementById('navbar');
-    
+
     if (!container) {
         throw new Error('FATAL: DOM element #app not found');
     }
@@ -189,19 +228,19 @@ export function setupRouter(store) {
     if (!navbar) {
         throw new Error('FATAL: DOM element #navbar not found');
     }
-    
+
     debugLog('DOM elements validated');
-    
+
     // Setup context
     appCtx = { store };
-    
+
     // Listen for route changes
     window.addEventListener('hashchange', onHashChange, { passive: true });
-    
+
     // Render initial route
     const initialRoute = parseRoute();
     debugLog(`Initial route: ${initialRoute}`);
     renderRoute(initialRoute);
-    
+
     console.log('✓ Router ready');
 }
