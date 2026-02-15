@@ -1,19 +1,58 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
+    <!-- =========================================================
+         SCHEMA-PROGRAM — index.html (AUTOPATCH)
+         Syfte: Stabil start för UI-only app (GitHub Pages)
+         Kontrakt: router.js kräver #app, #error-panel, #navbar
+         ========================================================= -->
+
+    <!-- BLOCK 1 — Meta -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Schema-Program</title>
-    
-    <!-- ✅ FAVICON (data URI - ingen 404) -->
+
+    <!-- BLOCK 2 — Favicon (ingen 404) -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75'>📅</text></svg>">
-    
-    <!-- CSS -->
+
+    <!-- BLOCK 3 — CSS (minsta säkra) -->
+    <!-- OBS: Du kan senare byta till din master.css/import-kedja. -->
     <link rel="stylesheet" href="assets/css/base.css">
     <link rel="stylesheet" href="assets/css/navbar.css">
+
+    <!-- BLOCK 4 — Baslinje: undvik “flash” av tomma paneler -->
+    <style>
+        /* Fail-closed: error-panel ska inte synas förrän ui.js sätter innehåll */
+        #error-panel { display: none; }
+    </style>
 </head>
+
 <body>
-    <div id="app"></div>
+    <!-- =========================================================
+         BLOCK 5 — ROUTER-KRAV (DOM hooks)
+         Router kräver dessa ID:n:
+         - #navbar (topbar)
+         - #error-panel (felvisning)
+         - #app (huvudcontainer)
+         ========================================================= -->
+
+    <div id="navbar"><!-- renderNavbar() fyller denna --></div>
+
+    <div id="error-panel" aria-live="polite"><!-- renderError() fyller denna --></div>
+
+    <main id="app" role="main"><!-- views renderar hit --></main>
+
+    <!-- =========================================================
+         BLOCK 6 — App start
+         Viktigt: type="module" för ESM-imports
+         ========================================================= -->
     <script type="module" src="src/main.js"></script>
+
+    <!-- BLOCK 7 — NoScript fallback -->
+    <noscript>
+        <div style="padding:16px; margin:16px; border:2px solid #d63031; border-radius:8px; background:#ffe8e8;">
+            <strong>JavaScript krävs.</strong> Slå på JavaScript för att använda Schema-Program.
+        </div>
+    </noscript>
 </body>
 </html>
