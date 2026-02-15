@@ -1,55 +1,162 @@
 /* ==========================================================================
    FIL: assets/css/login.css
-   SCHEMA-PROGRAM — Login (AUTOPATCH v1)
-   Syfte: Traditionell inloggningssida (centrerad kort-layout + tydlig pin-pad)
+   SCHEMA-PROGRAM — Login (PROD v2 / AUTOPATCH)
+   Syfte: Traditionell inloggningssida (centrerad kort-layout)
+   Stöd:
+   - PIN-login (dots + keypad)
+   - Klassisk login-form (inputs + checkbox + primary button)
+   Policy:
+   - UI-only
+   - A11y: focus-visible, aria-friendly spacing, reduced-motion
    ========================================================================== */
 
-/* BLOCK 1 — Page layout */
+/* --------------------------------------------------------------------------
+   BLOCK 1 — Page layout
+   -------------------------------------------------------------------------- */
+
 .login-page {
-  min-height: calc(100vh - 0px);
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: #f6f7fb;
+  padding: 28px;
+  background:
+    radial-gradient(900px 520px at 20% 15%, rgba(102, 126, 234, 0.16), transparent 60%),
+    radial-gradient(900px 520px at 80% 20%, rgba(118, 75, 162, 0.12), transparent 60%),
+    linear-gradient(180deg, #f7f8fc 0%, #f3f6fb 100%);
 }
 
-/* BLOCK 2 — Container */
+/* container håller bredden stabil */
 .login-container {
   width: 100%;
-  max-width: 420px;
+  max-width: 460px;
 }
 
-/* BLOCK 3 — Card */
+/* --------------------------------------------------------------------------
+   BLOCK 2 — Card
+   -------------------------------------------------------------------------- */
+
 .login-card {
-  background: #ffffff;
-  border: 1px solid #e7e7ee;
-  border-radius: 14px;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
-  padding: 22px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(233, 233, 239, 0.92);
+  border-radius: 16px;
+  padding: 26px 26px 22px 26px;
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.10),
+    0 2px 10px rgba(102, 126, 234, 0.08);
+  backdrop-filter: blur(6px);
 }
 
-/* Headings */
-.login-card h1 {
-  margin: 0 0 6px 0;
-  font-size: 1.35rem;
+.login-header {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.login-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.login-logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(102, 126, 234, 0.12);
+  border: 1px solid rgba(102, 126, 234, 0.18);
+  font-size: 20px;
+}
+
+.login-title {
+  margin: 0;
+  font-size: 1.55rem;
   line-height: 1.2;
   color: #111;
 }
 
-.login-card h2 {
-  margin: 0 0 18px 0;
-  font-size: 1rem;
-  font-weight: 500;
-  color: #444;
+.login-subtitle {
+  margin: 6px 0 0 0;
+  font-size: 0.95rem;
+  color: #555;
 }
 
-/* BLOCK 4 — PIN display (dots) */
+/* separators */
+.login-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: 14px 0 14px 0;
+}
+
+/* --------------------------------------------------------------------------
+   BLOCK 3 — Classic form helpers (valfritt)
+   (Fungerar med dina forms.css-klasser om de finns)
+   -------------------------------------------------------------------------- */
+
+.login-form {
+  margin-top: 8px;
+}
+
+.login-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.login-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  color: #444;
+  font-size: 0.92rem;
+}
+
+.login-remember input {
+  width: 16px;
+  height: 16px;
+}
+
+.login-link {
+  font-size: 0.92rem;
+  color: #667eea;
+  text-decoration: none;
+}
+
+.login-link:hover {
+  color: #5568d3;
+  text-decoration: underline;
+}
+
+/* Primärknapp (om .btn/.btn-primary finns från forms.css räcker det) */
+.btn-login {
+  width: 100%;
+  margin-top: 14px;
+  padding: 0.85rem;
+  border-radius: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   BLOCK 4 — PIN (traditional card + input feel)
+   -------------------------------------------------------------------------- */
+
+/* valfri "PIN input"-rad (om du visar inputfält ovan keypad) */
+.pin-input {
+  width: 100%;
+  margin-top: 10px;
+}
+
+/* Dots */
 .pin-display {
   display: flex;
   justify-content: center;
-  gap: 10px;
-  padding: 10px 0 16px 0;
+  gap: 12px;
+  padding: 10px 0 14px 0;
 }
 
 .pin-dot {
@@ -65,7 +172,7 @@
   border-color: #111;
 }
 
-/* BLOCK 5 — PIN pad */
+/* Keypad */
 .pin-pad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -74,19 +181,21 @@
 }
 
 .pin-button {
-  height: 48px;
-  border-radius: 10px;
+  height: 52px;
+  border-radius: 12px;
   border: 1px solid #e1e3ea;
-  background: #fff;
+  background: #ffffff;
   font-size: 1.05rem;
-  font-weight: 600;
+  font-weight: 650;
+  color: #111;
   cursor: pointer;
   transition: transform 0.08s ease, box-shadow 0.2s ease, background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .pin-button:hover {
   background: #f3f4f8;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
 }
 
 .pin-button:active {
@@ -98,7 +207,7 @@
   outline-offset: 2px;
 }
 
-/* Clear + Submit styling */
+/* Clear + Submit */
 .pin-button-clear {
   background: #fff;
 }
@@ -121,21 +230,24 @@
   transform: none;
 }
 
-/* BLOCK 6 — Status + alerts in login */
+/* --------------------------------------------------------------------------
+   BLOCK 5 — Status + footer
+   -------------------------------------------------------------------------- */
+
 .login-status {
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
-/* BLOCK 7 — Demo info + footer */
+/* (Din alerts.css kan styra .alert, men vi gör lite safe spacing här) */
 .login-card .alert {
-  margin-top: 14px;
+  margin-top: 12px;
   border-radius: 10px;
 }
 
 .login-footer {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid rgba(0,0,0,0.08);
   text-align: center;
 }
 
@@ -145,14 +257,65 @@
   font-size: 0.85rem;
 }
 
-/* BLOCK 8 — Mobile tweaks */
+/* --------------------------------------------------------------------------
+   BLOCK 6 — Responsive
+   -------------------------------------------------------------------------- */
+
 @media (max-width: 420px) {
-  .login-card {
-    padding: 18px;
-    border-radius: 12px;
-  }
-  .pin-button {
-    height: 46px;
-  }
+  .login-page { padding: 16px; }
+  .login-card { padding: 18px; border-radius: 14px; }
+  .pin-button { height: 50px; }
 }
 
+/* --------------------------------------------------------------------------
+   BLOCK 7 — Dark mode (mjuk)
+   -------------------------------------------------------------------------- */
+
+@media (prefers-color-scheme: dark) {
+  .login-page {
+    background:
+      radial-gradient(900px 520px at 20% 15%, rgba(102,126,234,0.22), transparent 60%),
+      radial-gradient(900px 520px at 80% 20%, rgba(118,75,162,0.18), transparent 60%),
+      linear-gradient(180deg, #0f1422 0%, #121a2b 100%);
+  }
+
+  .login-card {
+    background: rgba(18, 26, 43, 0.84);
+    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow:
+      0 18px 50px rgba(0,0,0,0.50),
+      0 2px 12px rgba(102,126,234,0.14);
+  }
+
+  .login-title { color: #e9ecf1; }
+  .login-subtitle { color: #a9b3c6; }
+  .login-divider { background: rgba(255,255,255,0.10); }
+
+  .pin-dot { border-color: rgba(233,236,241,0.55); }
+  .pin-dot.filled { background: #e9ecf1; border-color: #e9ecf1; }
+
+  .pin-button {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.14);
+    color: #e9ecf1;
+  }
+
+  .pin-button:hover {
+    background: rgba(255,255,255,0.10);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.25);
+  }
+
+  .footer-text { color: #a9b3c6; }
+}
+
+/* --------------------------------------------------------------------------
+   BLOCK 8 — Reduced motion
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .pin-button {
+    transition: none !important;
+  }
+  .pin-button:active {
+    transform: none;
+  }
+}
