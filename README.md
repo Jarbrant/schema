@@ -1,6 +1,9 @@
 Schema-Program v1
 En schemaläggningslösning för HRF/Visita Gröna Riks.
 
+## Dokumentation
+📖 [Skillnaden mellan Agent och Copilot](AGENT_VS_COPILOT.md) - Förstå hur GitHub Copilot och GitHub Copilot Agent fungerar
+
 Status
 ✅ AO-01 to AO-22: Under implementering
 🔄 Lokalt utveckling
