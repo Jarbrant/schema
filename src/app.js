@@ -1,10 +1,5 @@
 /*
  * APP.JS — App Initialization & State Management
- * 
- * SINGLE SOURCE OF TRUTH:
- * - store.getState().isLoggedIn = authoritative auth state
- * - Login view updates store directly
- * - Router reads from store (via ctx)
  */
 
 import { setupRouter } from './router.js';
@@ -93,7 +88,7 @@ function notifyListeners(state) {
 
 export const DEFAULT_STATE = {
     user: null,
-    isLoggedIn: false,  // SINGLE SOURCE OF TRUTH
+    isLoggedIn: false,
     people: [],
     shifts: [],
     groups: [],
@@ -115,13 +110,8 @@ export function initApp() {
     const store = createStore(DEFAULT_STATE);
     debugLog('log', 'Store created');
     
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            setupRouter(store);
-        });
-    } else {
-        setupRouter(store);
-    }
+    // Setup router immediately (DOM should be ready)
+    setupRouter(store);
     
     debugLog('log', 'App initialized');
     return { store };
