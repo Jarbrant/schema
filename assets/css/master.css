@@ -1,1 +1,83 @@
+/* ========================================================================
+   SCHEMA-PROGRAM: Master stylesheet (PROD)
+   FIL: assets/css/master.css
+
+   Importordning är KRITISK:
+   1) base.css        — Reset, typografi, ram/layout
+   2) forms.css       — Inputs, select, textarea, buttons
+   3) tables.css      — Tabeller
+   4) alerts.css      — Alerts/toasts
+   5) modals.css      — Modaler/overlays
+   6) cards.css       — Cards
+   7) login.css       — Login (traditionell)
+   8) home.css        — Home
+   9) shifts.css      — Skift
+   10) groups.css     — Grupper
+   11) control.css    — Kontroll
+   12) demand.css     — Bemanningsbehov
+   13) generator.css  — Schemagenerator
+   14) calendar.css   — Kalender
+   15) summary.css    — Sammanfattning
+   16) navbar.css     — Topbar
+   17) diagnostics.css— Felpanel
+   18) healthcheck.css— Modulstatus (AO-05)
+   19) responsive.css — ALLTID SIST
+   ======================================================================== */
+
+/* 1) Global reset + layout */
+@import url('./base.css');
+
+/* 2) Form controls */
+@import url('./forms.css');
+
+/* 3) Tables */
+@import url('./tables.css');
+
+/* 4) Alerts */
+@import url('./alerts.css');
+
+/* 5) Modals */
+@import url('./modals.css');
+
+/* 6) Cards */
+@import url('./cards.css');
+
+/* 7) Login */
+@import url('./login.css');
+
+/* 8) Home */
+@import url('./home.css');
+
+/* 9) Shifts */
+@import url('./shifts.css');
+
+/* 10) Groups */
+@import url('./groups.css');
+
+/* 11) Control */
+@import url('./control.css');
+
+/* 12) Demand */
+@import url('./demand.css');
+
+/* 13) Generator */
+@import url('./generator.css');
+
+/* 14) Calendar */
+@import url('./calendar.css');
+
+/* 15) Summary */
+@import url('./summary.css');
+
+/* 16) Navbar */
+@import url('./navbar.css');
+
+/* 17) Diagnostics */
+@import url('./diagnostics.css');
+
+/* 18) Healthcheck */
+@import url('./healthcheck.css');
+
+/* 19) Responsive (ALLTID SIST!) */
+@import url('./responsive.css');
 
