@@ -1,10 +1,11 @@
 /*
- * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v8)
+ * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v9)
  *
  * Patch i denna version:
- * - P0: Normaliserar state.groups (map -> array) så Personal inte kraschar (groups.forEach).
- * - P0: Skapa ny grupp direkt i Personal (utan att byta vy).
- * - P0: Inputs i "Lön & Semesterdagar" tvingas vara EDITABLE (readOnly/disabled/pointer-events fix).
+ * 1) P0: Lägger till "Sök personal" (fält + resultatlista) i Personal-vyn.
+ * 2) P0: Klick på sökresultat laddar personen i formuläret (redigera ALLA fält i samma formulär).
+ * 3) P0: Submit-knappen växlar Add/Edit (sparar ändringar på vald person istället för prompt()).
+ * 4) P0: Avbryt redigering + återställ formulär (utan att tappa vy).
  *
  * Features:
  * - Add/Edit/Delete person
@@ -30,6 +31,14 @@ import {
 import { calculatePersonMonthlyCost, formatCurrency, formatCurrencyDetailed } from '../lib/cost-utils.js';
 
 const DAYS_OF_WEEK = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
+
+/* ============================================================
+   P0: UI-state (sök + vald person) (in-memory, ingen storage-key)
+   ============================================================ */
+const __personalUI = {
+  query: '',
+  selectedPersonId: null,
+};
 
 export function renderPersonal(container, ctx) {
   try {
@@ -86,13 +95,96 @@ export function renderPersonal(container, ctx) {
     statusItem.appendChild(statusValue);
     statusRow.appendChild(statusItem);
 
+    /* ============================================================
+       P0: SEARCH ROW (Sök personal + klick -> ladda i formulär)
+       ============================================================ */
+    const searchRow = document.createElement('div');
+    searchRow.style.marginTop = '1rem';
+    searchRow.style.display = 'flex';
+    searchRow.style.gap = '0.75rem';
+    searchRow.style.alignItems = 'stretch';
+    searchRow.style.flexWrap = 'wrap';
+
+    const searchBox = document.createElement('div');
+    searchBox.style.flex = '1';
+    searchBox.style.minWidth = '280px';
+
+    const searchLabel = document.createElement('div');
+    searchLabel.textContent = 'Sök personal';
+    searchLabel.style.fontWeight = '600';
+    searchLabel.style.marginBottom = '0.35rem';
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.id = 'personal-search';
+    searchInput.className = 'form-control';
+    searchInput.placeholder = 'Sök på namn eller e-post...';
+    searchInput.value = __personalUI.query || '';
+    ensureEditableInput(searchInput);
+
+    const searchHint = document.createElement('div');
+    searchHint.style.fontSize = '0.85rem';
+    searchHint.style.color = '#666';
+    searchHint.style.marginTop = '0.35rem';
+    searchHint.textContent = 'Klicka på en person i listan för att redigera i formuläret.';
+
+    searchBox.appendChild(searchLabel);
+    searchBox.appendChild(searchInput);
+    searchBox.appendChild(searchHint);
+
+    const searchActions = document.createElement('div');
+    searchActions.style.display = 'flex';
+    searchActions.style.gap = '0.5rem';
+    searchActions.style.alignItems = 'end';
+
+    const clearSearchBtn = document.createElement('button');
+    clearSearchBtn.type = 'button';
+    clearSearchBtn.className = 'btn btn-secondary';
+    clearSearchBtn.textContent = 'Rensa sök';
+    clearSearchBtn.onclick = (e) => {
+      e.preventDefault();
+      __personalUI.query = '';
+      __personalUI.selectedPersonId = null;
+      rerenderPersonal(ctx, container);
+    };
+
+    const cancelEditBtn = document.createElement('button');
+    cancelEditBtn.type = 'button';
+    cancelEditBtn.className = 'btn btn-secondary';
+    cancelEditBtn.textContent = 'Avbryt redigering';
+    cancelEditBtn.onclick = (e) => {
+      e.preventDefault();
+      __personalUI.selectedPersonId = null;
+      rerenderPersonal(ctx, container);
+    };
+
+    // Visa "Avbryt redigering" bara om vi faktiskt redigerar någon
+    if (!__personalUI.selectedPersonId) {
+      cancelEditBtn.style.display = 'none';
+    }
+
+    searchActions.appendChild(clearSearchBtn);
+    searchActions.appendChild(cancelEditBtn);
+
+    searchRow.appendChild(searchBox);
+    searchRow.appendChild(searchActions);
+
+    const resultsWrap = document.createElement('div');
+    resultsWrap.id = 'personal-search-results';
+    resultsWrap.style.marginTop = '0.75rem';
+    resultsWrap.style.background = '#fff';
+    resultsWrap.style.border = '1px solid #ddd';
+    resultsWrap.style.borderRadius = '8px';
+    resultsWrap.style.padding = '0.75rem';
+    resultsWrap.style.display = 'none'; // visas när query finns eller om edit är aktiv
+
     // === FORM SECTION ===
     const formSection = document.createElement('div');
     formSection.className = 'section-header';
     formSection.style.marginTop = '2rem';
 
     const formTitle = document.createElement('h2');
-    formTitle.textContent = '➕ Lägg till ny personal';
+    formTitle.textContent = __personalUI.selectedPersonId ? '✏️ Redigera personal' : '➕ Lägg till ny personal';
 
     formSection.appendChild(formTitle);
 
@@ -474,12 +566,12 @@ export function renderPersonal(container, ctx) {
     const submitBtn = document.createElement('button');
     submitBtn.type = 'submit';
     submitBtn.className = 'btn btn-primary';
-    submitBtn.textContent = '➕ Lägg till';
+    submitBtn.textContent = __personalUI.selectedPersonId ? '💾 Spara ändringar' : '➕ Lägg till';
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'reset';
     resetBtn.className = 'btn btn-secondary';
-    resetBtn.textContent = '🔄 Rensa';
+    resetBtn.textContent = __personalUI.selectedPersonId ? '↩️ Återställ formulär' : '🔄 Rensa';
 
     buttonGroup.appendChild(submitBtn);
     buttonGroup.appendChild(resetBtn);
@@ -494,7 +586,11 @@ export function renderPersonal(container, ctx) {
     // Setup form listener
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      addPerson(form, errorDiv, store, ctx, container);
+      if (__personalUI.selectedPersonId) {
+        saveEditedPerson(form, errorDiv, store, ctx, container, __personalUI.selectedPersonId);
+      } else {
+        addPerson(form, errorDiv, store, ctx, container);
+      }
     });
 
     // === PEOPLE LIST ===
@@ -527,12 +623,34 @@ export function renderPersonal(container, ctx) {
     // Assemble page
     viewContainer.appendChild(header);
     viewContainer.appendChild(statusRow);
+    viewContainer.appendChild(searchRow);
+    viewContainer.appendChild(resultsWrap);
     viewContainer.appendChild(formSection);
     viewContainer.appendChild(form);
     viewContainer.appendChild(listSection);
     viewContainer.appendChild(list);
 
     container.appendChild(viewContainer);
+
+    // --- Bind sök ---
+    searchInput.addEventListener('input', () => {
+      __personalUI.query = (searchInput.value || '').trim();
+      renderSearchResults(resultsWrap, people, groups, store, ctx, container);
+    });
+
+    // Render initial results (om query finns eller om edit är aktiv)
+    renderSearchResults(resultsWrap, people, groups, store, ctx, container);
+
+    // P0: Om vald person finns -> ladda i formulär efter DOM finns
+    if (__personalUI.selectedPersonId) {
+      const selected = people.find(p => p?.id === __personalUI.selectedPersonId);
+      if (selected) {
+        loadPersonIntoForm(selected, groups);
+      } else {
+        // om personen inte finns längre, fail-closed tillbaka till add-läge
+        __personalUI.selectedPersonId = null;
+      }
+    }
 
     console.log('✓ Personal view rendered');
 
@@ -544,6 +662,162 @@ export function renderPersonal(container, ctx) {
       'src/views/personal.js',
       err.message
     );
+  }
+}
+
+/* ============================================================
+   P0: Search helpers
+   ============================================================ */
+function renderSearchResults(resultsWrap, people, groups, store, ctx, container) {
+  try {
+    // Töm
+    while (resultsWrap.firstChild) resultsWrap.removeChild(resultsWrap.firstChild);
+
+    const q = (__personalUI.query || '').toLowerCase();
+    const show = q.length > 0 || !!__personalUI.selectedPersonId;
+    resultsWrap.style.display = show ? 'block' : 'none';
+    if (!show) return;
+
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.style.gap = '0.75rem';
+    header.style.marginBottom = '0.5rem';
+
+    const h = document.createElement('div');
+    h.style.fontWeight = '700';
+    h.textContent = q.length ? 'Sökresultat' : 'Vald person';
+
+    const hint = document.createElement('div');
+    hint.style.fontSize = '0.85rem';
+    hint.style.color = '#666';
+    hint.textContent = 'Klicka för att ladda i formuläret.';
+
+    header.appendChild(h);
+    header.appendChild(hint);
+    resultsWrap.appendChild(header);
+
+    const matches = q.length
+      ? people.filter(p => {
+          const name = String(p?.name || '').toLowerCase();
+          const email = String(p?.email || '').toLowerCase();
+          const fn = String(p?.firstName || '').toLowerCase();
+          const ln = String(p?.lastName || '').toLowerCase();
+          return name.includes(q) || email.includes(q) || fn.includes(q) || ln.includes(q);
+        })
+      : ( __personalUI.selectedPersonId ? people.filter(p => p?.id === __personalUI.selectedPersonId) : [] );
+
+    if (matches.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.color = '#999';
+      empty.style.fontStyle = 'italic';
+      empty.textContent = q.length ? 'Inga träffar.' : 'Ingen vald person.';
+      resultsWrap.appendChild(empty);
+      return;
+    }
+
+    const ul = document.createElement('div');
+    ul.style.display = 'grid';
+    ul.style.gap = '0.5rem';
+
+    matches.slice(0, 20).forEach(p => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'btn btn-secondary';
+      row.style.textAlign = 'left';
+      row.style.padding = '0.65rem 0.75rem';
+      row.style.borderRadius = '8px';
+      row.style.background = (p.id === __personalUI.selectedPersonId) ? '#eef3ff' : '#fff';
+      row.style.border = (p.id === __personalUI.selectedPersonId) ? '2px solid #667eea' : '1px solid #ddd';
+
+      const top = document.createElement('div');
+      top.style.fontWeight = '700';
+      top.textContent = p?.name || `${p?.firstName || ''} ${p?.lastName || ''}`.trim() || '(namn saknas)';
+
+      const sub = document.createElement('div');
+      sub.style.fontSize = '0.85rem';
+      sub.style.color = '#555';
+      sub.textContent = p?.email || '-';
+
+      row.appendChild(top);
+      row.appendChild(sub);
+
+      row.onclick = (e) => {
+        e.preventDefault();
+        __personalUI.selectedPersonId = p.id;
+        // Behåll query (så man kan byta person snabbt)
+        rerenderPersonal(ctx, container);
+      };
+
+      ul.appendChild(row);
+    });
+
+    resultsWrap.appendChild(ul);
+  } catch (e) {
+    console.warn('⚠️ renderSearchResults failed', e);
+  }
+}
+
+function loadPersonIntoForm(person, groups) {
+  try {
+    // Basic
+    const nameEl = document.getElementById('personal-name');
+    const emailEl = document.getElementById('personal-email');
+    const phoneEl = document.getElementById('personal-phone');
+
+    if (nameEl) nameEl.value = person?.name || '';
+    if (emailEl) emailEl.value = person?.email || '';
+    if (phoneEl) phoneEl.value = (person?.phone == null ? '' : String(person.phone));
+
+    // Employment
+    const startEl = document.getElementById('personal-start-date');
+    const degreeEl = document.getElementById('personal-degree');
+    const workdaysEl = document.getElementById('personal-workdays');
+
+    if (startEl) startEl.value = person?.startDate || '';
+    if (degreeEl) degreeEl.value = String(person?.degree ?? person?.employmentPct ?? 100);
+    if (workdaysEl) workdaysEl.value = String(person?.workdaysPerWeek ?? 5);
+
+    // Salary/vacation/leave
+    const salaryEl = document.getElementById('personal-salary');
+    const svEl = document.getElementById('personal-saved-vacation');
+    const slEl = document.getElementById('personal-saved-leave');
+
+    if (salaryEl) salaryEl.value = String(person?.salary ?? 0);
+    if (svEl) svEl.value = String(person?.savedVacationDays ?? 0);
+    if (slEl) slEl.value = String(person?.savedLeaveDays ?? 0);
+
+    // Sector
+    const sector = (person?.sector === 'municipal') ? 'municipal' : 'private';
+    const priv = document.getElementById('sector-private');
+    const mun = document.getElementById('sector-municipal');
+    if (priv && mun) {
+      priv.checked = sector === 'private';
+      mun.checked = sector === 'municipal';
+      // trigger styles
+      priv.dispatchEvent(new Event('change', { bubbles: true }));
+      mun.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Groups checkboxes
+    const gids = Array.isArray(person?.groupIds) ? person.groupIds : (Array.isArray(person?.groups) ? person.groups : []);
+    const groupChecks = Array.from(document.querySelectorAll('.group-checkbox'));
+    groupChecks.forEach(cb => {
+      cb.checked = gids.includes(cb.value);
+    });
+
+    // Availability
+    const avail = Array.isArray(person?.availability) ? person.availability : null;
+    const avChecks = Array.from(document.querySelectorAll('.availability-checkbox'));
+    avChecks.forEach((cb, idx) => {
+      cb.checked = avail ? !!avail[idx] : (idx < 5);
+      // uppdatera label-färg genom att trigga change
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+  } catch (e) {
+    console.warn('⚠️ loadPersonIntoForm failed', e);
   }
 }
 
@@ -700,7 +974,9 @@ function createPersonCard(person, store, ctx, container, groups) {
   editBtn.style.fontSize = '0.85rem';
   editBtn.onclick = (e) => {
     e.preventDefault();
-    editPerson(person, store, ctx, container);
+    // P0: redigera i formuläret istället för prompt()
+    __personalUI.selectedPersonId = person.id;
+    rerenderPersonal(ctx, container);
   };
 
   const deleteBtn = document.createElement('button');
@@ -962,52 +1238,83 @@ function addPerson(form, errorDiv, store, ctx, container) {
 }
 
 /**
- * Edit person
+ * P0: Save edited person (i formuläret)
  */
-function editPerson(person, store, ctx, container) {
+function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
   try {
-    console.log('✏️ Redigerar person:', person.id);
-    const newName = prompt('Namn:', person.name);
-    if (newName === null) return;
+    while (errorDiv.firstChild) {
+      errorDiv.removeChild(errorDiv.firstChild);
+    }
 
-    const newEmail = prompt('E-post:', person.email);
-    if (newEmail === null) return;
+    const name = (form.querySelector('#personal-name')?.value || '').trim();
+    const email = (form.querySelector('#personal-email')?.value || '').trim();
+    const phone = (form.querySelector('#personal-phone')?.value || '').trim();
+    const startDate = form.querySelector('#personal-start-date')?.value;
+    const degree = parseInt(form.querySelector('#personal-degree')?.value || 100);
+    const workdaysPerWeek = parseInt(form.querySelector('#personal-workdays')?.value || 5);
+    const salary = parseInt(form.querySelector('#personal-salary')?.value || 0);
+    const savedVacation = parseInt(form.querySelector('#personal-saved-vacation')?.value || 0);
+    const savedLeave = parseInt(form.querySelector('#personal-saved-leave')?.value || 0);
+    const sector = document.querySelector('input[name="sector"]:checked')?.value || 'private';
 
-    if (!newName || newName.length < 2) throw new Error('Namn krävs');
-    if (!newEmail || !newEmail.includes('@')) throw new Error('Giltigt e-postadress krävs');
+    const groupIds = Array.from(document.querySelectorAll('.group-checkbox:checked')).map(cb => cb.value);
+    const availability = Array.from(document.querySelectorAll('.availability-checkbox')).map(cb => cb.checked);
+
+    if (!name || name.length < 2) throw new Error('Namn krävs (min 2 tecken)');
+    if (!email || !email.includes('@')) throw new Error('Giltigt e-postadress krävs');
+    if (!startDate) throw new Error('Startdatum krävs');
 
     const state = store.getState();
     const people = state.people || [];
+    const existing = people.find(p => p?.id === personId);
+    if (!existing) throw new Error('Personen hittades inte längre (kanske borttagen).');
 
-    if (people.some(p => (p.email || '').toLowerCase() === newEmail.toLowerCase() && p.id !== person.id)) {
+    if (people.some(p => (p.email || '').toLowerCase() === email.toLowerCase() && p.id !== personId)) {
       throw new Error('E-postadressen finns redan');
     }
 
-    // Split name into firstName and lastName
-    const nameParts = newName.split(' ');
+    const nameParts = name.split(' ');
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || nameParts[0];
 
-    const updatedPeople = people.map(p =>
-      p.id === person.id ? {
+    const hourlyWage = salary > 0 ? salary / 167 : 0;
+
+    const updatedPeople = people.map(p => {
+      if (p.id !== personId) return p;
+      return {
         ...p,
         firstName,
         lastName,
-        name: newName,
-        email: newEmail,
-        updatedAt: new Date().toISOString()
-      } : p
-    );
+        hourlyWage,
+        employmentPct: degree,
+        // HR-fält
+        name,
+        email,
+        phone: phone ? phone : null,
+        startDate,
+        degree,
+        workdaysPerWeek,
+        salary,
+        savedVacationDays: savedVacation,
+        savedLeaveDays: savedLeave,
+        sector,
+        groupIds,
+        groups: groupIds,
+        availability,
+        updatedAt: new Date().toISOString(),
+      };
+    });
 
     store.setState({ ...state, people: updatedPeople });
-    console.log('✓ Person uppdaterad');
-    showSuccess('✓ Personal uppdaterad');
+    showSuccess('✓ Ändringar sparade');
 
-    // Re-render the personal view (stabilt)
+    // tillbaka till add-läge (men behåll ev query)
+    __personalUI.selectedPersonId = null;
     rerenderPersonal(ctx, container);
 
   } catch (err) {
-    console.error('❌ Error editing person:', err);
+    console.error('❌ saveEditedPerson failed:', err);
+    displayError(errorDiv, err.message);
     showWarning(`⚠️ ${err.message}`);
   }
 }
@@ -1024,6 +1331,11 @@ function deletePerson(personId, store, ctx, container) {
       ...state,
       people: (state.people || []).filter(p => p.id !== personId)
     });
+
+    // om vi råkar redigera samma person -> lämna edit-läge
+    if (__personalUI.selectedPersonId === personId) {
+      __personalUI.selectedPersonId = null;
+    }
 
     console.log('✓ Person borttagen');
     showSuccess('✓ Personal borttagen');
@@ -1056,4 +1368,18 @@ function displayError(container, message) {
 
   errorDiv.appendChild(msg);
   container.appendChild(errorDiv);
+}
+
+/* ============================================================
+   Legacy: editPerson(prompt) finns kvar men används inte längre
+   (behålls för kompatibilitet om andra anropar den)
+   ============================================================ */
+function editPerson(person, store, ctx, container) {
+  try {
+    __personalUI.selectedPersonId = person?.id || null;
+    rerenderPersonal(ctx, container);
+  } catch (err) {
+    console.error('❌ Error editing person:', err);
+    showWarning(`⚠️ ${err.message}`);
+  }
 }
