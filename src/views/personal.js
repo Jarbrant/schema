@@ -1,9 +1,10 @@
 /*
- * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v7)
+ * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v8)
  *
  * Patch i denna version:
  * - P0: Normaliserar state.groups (map -> array) så Personal inte kraschar (groups.forEach).
- * - P0: Alla group-uppslag i kort/lista använder normaliserad groups-array.
+ * - P0: Skapa ny grupp direkt i Personal (utan att byta vy).
+ * - P0: Inputs i "Lön & Semesterdagar" tvingas vara EDITABLE (readOnly/disabled/pointer-events fix).
  *
  * Features:
  * - Add/Edit/Delete person
@@ -117,12 +118,15 @@ export function renderPersonal(container, ctx) {
     basicInfo.appendChild(basicLegend);
 
     const nameGroup = createFormGroup('personal-name', 'Namn *', 'text', 'Ex: Anna Ström');
+    ensureEditableInput(nameGroup.querySelector('input'));
     basicInfo.appendChild(nameGroup);
 
     const emailGroup = createFormGroup('personal-email', 'E-post *', 'email', 'anna@example.com');
+    ensureEditableInput(emailGroup.querySelector('input'));
     basicInfo.appendChild(emailGroup);
 
     const phoneGroup = createFormGroup('personal-phone', 'Telefon', 'tel', '+46 70 123 45 67');
+    ensureEditableInput(phoneGroup.querySelector('input'));
     basicInfo.appendChild(phoneGroup);
 
     form.appendChild(basicInfo);
@@ -142,20 +146,25 @@ export function renderPersonal(container, ctx) {
     employmentInfo.appendChild(employmentLegend);
 
     const startDateGroup = createFormGroup('personal-start-date', 'Startdatum *', 'date', '');
+    ensureEditableInput(startDateGroup.querySelector('input'));
     employmentInfo.appendChild(startDateGroup);
 
     const degreeGroup = createFormGroup('personal-degree', 'Tjänstgöringsgrad (%) *', 'number', '100');
     const degreeInput = degreeGroup.querySelector('input');
+    ensureEditableInput(degreeInput);
     degreeInput.min = '10';
     degreeInput.max = '100';
-    degreeInput.value = '100';
+    degreeInput.value = degreeInput.value || '100';
+    degreeInput.step = '1';
     employmentInfo.appendChild(degreeGroup);
 
     const workdaysGroup = createFormGroup('personal-workdays', 'Arbetsdagar per vecka *', 'number', '5');
     const workdaysInput = workdaysGroup.querySelector('input');
+    ensureEditableInput(workdaysInput);
     workdaysInput.min = '1';
     workdaysInput.max = '7';
-    workdaysInput.value = '5';
+    workdaysInput.value = workdaysInput.value || '5';
+    workdaysInput.step = '1';
     employmentInfo.appendChild(workdaysGroup);
 
     form.appendChild(employmentInfo);
@@ -284,12 +293,21 @@ export function renderPersonal(container, ctx) {
     salaryInfo.appendChild(salaryLegend);
 
     const salaryGroup = createFormGroup('personal-salary', 'Månadslön (SEK)', 'number', '25000');
+    const salaryInput = salaryGroup.querySelector('input');
+    ensureEditableInput(salaryInput);
+    salaryInput.step = '1';
     salaryInfo.appendChild(salaryGroup);
 
     const savedVacationGroup = createFormGroup('personal-saved-vacation', 'Sparade semesterdagar', 'number', '0');
+    const savedVacationInput = savedVacationGroup.querySelector('input');
+    ensureEditableInput(savedVacationInput);
+    savedVacationInput.step = '1';
     salaryInfo.appendChild(savedVacationGroup);
 
     const savedLeaveGroup = createFormGroup('personal-saved-leave', 'Sparade ledighetsdagar', 'number', '0');
+    const savedLeaveInput = savedLeaveGroup.querySelector('input');
+    ensureEditableInput(savedLeaveInput);
+    savedLeaveInput.step = '1';
     salaryInfo.appendChild(savedLeaveGroup);
 
     form.appendChild(salaryInfo);
@@ -308,6 +326,34 @@ export function renderPersonal(container, ctx) {
     groupsLegend.style.marginBottom = '1rem';
     groupsInfo.appendChild(groupsLegend);
 
+    // P0: skapa ny grupp inline
+    const createGroupRow = document.createElement('div');
+    createGroupRow.style.display = 'flex';
+    createGroupRow.style.gap = '0.75rem';
+    createGroupRow.style.alignItems = 'center';
+    createGroupRow.style.marginBottom = '1rem';
+
+    const newGroupInput = document.createElement('input');
+    newGroupInput.type = 'text';
+    newGroupInput.id = 'personal-new-group';
+    newGroupInput.className = 'form-control';
+    newGroupInput.placeholder = 'Ny grupp (ex: Bar, Kök, Servering)';
+    ensureEditableInput(newGroupInput);
+    newGroupInput.style.flex = '1';
+
+    const createGroupBtn = document.createElement('button');
+    createGroupBtn.type = 'button';
+    createGroupBtn.className = 'btn btn-secondary';
+    createGroupBtn.textContent = '➕ Skapa grupp';
+    createGroupBtn.onclick = (e) => {
+      e.preventDefault();
+      createGroupFromPersonal(newGroupInput.value, store, ctx, container);
+    };
+
+    createGroupRow.appendChild(newGroupInput);
+    createGroupRow.appendChild(createGroupBtn);
+    groupsInfo.appendChild(createGroupRow);
+
     const groupsContainer = document.createElement('div');
     groupsContainer.id = 'personal-groups';
     groupsContainer.style.display = 'grid';
@@ -316,7 +362,7 @@ export function renderPersonal(container, ctx) {
 
     if (groups.length === 0) {
       const noGroupsMsg = document.createElement('p');
-      noGroupsMsg.textContent = 'Ingen grupper definierade. Skapa grupper först.';
+      noGroupsMsg.textContent = 'Ingen grupper definierade. Skapa en grupp ovan.';
       noGroupsMsg.style.color = '#999';
       noGroupsMsg.style.fontStyle = 'italic';
       groupsContainer.appendChild(noGroupsMsg);
@@ -498,6 +544,68 @@ export function renderPersonal(container, ctx) {
       'src/views/personal.js',
       err.message
     );
+  }
+}
+
+/**
+ * P0: tvinga inputs att vara skrivbara även om global CSS/JS råkat göra dem readOnly/disabled
+ */
+function ensureEditableInput(input) {
+  if (!input) return;
+  try {
+    input.disabled = false;
+    input.readOnly = false;
+    input.tabIndex = 0;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.style.pointerEvents = 'auto';
+    input.style.userSelect = 'text';
+    input.style.webkitUserSelect = 'text';
+    input.style.touchAction = 'manipulation';
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Skapa grupp direkt från Personal
+ */
+function createGroupFromPersonal(nameRaw, store, ctx, container) {
+  try {
+    const name = (nameRaw || '').trim();
+    if (name.length < 2) {
+      showWarning('⚠️ Gruppnamn måste vara minst 2 tecken');
+      return;
+    }
+
+    const state = store.getState();
+    const groupsRaw = state.groups;
+
+    const groupsArr = Array.isArray(groupsRaw) ? groupsRaw : Object.values(groupsRaw || {});
+    const exists = groupsArr.some(g => (g?.name || '').toLowerCase() === name.toLowerCase());
+    if (exists) {
+      showWarning('⚠️ Gruppen finns redan');
+      return;
+    }
+
+    const newGroup = { id: `group_${Date.now()}`, name };
+
+    let nextGroups;
+    if (Array.isArray(groupsRaw)) {
+      nextGroups = [...groupsRaw, newGroup];
+    } else {
+      // map/object
+      nextGroups = { ...(groupsRaw || {}) };
+      nextGroups[newGroup.id] = newGroup;
+    }
+
+    store.setState({ ...state, groups: nextGroups });
+    showSuccess('✓ Grupp skapad');
+
+    rerenderPersonal(ctx, container);
+  } catch (err) {
+    console.error('❌ createGroupFromPersonal failed', err);
+    showWarning(`⚠️ Kunde inte skapa grupp: ${err?.message || err}`);
   }
 }
 
@@ -792,7 +900,7 @@ function addPerson(form, errorDiv, store, ctx, container) {
     // Split name into firstName and lastName
     const nameParts = name.split(' ');
     const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || nameParts[0]; // If only one name, use it for both
+    const lastName = nameParts.slice(1).join(' ') || nameParts[0];
 
     const state = store.getState();
     const people = state.people || [];
@@ -817,7 +925,7 @@ function addPerson(form, errorDiv, store, ctx, container) {
       extraDaysStartBalance: savedVacation,
       groups: groupIds,
       // Additional fields for HR system
-      name, // Keep for display
+      name,
       email,
       phone: phone || null,
       startDate,
