@@ -3,8 +3,12 @@
  * FIL: store.js (HEL FIL)
  *
  * ÄNDRINGSLOGG (≤8)
- * 1) P0: FIX — normalizePerson: ersatt ogiltig sector," med korrekt "sector," (syntaxfix).
- * 2) (Behåller allt annat oförändrat)
+ * 1) P0: FIX — Återinfört saknade validate*-metoder (validateMonthSchedule m.fl.) så store kan initiera och login fungerar.
+ * 2) P0: normalizePerson bevarar personal-fält (name/email/startDate/salary/sector/... ) så UI inte tappar data.
+ * 3) P0: validatePerson tillåter dessa fält (fail-closed + typkontroller).
+ * 4) P0: groups i person kan härledas från groupIds om groups saknas (bakåtkompat).
+ * 5) P0: availability normaliseras till boolean[7] om möjligt.
+ * 6) (Behåller allt annat oförändrat)
  */
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
@@ -405,7 +409,145 @@ class Store {
         if (state.groupShifts) this.validateGroupShifts(state.groupShifts, state.groups, state.shifts);
     }
 
-    // ... (ALLT OFÖRÄNDRAT fram till validatePerson)
+    validateMonthSchedule(month, idx, year) {
+        if (!month || typeof month !== 'object') throw new Error(`schedule.months[${idx}] måste vara objekt`);
+        if (typeof month.month !== 'number' || month.month < 1 || month.month > 12) {
+            throw new Error(`schedule.months[${idx}].month måste vara 1–12`);
+        }
+        if (!Array.isArray(month.days)) throw new Error(`schedule.months[${idx}].days måste vara array`);
+
+        const daysInMonth = new Date(year, month.month, 0).getDate();
+        if (month.days.length !== daysInMonth) {
+            throw new Error(`schedule.months[${idx}].days måste ha ${daysInMonth} dagar`);
+        }
+
+        month.days.forEach((day, dIdx) => {
+            if (!day || typeof day !== 'object') throw new Error(`months[${idx}].days[${dIdx}] måste vara objekt`);
+            if (typeof day.date !== 'string') throw new Error(`months[${idx}].days[${dIdx}].date måste vara string`);
+            if (!Array.isArray(day.entries)) throw new Error(`months[${idx}].days[${dIdx}].entries måste vara array`);
+            day.entries.forEach((e, eIdx) => {
+                if (!e || typeof e !== 'object') throw new Error(`entries[${eIdx}] måste vara objekt`);
+                if (typeof e.personId !== 'string') throw new Error(`entries[${eIdx}].personId måste vara string`);
+                // Övriga entry-fält valideras inte här (scope: bevara befintliga varianter)
+            });
+        });
+
+        if (month.timeDefaults !== undefined) {
+            if (!month.timeDefaults || typeof month.timeDefaults !== 'object') {
+                throw new Error(`schedule.months[${idx}].timeDefaults måste vara objekt`);
+            }
+            const td = month.timeDefaults;
+            ['start', 'end', 'breakStart', 'breakEnd'].forEach((k) => {
+                if (td[k] !== undefined && td[k] !== null && !isHHMM(td[k])) {
+                    throw new Error(`schedule.months[${idx}].timeDefaults.${k} måste vara HH:MM`);
+                }
+            });
+        }
+    }
+
+    validateSettings(settings) {
+        if (!settings || typeof settings !== 'object') throw new Error('settings måste vara objekt');
+
+        if (!isHHMM(settings.defaultStart)) throw new Error('settings.defaultStart måste vara HH:MM');
+        if (!isHHMM(settings.defaultEnd)) throw new Error('settings.defaultEnd måste vara HH:MM');
+        if (!isHHMM(settings.breakStart)) throw new Error('settings.breakStart måste vara HH:MM');
+        if (!isHHMM(settings.breakEnd)) throw new Error('settings.breakEnd måste vara HH:MM');
+
+        if (typeof settings.hourlyWageIsDefault !== 'boolean') throw new Error('settings.hourlyWageIsDefault måste vara boolean');
+
+        if (settings.pinHash !== undefined && typeof settings.pinHash !== 'string') throw new Error('settings.pinHash måste vara string');
+        if (settings.enableP1Streak10 !== undefined && typeof settings.enableP1Streak10 !== 'boolean') throw new Error('settings.enableP1Streak10 måste vara boolean');
+        if (settings.summaryToleranceHours !== undefined && typeof settings.summaryToleranceHours !== 'number') throw new Error('settings.summaryToleranceHours måste vara number');
+
+        if (!settings.theme || typeof settings.theme !== 'object') throw new Error('settings.theme måste vara objekt');
+        // Theme är “soft-validated”: vi kräver bara att statusColors/statusTextColors är objekt om de finns
+        if (settings.theme.statusColors !== undefined && typeof settings.theme.statusColors !== 'object') throw new Error('settings.theme.statusColors måste vara objekt');
+        if (settings.theme.statusTextColors !== undefined && typeof settings.theme.statusTextColors !== 'object') throw new Error('settings.theme.statusTextColors måste vara objekt');
+    }
+
+    validateDemand(demand) {
+        if (!demand || typeof demand !== 'object') throw new Error('demand måste vara objekt');
+
+        if (!demand.groupDemands || typeof demand.groupDemands !== 'object') throw new Error('demand.groupDemands måste vara objekt');
+        Object.keys(demand.groupDemands).forEach((gid) => {
+            const arr = demand.groupDemands[gid];
+            if (!Array.isArray(arr) || arr.length !== 7) throw new Error(`demand.groupDemands.${gid} måste vara array[7]`);
+            arr.forEach((v, i) => {
+                if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+                    throw new Error(`demand.groupDemands.${gid}[${i}] måste vara number >= 0`);
+                }
+            });
+        });
+
+        if (demand.weekdayTemplate !== undefined) {
+            if (!Array.isArray(demand.weekdayTemplate) || demand.weekdayTemplate.length !== 7) {
+                throw new Error('demand.weekdayTemplate måste vara array[7]');
+            }
+        }
+    }
+
+    validateKitchenCore(kitchenCore, people) {
+        if (!kitchenCore || typeof kitchenCore !== 'object') throw new Error('kitchenCore måste vara objekt');
+        if (typeof kitchenCore.enabled !== 'boolean') throw new Error('kitchenCore.enabled måste vara boolean');
+        if (!Array.isArray(kitchenCore.corePersonIds)) throw new Error('kitchenCore.corePersonIds måste vara array');
+        if (typeof kitchenCore.minCorePerDay !== 'number' || kitchenCore.minCorePerDay < 0 || kitchenCore.minCorePerDay > 50) {
+            throw new Error('kitchenCore.minCorePerDay måste vara 0–50');
+        }
+
+        // fail-closed men tolerant: om id inte finns i people -> ok (kan vara import/kommande data)
+        kitchenCore.corePersonIds.forEach((id) => {
+            if (typeof id !== 'string') throw new Error('kitchenCore.corePersonIds måste vara string[]');
+        });
+    }
+
+    validateGroups(groups) {
+        if (!groups || typeof groups !== 'object') throw new Error('groups måste vara objekt');
+        Object.values(groups).forEach((g) => {
+            if (!g || typeof g !== 'object') throw new Error('groups innehåller ogiltig post');
+            if (typeof g.id !== 'string' || !g.id) throw new Error('group.id måste vara non-empty string');
+            if (typeof g.name !== 'string') throw new Error(`group(${g.id}).name måste vara string`);
+            if (g.color !== undefined && typeof g.color !== 'string') throw new Error(`group(${g.id}).color måste vara string`);
+            if (g.textColor !== undefined && typeof g.textColor !== 'string') throw new Error(`group(${g.id}).textColor måste vara string`);
+        });
+    }
+
+    validateShifts(shifts) {
+        if (!shifts || typeof shifts !== 'object') throw new Error('shifts måste vara objekt');
+        Object.values(shifts).forEach((s) => {
+            if (!s || typeof s !== 'object') throw new Error('shifts innehåller ogiltig post');
+            if (typeof s.id !== 'string' || !s.id) throw new Error('shift.id måste vara non-empty string');
+            if (typeof s.name !== 'string') throw new Error(`shift(${s.id}).name måste vara string`);
+            if (s.shortName !== undefined && typeof s.shortName !== 'string') throw new Error(`shift(${s.id}).shortName måste vara string`);
+
+            // tider får vara null (FLEX) eller HH:MM
+            ['startTime', 'endTime', 'breakStart', 'breakEnd'].forEach((k) => {
+                const v = s[k];
+                if (v !== null && v !== undefined && !isHHMM(v)) {
+                    throw new Error(`shift(${s.id}).${k} måste vara HH:MM eller null`);
+                }
+            });
+
+            if (s.color !== undefined && typeof s.color !== 'string') throw new Error(`shift(${s.id}).color måste vara string`);
+            if (s.description !== undefined && typeof s.description !== 'string') throw new Error(`shift(${s.id}).description måste vara string`);
+        });
+    }
+
+    validateGroupShifts(groupShifts, groups, shifts) {
+        if (!groupShifts || typeof groupShifts !== 'object') throw new Error('groupShifts måste vara objekt');
+
+        Object.keys(groupShifts).forEach((gid) => {
+            const arr = groupShifts[gid];
+            if (!Array.isArray(arr)) throw new Error(`groupShifts.${gid} måste vara array`);
+            arr.forEach((sid) => {
+                if (typeof sid !== 'string' || !sid) throw new Error(`groupShifts.${gid} innehåller ogiltigt shiftId`);
+                if (shifts && shifts[sid] === undefined) throw new Error(`groupShifts.${gid} refererar okänt shiftId "${sid}"`);
+            });
+            if (groups && groups[gid] === undefined) {
+                // fail-closed: okända grupp-id ska inte finnas
+                throw new Error(`groupShifts har okänt groupId "${gid}"`);
+            }
+        });
+    }
 
     validatePerson(person, idx) {
         if (!person || typeof person !== 'object') throw new Error(`people[${idx}] måste vara objekt`);
@@ -481,8 +623,6 @@ class Store {
             });
         }
     }
-
-    // ... (ALLT OFÖRÄNDRAT efter validatePerson)
 
     /* ====================================================================
        MIGRATION & DEFAULT STATE
@@ -767,11 +907,8 @@ function normalizeGroupShifts(groupShifts, groups, shifts, fallback) {
 
 function normalizeAvailability(av) {
     if (!Array.isArray(av)) return undefined;
-    // boolean[7]
     const out = [];
-    for (let i = 0; i < 7; i++) {
-        out.push(Boolean(av[i]));
-    }
+    for (let i = 0; i < 7; i++) out.push(Boolean(av[i]));
     return out;
 }
 
@@ -785,7 +922,6 @@ function normalizePerson(p) {
     const person = (p && typeof p === 'object') ? p : {};
     const id = String(person.id ?? '').trim() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-    // groups kan komma som groups eller groupIds (Personal-vy)
     const groupsArrRaw = Array.isArray(person.groups) ? person.groups : (Array.isArray(person.groupIds) ? person.groupIds : undefined);
     const groups = Array.isArray(groupsArrRaw)
         ? groupsArrRaw.map((g) => String(g ?? '').trim()).filter(Boolean)
@@ -793,7 +929,6 @@ function normalizePerson(p) {
 
     const sector = (person.sector === 'municipal') ? 'municipal' : 'private';
 
-    // bevara "personal-vy" fält om de finns
     const name = (typeof person.name === 'string') ? person.name : undefined;
     const email = (typeof person.email === 'string') ? person.email : undefined;
     const phone = (person.phone === null || typeof person.phone === 'string') ? person.phone : undefined;
@@ -809,7 +944,6 @@ function normalizePerson(p) {
     return {
         id,
 
-        // schema-program kärnfält
         firstName: typeof person.firstName === 'string' ? person.firstName : '',
         lastName: typeof person.lastName === 'string' ? person.lastName : '',
         hourlyWage: typeof person.hourlyWage === 'number'
@@ -830,7 +964,6 @@ function normalizePerson(p) {
         ...(groups !== undefined ? { groupIds: groups } : (Array.isArray(person.groupIds) ? { groupIds: person.groupIds } : {})),
         ...(person.skills && typeof person.skills === 'object' ? { skills: person.skills } : {}),
 
-        // personal-vy fält (P0 kompat)
         ...(name !== undefined ? { name } : {}),
         ...(email !== undefined ? { email } : {}),
         ...(phone !== undefined ? { phone } : {}),
@@ -841,7 +974,7 @@ function normalizePerson(p) {
         ...(savedVacationDays !== undefined ? { savedVacationDays } : {}),
         ...(savedLeaveDays !== undefined ? { savedLeaveDays } : {}),
         ...(availability !== undefined ? { availability } : {}),
-           sector,
+        sector,
         ...(person.createdAt ? { createdAt: person.createdAt } : {}),
         ...(person.updatedAt ? { updatedAt: person.updatedAt } : {}),
         ...(person.usedVacationDays !== undefined ? { usedVacationDays: toNumberOr(0, person.usedVacationDays) } : {}),
@@ -852,4 +985,3 @@ function normalizeEntry(e) {
     const entry = (e && typeof e === 'object') ? e : {};
     return { ...entry, personId: String(entry.personId ?? '') };
 }
-
