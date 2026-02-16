@@ -1,11 +1,11 @@
 /*
- * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v9)
+ * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v10)
  *
- * Patch i denna version:
- * 1) P0: Lägger till "Sök personal" (fält + resultatlista) i Personal-vyn.
- * 2) P0: Klick på sökresultat laddar personen i formuläret (redigera ALLA fält i samma formulär).
- * 3) P0: Submit-knappen växlar Add/Edit (sparar ändringar på vald person istället för prompt()).
- * 4) P0: Avbryt redigering + återställ formulär (utan att tappa vy).
+ * Patch i denna version (ROBUSTHET):
+ * 1) P0: Sektor-styling: trigga bara change på den radio som är checked (undviker fel highlight).
+ * 2) P0: Reset i edit-läge laddar om vald person i formuläret (istället för att tömma fält och lämna UI i “halvt edit”).
+ * 3) P0: “Avbryt redigering” rensar även ev. felruta (personal-error) och återställer formulärläge stabilt via rerender.
+ * 4) P1: Sökresultat: tydligare fail-closed om resultsWrap saknas, och defensiva guards vid render.
  *
  * Features:
  * - Add/Edit/Delete person
@@ -185,7 +185,6 @@ export function renderPersonal(container, ctx) {
 
     const formTitle = document.createElement('h2');
     formTitle.textContent = __personalUI.selectedPersonId ? '✏️ Redigera personal' : '➕ Lägg till ny personal';
-
     formSection.appendChild(formTitle);
 
     // Form
@@ -593,6 +592,22 @@ export function renderPersonal(container, ctx) {
       }
     });
 
+    // P0: RESET robusthet i edit-läge -> ladda om vald person istället för att rensa
+    form.addEventListener('reset', () => {
+      try {
+        if (!__personalUI.selectedPersonId) return;
+        const st = store.getState();
+        const ppl = st.people || [];
+        const selected = ppl.find(p => p?.id === __personalUI.selectedPersonId);
+        if (selected) {
+          // queue så reset hinner rensa DOM först
+          setTimeout(() => loadPersonIntoForm(selected), 0);
+        }
+      } catch (e) {
+        console.warn('⚠️ reset(edit) reload failed', e);
+      }
+    });
+
     // === PEOPLE LIST ===
     const listSection = document.createElement('div');
     listSection.className = 'section-header';
@@ -635,17 +650,17 @@ export function renderPersonal(container, ctx) {
     // --- Bind sök ---
     searchInput.addEventListener('input', () => {
       __personalUI.query = (searchInput.value || '').trim();
-      renderSearchResults(resultsWrap, people, groups, store, ctx, container);
+      renderSearchResults(resultsWrap, people, store, ctx, container);
     });
 
     // Render initial results (om query finns eller om edit är aktiv)
-    renderSearchResults(resultsWrap, people, groups, store, ctx, container);
+    renderSearchResults(resultsWrap, people, store, ctx, container);
 
     // P0: Om vald person finns -> ladda i formulär efter DOM finns
     if (__personalUI.selectedPersonId) {
       const selected = people.find(p => p?.id === __personalUI.selectedPersonId);
       if (selected) {
-        loadPersonIntoForm(selected, groups);
+        loadPersonIntoForm(selected);
       } else {
         // om personen inte finns längre, fail-closed tillbaka till add-läge
         __personalUI.selectedPersonId = null;
@@ -668,8 +683,10 @@ export function renderPersonal(container, ctx) {
 /* ============================================================
    P0: Search helpers
    ============================================================ */
-function renderSearchResults(resultsWrap, people, groups, store, ctx, container) {
+function renderSearchResults(resultsWrap, people, store, ctx, container) {
   try {
+    if (!resultsWrap) return;
+
     // Töm
     while (resultsWrap.firstChild) resultsWrap.removeChild(resultsWrap.firstChild);
 
@@ -759,7 +776,7 @@ function renderSearchResults(resultsWrap, people, groups, store, ctx, container)
   }
 }
 
-function loadPersonIntoForm(person, groups) {
+function loadPersonIntoForm(person) {
   try {
     // Basic
     const nameEl = document.getElementById('personal-name');
@@ -788,16 +805,16 @@ function loadPersonIntoForm(person, groups) {
     if (svEl) svEl.value = String(person?.savedVacationDays ?? 0);
     if (slEl) slEl.value = String(person?.savedLeaveDays ?? 0);
 
-    // Sector
+    // Sector (ROBUST): trigga bara den radio som är checked
     const sector = (person?.sector === 'municipal') ? 'municipal' : 'private';
     const priv = document.getElementById('sector-private');
     const mun = document.getElementById('sector-municipal');
     if (priv && mun) {
       priv.checked = sector === 'private';
       mun.checked = sector === 'municipal';
-      // trigger styles
-      priv.dispatchEvent(new Event('change', { bubbles: true }));
-      mun.dispatchEvent(new Event('change', { bubbles: true }));
+
+      const target = priv.checked ? priv : mun;
+      try { target.dispatchEvent(new Event('change', { bubbles: true })); } catch { /* ignore */ }
     }
 
     // Groups checkboxes
@@ -813,7 +830,7 @@ function loadPersonIntoForm(person, groups) {
     avChecks.forEach((cb, idx) => {
       cb.checked = avail ? !!avail[idx] : (idx < 5);
       // uppdatera label-färg genom att trigga change
-      cb.dispatchEvent(new Event('change', { bubbles: true }));
+      try { cb.dispatchEvent(new Event('change', { bubbles: true })); } catch { /* ignore */ }
     });
 
   } catch (e) {
