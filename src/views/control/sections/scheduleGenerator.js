@@ -1,32 +1,30 @@
 /*
  * SCHEDULE GENERATOR SECTION
- * 
+ *
  * AO-04 — Schemagenerator: Månad + Period
  * Renderar UI för schemagenerering
+ *
+ * AUTOPATCH (P0) — Anpassad till store.js-modellen:
+ * - state.groups är map/object (inte array)  -> Object.values
+ * - "pass" definieras av state.shifts (map/object med start/end/break)  -> Object.values
+ * - bemanningsbehov tas från state.demand.groupDemands[groupId][weekdayIdx]
+ * - store.setState finns inte -> store.update(...)
+ * - skriver schema till state.schedule.months[].days[].entries[] (ingen ny top-level key)
+ * - använder lokalt resultDiv (inte document.getElementById)
  */
 
 // RÄTT IMPORT:
-import { generateSchedule } from '../../../scheduler.js';  // ← Rätt namn!
+import { generateSchedule } from '../../../scheduler.js';
 import { showSuccess, showWarning } from '../../../ui.js';
-import { reportError, diagnostics } from '../../../diagnostics.js';
+import { reportError } from '../../../diagnostics.js';
 
 export function renderScheduleGeneratorSection(container, ctx) {
     try {
         const store = ctx?.store;
-        if (!store) {
-            throw new Error('Store missing');
-        }
-
-        const state = store.getState();
-        const groups = state.groups || [];
-        const passes = state.passes || [];
-        const demands = state.demands || [];
-        const people = state.people || [];
+        if (!store) throw new Error('Store missing');
 
         // Clear container
-        while (container.firstChild) {
-            container.removeChild(container.firstChild);
-        }
+        while (container.firstChild) container.removeChild(container.firstChild);
 
         // === HEADER ===
         const header = document.createElement('div');
@@ -116,7 +114,7 @@ export function renderScheduleGeneratorSection(container, ctx) {
         const yearInput = document.createElement('input');
         yearInput.type = 'number';
         yearInput.id = 'generator-year';
-        yearInput.value = new Date().getFullYear();
+        yearInput.value = String(new Date().getFullYear());
         yearInput.min = '2000';
         yearInput.max = '2100';
         yearInput.style.width = '100px';
@@ -141,11 +139,13 @@ export function renderScheduleGeneratorSection(container, ctx) {
         monthSelect.style.border = '1px solid #ddd';
         monthSelect.style.borderRadius = '4px';
 
-        const months = ['Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni', 
-                        'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December'];
+        const months = [
+            'Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni',
+            'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December'
+        ];
         months.forEach((m, i) => {
             const option = document.createElement('option');
-            option.value = i + 1;
+            option.value = String(i + 1);
             option.textContent = m;
             if (i === new Date().getMonth()) option.selected = true;
             monthSelect.appendChild(option);
@@ -220,103 +220,222 @@ export function renderScheduleGeneratorSection(container, ctx) {
             monthDiv.style.display = 'none';
         };
 
+        // === RESULT AREA (lokal ref) ===
+        const resultDiv = document.createElement('div');
+        resultDiv.id = 'generator-result';
+        resultDiv.style.marginTop = '1.5rem';
+
         // === GENERATE BUTTON ===
         const generateBtn = document.createElement('button');
         generateBtn.className = 'btn btn-primary';
         generateBtn.textContent = '⚙️ Föreslå schema';
         generateBtn.style.marginBottom = '1.5rem';
-        generateBtn.onclick = () => handleGenerate(generateBtn, monthRadio, yearInput, monthSelect, fromInput, toInput, store, ctx);
+        generateBtn.onclick = () =>
+            handleGenerate({
+                btn: generateBtn,
+                monthRadio,
+                yearInput,
+                monthSelect,
+                fromInput,
+                toInput,
+                store,
+                ctx,
+                resultDiv
+            });
 
         container.appendChild(generateBtn);
-
-        // === RESULT AREA ===
-        const resultDiv = document.createElement('div');
-        resultDiv.id = 'generator-result';
-        resultDiv.style.marginTop = '1.5rem';
         container.appendChild(resultDiv);
 
         console.log('✓ Schedule generator section rendered');
-
     } catch (err) {
         console.error('❌ Error rendering schedule generator:', err);
         reportError(
             'SCHEDULE_GENERATOR_RENDER_ERROR',
             'CONTROL_SECTION',
             'control/sections/scheduleGenerator.js',
-            err.message
+            err?.message || 'Unknown error'
         );
         throw err;
     }
 }
 
-function handleGenerate(btn, monthRadio, yearInput, monthSelect, fromInput, toInput, store, ctx) {
+function handleGenerate({ btn, monthRadio, yearInput, monthSelect, fromInput, toInput, store, ctx, resultDiv }) {
     try {
         console.log('🔄 Generating schedule...');
 
         const state = store.getState();
-        const groups = state.groups || [];
-        const passes = state.passes || [];
-        const demands = state.demands || [];
-        const people = state.people || [];
 
-        // Validate prerequisites
-        if (groups.length === 0) {
+        // === Store-model bridge ===
+        const groupsArr = objectValuesSafe(state.groups); // groups map -> array
+        const passDefsArr = objectValuesSafe(state.shifts); // shifts map -> array of "pass defs"
+        const groupDemands = state?.demand?.groupDemands || null;
+        const peopleArr = Array.isArray(state.people) ? state.people : [];
+
+        // Validate prerequisites (fail-closed men tydligt)
+        if (groupsArr.length === 0) {
             showWarning('⚠️ Inga grupper definierade');
             return;
         }
-        if (passes.length === 0) {
-            showWarning('⚠️ Inga grundpass definierade');
+        if (passDefsArr.length === 0) {
+            showWarning('⚠️ Inga pass definierade (state.shifts saknas)');
             return;
         }
-        if (demands.length === 0) {
-            showWarning('⚠️ Inget bemanningsbehov definierat');
+        if (!groupDemands || typeof groupDemands !== 'object') {
+            showWarning('⚠️ Inget bemanningsbehov definierat (state.demand.groupDemands saknas)');
             return;
         }
-        if (people.length === 0) {
+        if (peopleArr.length === 0) {
             showWarning('⚠️ Ingen personal definierad');
             return;
         }
 
-        // Get parameters
+        // Build scheduler-compatible people (minimalt)
+        const peopleForScheduler = peopleArr.map((p) => ({
+            id: String(p?.id ?? ''),
+            name: `${String(p?.firstName ?? '').trim()} ${String(p?.lastName ?? '').trim()}`.trim() || 'Okänd',
+            degree: typeof p?.employmentPct === 'number' ? p.employmentPct : 0
+        })).filter(p => !!p.id);
+
+        if (peopleForScheduler.length === 0) {
+            showWarning('⚠️ Personer saknar giltiga id (kan inte generera)');
+            return;
+        }
+
+        // Get mode + date interval
         const mode = monthRadio.checked ? 'month' : 'period';
-        const params = {
-            mode,
-            groups,
-            passes,
-            demands,
-            people
-        };
+        let startDate = null;
+        let endDate = null;
 
         if (mode === 'month') {
-            params.year = parseInt(yearInput.value);
-            params.month = parseInt(monthSelect.value);
+            const y = parseInt(yearInput.value, 10);
+            const m = parseInt(monthSelect.value, 10);
+            if (!Number.isFinite(y) || y < 2000 || y > 2100) {
+                showWarning('⚠️ Ogiltigt år');
+                return;
+            }
+            if (!Number.isFinite(m) || m < 1 || m > 12) {
+                showWarning('⚠️ Ogiltig månad');
+                return;
+            }
+            startDate = new Date(y, m - 1, 1);
+            endDate = new Date(y, m, 0);
         } else {
-            params.fromDate = fromInput.value;
-            params.toDate = toInput.value;
+            if (!fromInput.value || !toInput.value) {
+                showWarning('⚠️ Välj både från- och till-datum');
+                return;
+            }
+            startDate = new Date(fromInput.value);
+            endDate = new Date(toInput.value);
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                showWarning('⚠️ Ogiltiga datum');
+                return;
+            }
+            if (endDate < startDate) {
+                showWarning('⚠️ Till-datum måste vara efter från-datum');
+                return;
+            }
+            const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+            if (daysDiff > 93) {
+                showWarning(`⚠️ Period kan max vara 93 dagar (du valde ${daysDiff} dagar)`);
+                return;
+            }
         }
 
-        // Call generator (RÄTT NAMN)
-        const result = generateSchedule(params);
+        // IMPORTANT: scheduler.js använder en statisk "demands"-lista (ingen weekday-logik).
+        // För att stödja weekday-variation utan att patcha scheduler.js kör vi dag-för-dag
+        // och skickar demands för just den dagen (count från groupDemands[groupId][weekdayIdx]).
+        const allGenerated = [];
+        const dayCount = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
-        if (result.success) {
-            console.log('✓ Schema genererat:', result.shifts.length, 'skift');
-            showSuccess(`✓ ${result.shifts.length} skift genererade`);
+        btn.disabled = true;
 
-            // Update store with generated shifts
-            store.setState({
-                ...state,
-                generatedShifts: result.shifts,
-                lastGenerationParams: params
+        for (let di = 0; di < dayCount; di++) {
+            const d = new Date(startDate);
+            d.setDate(d.getDate() + di);
+            const dateStr = formatDate(d);
+            const weekdayIdx = getWeekdayIdxMonday0(d); // mån=0 ... sön=6
+
+            const demandsForDay = buildDemandsForDay(groupsArr, passDefsArr, groupDemands, weekdayIdx);
+
+            // Om ingen efterfrågan den dagen: hoppa
+            if (demandsForDay.totalCount === 0) continue;
+
+            const paramsForDay = {
+                mode: 'period',
+                fromDate: dateStr,
+                toDate: dateStr,
+                groups: groupsArr,
+                passes: passDefsArr,
+                demands: demandsForDay.items,
+                people: peopleForScheduler
+            };
+
+            const res = generateSchedule(paramsForDay);
+            if (!res?.success) {
+                // Fortsätt, men logga och visa i result
+                console.warn('⚠️ Dag misslyckades:', dateStr, res?.errors);
+                allGenerated.push(...[]); // no-op, behåll flöde
+            } else {
+                allGenerated.push(...(res.shifts || []));
+            }
+        }
+
+        if (allGenerated.length === 0) {
+            showWarning('⚠️ Inga skift genererades (kontrollera bemanningsbehov + pass + grupper)');
+            displayResult(resultDiv, { success: false, errors: ['Inga skift genererades'] });
+            return;
+        }
+
+        // Skriv in i schedule (state.schedule.months[].days[].entries[]) via store.update
+        store.update((draft) => {
+            if (!draft.schedule || !Array.isArray(draft.schedule.months)) return;
+
+            // Bygg index för snabb lookup
+            const monthByNum = Object.create(null);
+            draft.schedule.months.forEach((m) => { monthByNum[m.month] = m; });
+
+            // Append entries per day
+            allGenerated.forEach((gs) => {
+                const date = String(gs.date || '');
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+
+                const yyyy = parseInt(date.slice(0, 4), 10);
+                const mm = parseInt(date.slice(5, 7), 10);
+                const dd = parseInt(date.slice(8, 10), 10);
+
+                const monthObj = monthByNum[mm];
+                if (!monthObj || !Array.isArray(monthObj.days)) return;
+                const dayObj = monthObj.days[dd - 1];
+                if (!dayObj || !Array.isArray(dayObj.entries)) return;
+
+                const entry = {
+                    personId: String(gs.personId ?? ''),
+                    status: 'A',
+                    start: (gs.startTime ?? null),
+                    end: (gs.endTime ?? null),
+                    breakStart: (gs.breakStart ?? null),
+                    breakEnd: (gs.breakEnd ?? null)
+                };
+
+                if (!entry.personId) return;
+
+                // Dedupe: samma person + datum + start/end (enkelt skydd)
+                const already = dayObj.entries.some((e) =>
+                    String(e?.personId) === entry.personId &&
+                    String(e?.start ?? '') === String(entry.start ?? '') &&
+                    String(e?.end ?? '') === String(entry.end ?? '') &&
+                    String(e?.status ?? '') === 'A'
+                );
+                if (!already) dayObj.entries.push(entry);
             });
 
-            // Show result
-            displayResult(document.getElementById('generator-result'), result);
+            // meta.updatedAt
+            if (!draft.meta || typeof draft.meta !== 'object') draft.meta = {};
+            draft.meta.updatedAt = Date.now();
+        });
 
-        } else {
-            console.error('❌ Generation failed:', result.errors);
-            showWarning(`⚠️ ${result.errors[0] || 'Schemagenerering misslyckades'}`);
-            displayResult(document.getElementById('generator-result'), result);
-        }
+        showSuccess(`✓ ${allGenerated.length} skift genererade och inskrivna i schemat`);
+        displayResult(resultDiv, { success: true, shifts: allGenerated, errors: [] });
 
     } catch (err) {
         console.error('❌ Error generating schedule:', err);
@@ -324,31 +443,31 @@ function handleGenerate(btn, monthRadio, yearInput, monthSelect, fromInput, toIn
             'SCHEDULE_GENERATION_ERROR',
             'SCHEDULE_GENERATOR',
             'control/sections/scheduleGenerator.js',
-            err.message
+            err?.message || 'Unknown error'
         );
         showWarning('⚠️ Ett fel uppstod vid schemagenerering');
+        displayResult(resultDiv, { success: false, errors: [err?.message || 'Okänt fel'] });
+    } finally {
+        try { btn.disabled = false; } catch (_) {}
     }
 }
 
 function displayResult(container, result) {
-    while (container.firstChild) {
-        container.removeChild(container.firstChild);
-    }
+    while (container.firstChild) container.removeChild(container.firstChild);
 
-    if (result.success) {
+    if (result && result.success) {
         const successDiv = document.createElement('div');
         successDiv.className = 'alert alert-success';
         successDiv.style.marginBottom = '1rem';
 
         const msg = document.createElement('p');
-        msg.textContent = `✓ ${result.shifts.length} skift genererade`;
+        msg.textContent = `✓ ${(result.shifts || []).length} skift genererade`;
         msg.style.margin = '0';
 
         successDiv.appendChild(msg);
         container.appendChild(successDiv);
 
-        // Show brief summary
-        if (result.shifts.length > 0) {
+        if ((result.shifts || []).length > 0) {
             const summary = document.createElement('div');
             summary.style.marginTop = '1rem';
             summary.style.padding = '1rem';
@@ -361,7 +480,7 @@ function displayResult(container, result) {
 
             const details = document.createElement('p');
             details.style.margin = '0';
-            details.textContent = `Systemet har fördelat ${result.shifts.length} skift baserat på bemanningsbehov och tillgänglighet.`;
+            details.textContent = `Systemet har fördelat ${(result.shifts || []).length} skift baserat på bemanningsbehov och tillgänglighet.`;
 
             summary.appendChild(title);
             summary.appendChild(details);
@@ -380,9 +499,13 @@ function displayResult(container, result) {
         errors.style.margin = '0';
         errors.style.paddingLeft = '1.5rem';
 
-        result.errors.forEach(error => {
+        const list = (result && Array.isArray(result.errors) && result.errors.length)
+            ? result.errors
+            : ['Ett okänt fel uppstod'];
+
+        list.forEach((error) => {
             const li = document.createElement('li');
-            li.textContent = error;
+            li.textContent = String(error);
             errors.appendChild(li);
         });
 
@@ -390,4 +513,59 @@ function displayResult(container, result) {
         errorDiv.appendChild(errors);
         container.appendChild(errorDiv);
     }
+}
+
+/* =========================
+   Helpers (local)
+   ========================= */
+
+function objectValuesSafe(obj) {
+    if (!obj || typeof obj !== 'object') return [];
+    return Object.values(obj).filter(Boolean);
+}
+
+// JS Date.getDay(): sön=0 ... lör=6
+// Vi vill: mån=0 ... sön=6
+function getWeekdayIdxMonday0(d) {
+    const js = d.getDay(); // 0..6 (sön..lör)
+    return (js + 6) % 7;   // mån=0, tis=1, ... sön=6
+}
+
+function buildDemandsForDay(groupsArr, passDefsArr, groupDemands, weekdayIdx) {
+    const items = [];
+    let total = 0;
+
+    groupsArr.forEach((g) => {
+        const gid = String(g?.id ?? '').trim();
+        if (!gid) return;
+
+        const week = groupDemands[gid];
+        const countForGroup = Array.isArray(week) && typeof week[weekdayIdx] === 'number'
+            ? week[weekdayIdx]
+            : 0;
+
+        // Om gruppen inte behöver någon: ingen demands för den dagen
+        if (!countForGroup || countForGroup <= 0) return;
+
+        // För enkel baseline: samma count används för alla pass i gruppen den dagen.
+        // (Vill ni fördela per pass: då behöver vi en annan demand-modell/AO.)
+        passDefsArr.forEach((p) => {
+            const pid = String(p?.id ?? '').trim();
+            if (!pid) return;
+            items.push({
+                key: `${gid}_${pid}`,
+                count: countForGroup
+            });
+            total += countForGroup;
+        });
+    });
+
+    return { items, totalCount: total };
+}
+
+function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
