@@ -1,10 +1,9 @@
 /*
- * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v6)
+ * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v7)
  *
  * Patch i denna version:
- * - P0: Snabb-navigation är BORTTAGEN från Personal (ska bara ligga på Home)
- * - P0: XSS-safe rendering i person-kort (ingen innerHTML med användardata)
- * - P0: Stabil re-render efter add/edit/delete
+ * - P0: Normaliserar state.groups (map -> array) så Personal inte kraschar (groups.forEach).
+ * - P0: Alla group-uppslag i kort/lista använder normaliserad groups-array.
  *
  * Features:
  * - Add/Edit/Delete person
@@ -40,7 +39,10 @@ export function renderPersonal(container, ctx) {
     const store = ctx.store;
     const state = store.getState();
     const people = state.people || [];
-    const groups = state.groups || [];
+
+    // P0: groups kan vara array (gammalt) eller objekt/map (nytt store.js). Normalisera till array.
+    const groupsRaw = state.groups;
+    const groups = Array.isArray(groupsRaw) ? groupsRaw : Object.values(groupsRaw || {});
 
     // Clear container
     while (container.firstChild) {
