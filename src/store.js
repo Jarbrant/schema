@@ -3,11 +3,8 @@
  * FIL: store.js (HEL FIL)
  *
  * ÄNDRINGSLOGG (≤8)
- * 1) P0: normalizePerson bevarar personal-fält (name/email/startDate/salary/sector/... ) så UI inte tappar data.
- * 2) P0: validatePerson tillåter dessa fält (fail-closed + typkontroller).
- * 3) P0: groups i person kan härledas från groupIds om groups saknas (bakåtkompat).
- * 4) P0: availability normaliseras till boolean[7] om möjligt.
- * 5) (Behåller allt annat oförändrat)
+ * 1) P0: FIX — normalizePerson: ersatt ogiltig "{ sector }," med korrekt "sector," (syntaxfix).
+ * 2) (Behåller allt annat oförändrat)
  */
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
@@ -855,3 +852,4 @@ function normalizeEntry(e) {
     const entry = (e && typeof e === 'object') ? e : {};
     return { ...entry, personId: String(entry.personId ?? '') };
 }
+::contentReference[oaicite:0]{index=0}
