@@ -1,10 +1,10 @@
 /*
- * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v5)
+ * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v6)
  *
  * Patch i denna version:
- * - P0: Snabb-länksrutor (för alla toppbar-länkar) via renderQuickLinks()
+ * - P0: Snabb-navigation är BORTTAGEN från Personal (ska bara ligga på Home)
  * - P0: XSS-safe rendering i person-kort (ingen innerHTML med användardata)
- * - P0: Stabil re-render efter add/edit/delete (använder route-container)
+ * - P0: Stabil re-render efter add/edit/delete
  *
  * Features:
  * - Add/Edit/Delete person
@@ -19,7 +19,7 @@
  * FAS 3.3: Cost display added
  */
 
-import { showSuccess, showWarning, renderQuickLinks } from '../ui.js';
+import { showSuccess, showWarning } from '../ui.js';
 import { reportError } from '../diagnostics.js';
 import {
   getVacationDaysPerYear,
@@ -82,18 +82,6 @@ export function renderPersonal(container, ctx) {
     statusItem.appendChild(statusLabel);
     statusItem.appendChild(statusValue);
     statusRow.appendChild(statusItem);
-
-    // === QUICK LINKS (rutor för alla topbar-länkar) ===
-    const quickLinksWrap = document.createElement('div');
-    quickLinksWrap.style.marginTop = '1.25rem';
-
-    // Vi renderar rutorna i en dedikerad container och återanvänder befintliga CSS-klasser från Home.
-    const quickLinksBox = document.createElement('div');
-    renderQuickLinks(quickLinksBox, {
-      title: 'Snabb-navigation',
-      currentRoute: 'personal'
-    });
-    quickLinksWrap.appendChild(quickLinksBox);
 
     // === FORM SECTION ===
     const formSection = document.createElement('div');
@@ -491,7 +479,6 @@ export function renderPersonal(container, ctx) {
     // Assemble page
     viewContainer.appendChild(header);
     viewContainer.appendChild(statusRow);
-    viewContainer.appendChild(quickLinksWrap);
     viewContainer.appendChild(formSection);
     viewContainer.appendChild(form);
     viewContainer.appendChild(listSection);
