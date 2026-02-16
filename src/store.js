@@ -841,7 +841,7 @@ function normalizePerson(p) {
         ...(savedVacationDays !== undefined ? { savedVacationDays } : {}),
         ...(savedLeaveDays !== undefined ? { savedLeaveDays } : {}),
         ...(availability !== undefined ? { availability } : {}),
-        { sector },
+           sector,
         ...(person.createdAt ? { createdAt: person.createdAt } : {}),
         ...(person.updatedAt ? { updatedAt: person.updatedAt } : {}),
         ...(person.usedVacationDays !== undefined ? { usedVacationDays: toNumberOr(0, person.usedVacationDays) } : {}),
