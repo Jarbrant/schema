@@ -3,7 +3,7 @@
  * FIL: store.js (HEL FIL)
  *
  * ÄNDRINGSLOGG (≤8)
- * 1) P0: FIX — normalizePerson: ersatt ogiltig "{ sector }," med korrekt "sector," (syntaxfix).
+ * 1) P0: FIX — normalizePerson: ersatt ogiltig sector," med korrekt "sector," (syntaxfix).
  * 2) (Behåller allt annat oförändrat)
  */
 
