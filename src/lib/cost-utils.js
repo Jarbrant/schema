@@ -11,6 +11,11 @@
  * - Arbetsgivaravgift: 31.42% (standard)
  * - Genomsnittlig månad: 167 arbetstimmar
  * - Skatt: 30% (basic uppskattning)
+ *
+ * PATCH (v2.1 mini):
+ * 1) P0: employmentPct fallback till degree (bakåtkompatibelt schema).
+ * 2) P0: calculateCostPerGroup använder groupIds som primär, fallback till groups.
+ * 3) P1: getEmployerTaxRate robust: Number(age) + Number.isFinite + age == null guard.
  */
 
 // ============================================================================
@@ -43,9 +48,9 @@ export const TAX_RATE_DEFAULT = 0.30;
  * @returns {number} Timlön (SEK)
  */
 export function monthlyToHourly(monthlySalary, hoursPerMonth = HOURS_PER_MONTH) {
-    if (!monthlySalary || monthlySalary <= 0) return 0;
-    if (!hoursPerMonth || hoursPerMonth <= 0) return 0;
-    return monthlySalary / hoursPerMonth;
+  if (!monthlySalary || monthlySalary <= 0) return 0;
+  if (!hoursPerMonth || hoursPerMonth <= 0) return 0;
+  return monthlySalary / hoursPerMonth;
 }
 
 /**
@@ -55,9 +60,9 @@ export function monthlyToHourly(monthlySalary, hoursPerMonth = HOURS_PER_MONTH) 
  * @returns {number} Månadslön (SEK)
  */
 export function hourlyToMonthly(hourlyWage, hoursPerMonth = HOURS_PER_MONTH) {
-    if (!hourlyWage || hourlyWage <= 0) return 0;
-    if (!hoursPerMonth || hoursPerMonth <= 0) return 0;
-    return hourlyWage * hoursPerMonth;
+  if (!hourlyWage || hourlyWage <= 0) return 0;
+  if (!hoursPerMonth || hoursPerMonth <= 0) return 0;
+  return hourlyWage * hoursPerMonth;
 }
 
 /**
@@ -67,10 +72,10 @@ export function hourlyToMonthly(hourlyWage, hoursPerMonth = HOURS_PER_MONTH) {
  * @returns {number} Justerad lön (SEK)
  */
 export function adjustForEmployment(fullSalary, employmentPct) {
-    if (!fullSalary || fullSalary <= 0) return 0;
-    if (!employmentPct || employmentPct <= 0) return 0;
-    if (employmentPct > 100) employmentPct = 100;
-    return fullSalary * (employmentPct / 100);
+  if (!fullSalary || fullSalary <= 0) return 0;
+  if (!employmentPct || employmentPct <= 0) return 0;
+  if (employmentPct > 100) employmentPct = 100;
+  return fullSalary * (employmentPct / 100);
 }
 
 // ============================================================================
@@ -84,26 +89,30 @@ export function adjustForEmployment(fullSalary, employmentPct) {
  * @returns {number} Arbetsgivaravgift (SEK)
  */
 export function calculateEmployerTax(salary, rate = EMPLOYER_TAX_RATE_STANDARD) {
-    if (!salary || salary <= 0) return 0;
-    if (!rate || rate < 0) return 0;
-    return salary * rate;
+  if (!salary || salary <= 0) return 0;
+  if (!rate || rate < 0) return 0;
+  return salary * rate;
 }
 
 /**
  * Välj arbetsgivaravgiftssats baserat på ålder
- * @param {number} age - Ålder (år)
+ * @param {number|string|null|undefined} age - Ålder (år)
  * @returns {number} Avgiftssats
  */
 export function getEmployerTaxRate(age) {
-    if (!age) return EMPLOYER_TAX_RATE_STANDARD;
-    
-    if (age < 26) {
-        return EMPLOYER_TAX_RATE_YOUNG;  // Reducerad för unga
-    } else if (age > 65) {
-        return EMPLOYER_TAX_RATE_SENIOR;  // Reducerad för pensionärer
-    }
-    
-    return EMPLOYER_TAX_RATE_STANDARD;  // Standard
+  // P1: robust guard (null/undefined/NaN/strings)
+  if (age == null) return EMPLOYER_TAX_RATE_STANDARD;
+
+  const ageNum = Number(age);
+  if (!Number.isFinite(ageNum)) return EMPLOYER_TAX_RATE_STANDARD;
+
+  if (ageNum < 26) {
+    return EMPLOYER_TAX_RATE_YOUNG; // Reducerad för unga
+  } else if (ageNum > 65) {
+    return EMPLOYER_TAX_RATE_SENIOR; // Reducerad för pensionärer
+  }
+
+  return EMPLOYER_TAX_RATE_STANDARD; // Standard
 }
 
 // ============================================================================
@@ -117,9 +126,9 @@ export function getEmployerTaxRate(age) {
  * @returns {number} Preliminär skatt (SEK)
  */
 export function estimateTax(grossSalary, taxRate = TAX_RATE_DEFAULT) {
-    if (!grossSalary || grossSalary <= 0) return 0;
-    if (!taxRate || taxRate < 0) return 0;
-    return grossSalary * taxRate;
+  if (!grossSalary || grossSalary <= 0) return 0;
+  if (!taxRate || taxRate < 0) return 0;
+  return grossSalary * taxRate;
 }
 
 /**
@@ -129,9 +138,9 @@ export function estimateTax(grossSalary, taxRate = TAX_RATE_DEFAULT) {
  * @returns {number} Nettolön (SEK)
  */
 export function calculateNetSalary(grossSalary, taxRate = TAX_RATE_DEFAULT) {
-    if (!grossSalary || grossSalary <= 0) return 0;
-    const tax = estimateTax(grossSalary, taxRate);
-    return grossSalary - tax;
+  if (!grossSalary || grossSalary <= 0) return 0;
+  const tax = estimateTax(grossSalary, taxRate);
+  return grossSalary - tax;
 }
 
 // ============================================================================
@@ -145,22 +154,22 @@ export function calculateNetSalary(grossSalary, taxRate = TAX_RATE_DEFAULT) {
  * @returns {object} { salary, employerTax, totalCost }
  */
 export function calculateTotalCost(salary, employerTaxRate = EMPLOYER_TAX_RATE_STANDARD) {
-    if (!salary || salary <= 0) {
-        return {
-            salary: 0,
-            employerTax: 0,
-            totalCost: 0
-        };
-    }
-    
-    const employerTax = calculateEmployerTax(salary, employerTaxRate);
-    const totalCost = salary + employerTax;
-    
+  if (!salary || salary <= 0) {
     return {
-        salary: salary,
-        employerTax: employerTax,
-        totalCost: totalCost
+      salary: 0,
+      employerTax: 0,
+      totalCost: 0
     };
+  }
+
+  const employerTax = calculateEmployerTax(salary, employerTaxRate);
+  const totalCost = salary + employerTax;
+
+  return {
+    salary: salary,
+    employerTax: employerTax,
+    totalCost: totalCost
+  };
 }
 
 /**
@@ -168,50 +177,53 @@ export function calculateTotalCost(salary, employerTaxRate = EMPLOYER_TAX_RATE_S
  * @param {object} person - Person objekt
  * @param {number} person.salary - Månadslön
  * @param {number} person.employmentPct - Anställningsgrad (0-100)
+ * @param {number} person.degree - (fallback) Tjänstgöringsgrad (0-100)
  * @param {number} person.employerTaxRate - Arbetsgivaravgift (optional)
- * @param {number} person.age - Ålder (för att bestämma avgiftssats)
+ * @param {number|string} person.age - Ålder (för att bestämma avgiftssats)
  * @returns {object} Kostnadskalkyl
  */
 export function calculatePersonMonthlyCost(person) {
-    if (!person) {
-        return {
-            grossSalary: 0,
-            adjustedSalary: 0,
-            employerTax: 0,
-            totalCost: 0,
-            hourlyRate: 0,
-            hourlyCost: 0
-        };
-    }
-    
-    const grossSalary = person.salary || 0;
-    const employmentPct = person.employmentPct || 100;
-    
-    // Justera för deltid
-    const adjustedSalary = adjustForEmployment(grossSalary, employmentPct);
-    
-    // Välj arbetsgivaravgift
-    let employerTaxRate = person.employerTaxRate || EMPLOYER_TAX_RATE_STANDARD;
-    if (person.age) {
-        employerTaxRate = getEmployerTaxRate(person.age);
-    }
-    
-    // Beräkna total kostnad
-    const costBreakdown = calculateTotalCost(adjustedSalary, employerTaxRate);
-    
-    // Beräkna tim-kostnader
-    const hourlyRate = monthlyToHourly(adjustedSalary);
-    const hourlyCost = monthlyToHourly(costBreakdown.totalCost);
-    
+  if (!person) {
     return {
-        grossSalary: grossSalary,
-        adjustedSalary: adjustedSalary,
-        employerTax: costBreakdown.employerTax,
-        totalCost: costBreakdown.totalCost,
-        hourlyRate: hourlyRate,
-        hourlyCost: hourlyCost,
-        employerTaxRate: employerTaxRate
+      grossSalary: 0,
+      adjustedSalary: 0,
+      employerTax: 0,
+      totalCost: 0,
+      hourlyRate: 0,
+      hourlyCost: 0
     };
+  }
+
+  const grossSalary = person.salary || 0;
+
+  // P0: schema-mismatch fix (employmentPct fallback till degree)
+  const employmentPct = (person.employmentPct ?? person.degree ?? 100);
+
+  // Justera för deltid
+  const adjustedSalary = adjustForEmployment(grossSalary, employmentPct);
+
+  // Välj arbetsgivaravgift
+  let employerTaxRate = person.employerTaxRate || EMPLOYER_TAX_RATE_STANDARD;
+  if (person.age != null) {
+    employerTaxRate = getEmployerTaxRate(person.age);
+  }
+
+  // Beräkna total kostnad
+  const costBreakdown = calculateTotalCost(adjustedSalary, employerTaxRate);
+
+  // Beräkna tim-kostnader
+  const hourlyRate = monthlyToHourly(adjustedSalary);
+  const hourlyCost = monthlyToHourly(costBreakdown.totalCost);
+
+  return {
+    grossSalary: grossSalary,
+    adjustedSalary: adjustedSalary,
+    employerTax: costBreakdown.employerTax,
+    totalCost: costBreakdown.totalCost,
+    hourlyRate: hourlyRate,
+    hourlyCost: hourlyCost,
+    employerTaxRate: employerTaxRate
+  };
 }
 
 /**
@@ -221,9 +233,9 @@ export function calculatePersonMonthlyCost(person) {
  * @returns {number} Total kostnad (SEK)
  */
 export function calculateHoursCost(hours, hourlyCost) {
-    if (!hours || hours <= 0) return 0;
-    if (!hourlyCost || hourlyCost <= 0) return 0;
-    return hours * hourlyCost;
+  if (!hours || hours <= 0) return 0;
+  if (!hourlyCost || hourlyCost <= 0) return 0;
+  return hours * hourlyCost;
 }
 
 // ============================================================================
@@ -236,34 +248,34 @@ export function calculateHoursCost(hours, hourlyCost) {
  * @returns {object} Aggregerad kostnad
  */
 export function calculateTotalMonthlyCost(people) {
-    if (!Array.isArray(people) || people.length === 0) {
-        return {
-            totalSalary: 0,
-            totalEmployerTax: 0,
-            totalCost: 0,
-            peopleCount: 0,
-            averageCost: 0
-        };
-    }
-    
-    let totalSalary = 0;
-    let totalEmployerTax = 0;
-    let totalCost = 0;
-    
-    people.forEach(person => {
-        const cost = calculatePersonMonthlyCost(person);
-        totalSalary += cost.adjustedSalary;
-        totalEmployerTax += cost.employerTax;
-        totalCost += cost.totalCost;
-    });
-    
+  if (!Array.isArray(people) || people.length === 0) {
     return {
-        totalSalary: totalSalary,
-        totalEmployerTax: totalEmployerTax,
-        totalCost: totalCost,
-        peopleCount: people.length,
-        averageCost: people.length > 0 ? totalCost / people.length : 0
+      totalSalary: 0,
+      totalEmployerTax: 0,
+      totalCost: 0,
+      peopleCount: 0,
+      averageCost: 0
     };
+  }
+
+  let totalSalary = 0;
+  let totalEmployerTax = 0;
+  let totalCost = 0;
+
+  people.forEach(person => {
+    const cost = calculatePersonMonthlyCost(person);
+    totalSalary += cost.adjustedSalary;
+    totalEmployerTax += cost.employerTax;
+    totalCost += cost.totalCost;
+  });
+
+  return {
+    totalSalary: totalSalary,
+    totalEmployerTax: totalEmployerTax,
+    totalCost: totalCost,
+    peopleCount: people.length,
+    averageCost: people.length > 0 ? totalCost / people.length : 0
+  };
 }
 
 /**
@@ -273,30 +285,32 @@ export function calculateTotalMonthlyCost(people) {
  * @returns {object} Kostnad per grupp { groupId: cost }
  */
 export function calculateCostPerGroup(people, groups) {
-    if (!Array.isArray(people) || !Array.isArray(groups)) {
-        return {};
-    }
-    
-    const costPerGroup = {};
-    
-    groups.forEach(group => {
-        // Hitta alla personer i denna grupp
-        const groupPeople = people.filter(person => 
-            person.groups && person.groups.includes(group.id)
-        );
-        
-        // Beräkna total kostnad för gruppen
-        const groupCost = calculateTotalMonthlyCost(groupPeople);
-        
-        costPerGroup[group.id] = {
-            groupName: group.name,
-            totalCost: groupCost.totalCost,
-            peopleCount: groupCost.peopleCount,
-            averageCost: groupCost.averageCost
-        };
+  if (!Array.isArray(people) || !Array.isArray(groups)) {
+    return {};
+  }
+
+  const costPerGroup = {};
+
+  groups.forEach(group => {
+    // P0: groupIds primär (canonical), fallback till groups (bakåtkompatibelt)
+    const groupPeople = people.filter(person => {
+      const ids = Array.isArray(person?.groupIds)
+        ? person.groupIds
+        : (Array.isArray(person?.groups) ? person.groups : []);
+      return ids.includes(group.id);
     });
-    
-    return costPerGroup;
+
+    const groupCost = calculateTotalMonthlyCost(groupPeople);
+
+    costPerGroup[group.id] = {
+      groupName: group.name,
+      totalCost: groupCost.totalCost,
+      peopleCount: groupCost.peopleCount,
+      averageCost: groupCost.averageCost
+    };
+  });
+
+  return costPerGroup;
 }
 
 /**
@@ -305,11 +319,11 @@ export function calculateCostPerGroup(people, groups) {
  * @returns {string} Formaterat belopp (t.ex. "35 000 kr")
  */
 export function formatCurrency(amount) {
-    if (typeof amount !== 'number') return '0 kr';
-    return amount.toLocaleString('sv-SE', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-    }) + ' kr';
+  if (typeof amount !== 'number') return '0 kr';
+  return amount.toLocaleString('sv-SE', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }) + ' kr';
 }
 
 /**
@@ -319,9 +333,9 @@ export function formatCurrency(amount) {
  * @returns {string} Formaterat belopp
  */
 export function formatCurrencyDetailed(amount, decimals = 2) {
-    if (typeof amount !== 'number') return '0,00 kr';
-    return amount.toLocaleString('sv-SE', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
-    }) + ' kr';
+  if (typeof amount !== 'number') return '0,00 kr';
+  return amount.toLocaleString('sv-SE', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  }) + ' kr';
 }
