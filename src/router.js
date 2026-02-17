@@ -1,18 +1,20 @@
 /* ============================================================
- * FIL: src/router.js  (HEL FIL) — AUTOPATCH v2 + AO-03
+ * FIL: src/router.js  (HEL FIL) — AUTOPATCH v3 + AO-03
  * NAMN: ROUTER — Route Management & Navigation
  *
  * Fixar:
  * - P0: routes-map innehåller ALLA routes som navbar + home-snabbnav länkar till
  * - P0: okända routes failar till default (home/login) utan "tyst" beteende
  * - P0: navbar syns på ALLA skyddade routes (allt utom login)
- * - P1: placeholders för ej-implementerade vyer (stabilt i prod)
- * - AO-03: groups route pekar på renderGroups istället för placeholder
+ * - P1: placeholders & calendar render XSS-safe (ingen innerHTML med interpolering)
+ * - P2: route-normalisering (trailing slash) + deterministisk navbar-render
+ * - AO-03: groups route pekar på renderGroups
  *
  * Policy:
  * - UI-only / GitHub Pages
  * - Fail-closed
  * - Inga nya storage keys
+ * - XSS-safe rendering: textContent (ingen osäker innerHTML)
  * ============================================================ */
 
 /* ============================================================
@@ -20,58 +22,96 @@
  * ============================================================ */
 import { renderHome } from './views/home.js';
 import { renderPersonal } from './views/personal.js';
-import { renderGroups } from './views/groups.js';           // AO-03
+import { renderGroups } from './views/groups.js'; // AO-03
 import { renderLogin } from './views/login-pin.js';
 import { renderError, renderNavbar } from './ui.js';
 import { reportError } from './diagnostics.js';
 
 /* ============================================================
- * BLOCK 2 — View helpers (placeholders)
+ * BLOCK 2 — DOM helpers (XSS-safe)
+ * ============================================================ */
+function safeClear(el) {
+  if (!el) return;
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function el(tag, className) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  return node;
+}
+
+function addText(node, text) {
+  node.textContent = String(text ?? '');
+  return node;
+}
+
+/* ============================================================
+ * BLOCK 3 — View helpers (placeholders) — XSS-safe
  * ============================================================ */
 function renderPlaceholder(title, note) {
   return function (container) {
-    container.innerHTML = `
-      <div class="view-container">
-        <h2>${title}</h2>
-        <p class="empty-state">
-          ${note || 'Denna vy är under utveckling.'}
-        </p>
-      </div>
-    `;
+    safeClear(container);
+
+    const wrap = el('div', 'view-container');
+
+    const h2 = el('h2');
+    addText(h2, title);
+
+    const p = el('p', 'empty-state');
+    addText(p, note || 'Denna vy är under utveckling.');
+
+    wrap.appendChild(h2);
+    wrap.appendChild(p);
+    container.appendChild(wrap);
   };
 }
 
 /* ============================================================
- * BLOCK 3 — CALENDAR view (din baseline)
+ * BLOCK 4 — CALENDAR view (din baseline) — XSS-safe
  * ============================================================ */
 export function renderCalendar(container, ctx) {
+  safeClear(container);
+
   const store = ctx?.store;
+  const wrap = el('div', 'view-container');
+
   if (!store) {
-    container.innerHTML = '<div class="view-container"><h2>Fel</h2><p>Store saknas.</p></div>';
+    const h2 = el('h2');
+    addText(h2, 'Fel');
+    const p = el('p');
+    addText(p, 'Store saknas.');
+    wrap.appendChild(h2);
+    wrap.appendChild(p);
+    container.appendChild(wrap);
     return;
   }
 
-  const state = store.getState();
+  const state = store.getState?.();
+  const h2 = el('h2');
+  addText(h2, 'Kalender 2026');
+  wrap.appendChild(h2);
 
-  if (!state.schedule || state.schedule.year !== 2026) {
-    container.innerHTML =
-      '<div class="view-container"><h2>Kalender</h2><p class="error-text">Schedule är korrupt eller fel år. Kan inte visa kalender.</p></div>';
+  if (!state?.schedule || state.schedule.year !== 2026) {
+    const pErr = el('p', 'error-text');
+    addText(pErr, 'Schedule är korrupt eller fel år. Kan inte visa kalender.');
+    wrap.appendChild(pErr);
+    container.appendChild(wrap);
     return;
   }
 
-  container.innerHTML = `
-    <div class="view-container">
-      <h2>Kalender 2026</h2>
-      <p class="empty-state">
-        📅 Kalendervyn är under utveckling (AO-09+).<br>
-        För nu: Använd "Personal" för att lägga till personal och "Kontroll" för att se statistik.
-      </p>
-    </div>
-  `;
+  const p = el('p', 'empty-state');
+  // TextContent => vi använder radbrytningar via två textnoder + <br> utan innerHTML
+  p.appendChild(document.createTextNode('📅 Kalendervyn är under utveckling (AO-09+).'));
+  p.appendChild(document.createElement('br'));
+  p.appendChild(document.createTextNode('För nu: Använd "Personal" för att lägga till personal och "Kontroll" för att se statistik.'));
+  wrap.appendChild(p);
+
+  container.appendChild(wrap);
 }
 
 /* ============================================================
- * BLOCK 4 — Route-map (ENDA källan för vilka views som finns)
+ * BLOCK 5 — Route-map (ENDA källan för vilka views som finns)
  * OBS: Måste matcha href i navbar (ui.js) + home-snabbnav
  * ============================================================ */
 const routes = {
@@ -81,7 +121,7 @@ const routes = {
   // Protected
   home: renderHome,
   shifts: renderPlaceholder('Skift', '📋 Skiftvyn är under utveckling.'),
-  groups: renderGroups,                                      // AO-03 (var renderPlaceholder)
+  groups: renderGroups, // AO-03
   personal: renderPersonal,
   calendar: renderCalendar,
   control: renderPlaceholder('Kontroll', '✓ Kontrollvyn är under utveckling.'),
@@ -91,7 +131,7 @@ const routes = {
 };
 
 /* ============================================================
- * BLOCK 5 — Router state (DOM hooks + ctx)
+ * BLOCK 6 — Router state (DOM hooks + ctx)
  * ============================================================ */
 let container = null;
 let errorPanel = null;
@@ -103,13 +143,8 @@ function debugLog(message) {
   console.log(`📊 ${message}`);
 }
 
-function safeClear(el) {
-  if (!el) return;
-  while (el.firstChild) el.removeChild(el.firstChild);
-}
-
 /* ============================================================
- * BLOCK 6 — Auth (SINGLE SOURCE OF TRUTH)
+ * BLOCK 7 — Auth (SINGLE SOURCE OF TRUTH)
  * - Fail-closed: om oklart -> false
  * ============================================================ */
 function isLoggedIn() {
@@ -135,20 +170,27 @@ function getDefaultRoute() {
 }
 
 /* ============================================================
- * BLOCK 7 — Parse route (hash)
+ * BLOCK 8 — Parse route (hash) — robust normalisering
  * - Fail-closed: okänd route -> default
  * ============================================================ */
+function normalizeRouteName(name) {
+  let route = String(name ?? '');
+  route = route.split('?')[0];         // bort med query
+  route = route.replace(/\/+$/, '');   // bort trailing slashes
+  return route;
+}
+
 function parseRoute() {
   const hash = window.location.hash || '';
   let route = hash.startsWith('#/') ? hash.slice(2) : '';
-  route = route.split('?')[0];
+  route = normalizeRouteName(route);
 
   if (!route) return getDefaultRoute();
   return routes[route] ? route : getDefaultRoute();
 }
 
 /* ============================================================
- * BLOCK 8 — Navbar (topbar)
+ * BLOCK 9 — Navbar (topbar)
  * - Login ska vara "ren" sida utan navbar
  * ============================================================ */
 function setTopbarVisible(isVisible) {
@@ -161,7 +203,7 @@ function setTopbarVisible(isVisible) {
   }
 
   if (!isVisible) {
-    navbar.innerHTML = '';
+    safeClear(navbar);
     navbar.style.display = 'none';
     debugLog('Navbar hidden (login route)');
     return true;
@@ -170,16 +212,15 @@ function setTopbarVisible(isVisible) {
   // Viktigt: återställ från "display:none" på andra routes
   navbar.style.display = 'block';
 
-  // Rendera navbar om tom
-  if (navbar.childNodes.length === 0) {
-    try {
-      renderNavbar(navbar);
-      debugLog('Navbar rendered');
-    } catch (err) {
-      console.error('❌ Navbar render failed:', err);
-      reportError('NAVBAR_RENDER_ERROR', 'ROUTER', 'src/router.js', err?.message || String(err));
-      return false;
-    }
+  // Deterministiskt: rendera alltid (för att undvika stale navbar när den blir dynamisk)
+  try {
+    safeClear(navbar);
+    renderNavbar(navbar);
+    debugLog('Navbar rendered/refreshed');
+  } catch (err) {
+    console.error('❌ Navbar render failed:', err);
+    reportError('NAVBAR_RENDER_ERROR', 'ROUTER', 'src/router.js', err?.message || String(err));
+    return false;
   }
 
   return true;
@@ -189,13 +230,14 @@ function markActive(routeName) {
   const links = document.querySelectorAll('#navbar a[href^="#/"]');
   links.forEach((link) => {
     const href = link.getAttribute('href') || '';
-    const linkRoute = href.startsWith('#/') ? href.slice(2) : href;
+    const linkRouteRaw = href.startsWith('#/') ? href.slice(2) : href;
+    const linkRoute = normalizeRouteName(linkRouteRaw);
     link.classList.toggle('active', linkRoute === routeName);
   });
 }
 
 /* ============================================================
- * BLOCK 9 — Render route (kärnan)
+ * BLOCK 10 — Render route (kärnan)
  * ============================================================ */
 function renderRoute(routeName) {
   try {
@@ -212,7 +254,7 @@ function renderRoute(routeName) {
     // 2) Auth-guard: inte inloggad + inte login -> login
     if (!isLoggedIn() && !isLoginRoute) {
       debugLog('Not authenticated, redirecting to login');
-      window.location.hash = '#/login';
+      if (window.location.hash !== '#/login') window.location.hash = '#/login';
       return;
     }
 
@@ -248,7 +290,7 @@ function renderRoute(routeName) {
 }
 
 /* ============================================================
- * BLOCK 10 — Event: hashchange
+ * BLOCK 11 — Event: hashchange
  * ============================================================ */
 function onHashChange() {
   const route = parseRoute();
@@ -256,7 +298,7 @@ function onHashChange() {
 }
 
 /* ============================================================
- * BLOCK 11 — setupRouter (init)
+ * BLOCK 12 — setupRouter (init)
  * ============================================================ */
 export function setupRouter(store) {
   if (window.__ROUTER_INIT__) {
