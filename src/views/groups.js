@@ -1,221 +1,279 @@
 /*
- * AO-04: GROUPS — Grupp-hantering & Grundpass-konfiguration
- * 
- * Två tabs:
- * 1. Grupper — Skapa/redigera grupper och välj medlemmar
- * 2. Grundpass — Definiera arbetstider, raster, färger
+ * AO-03 — Groups View: UI för grupper + grundpass (render-only)
+ * PATCH v1.1 — QA-fixar:
+ *   P0: Använder ctx.store istället för importerad singleton
+ *   P0: sanitizeColor() mot CSS-injection i inline style
+ *   P1: Guard för ctx i tab-listeners
+ *   P1: memberCount läser groupIds som fallback
+ *
+ * Store shape:
+ *   state.groups      = Object/Map  { [id]: { id, name, color, textColor } }
+ *   state.shifts      = Object/Map  { [id]: { id, name, shortName, startTime, endTime, breakStart, breakEnd, color, description } }
+ *   state.groupShifts = Object/Map  { [groupId]: [shiftId, ...] }
+ *   state.people      = Array       [{ id, firstName, lastName, groups/groupIds: [groupId, ...], ... }]
+ *
+ * Exporterar: renderGroups(container, ctx)
+ * Inga formulär / inga mutationer — enbart render.
  */
 
-import { setupGroupsEventListeners } from '../modules/groups-form.js';
-
+/* ============================================================
+ * MAIN RENDER
+ * ============================================================ */
 export function renderGroups(container, ctx) {
-    const store = ctx?.store;
-    if (!store) {
-        container.innerHTML = '<div class="view-container"><h2>Fel</h2><p>Store saknas.</p></div>';
+    if (!container) {
+        console.error('❌ renderGroups: container saknas');
         return;
     }
 
-    const state = store.getState();
-    const groups = state.groups || [];
-    const passes = state.passes || [];
-    const people = state.people || [];
-    const currentTab = ctx?.groupsTab || 'groups';
-
-    const html = `
-        <div class="groups-container">
-            <div class="groups-content">
-                <h1>Grupp-hantering & Grundpass</h1>
-                <p class="groups-tagline">
-                    Skapa arbetstidsgrupper och definiera grundpass för schemaläggninga
-                </p>
-
-                <!-- Tab Navigation -->
-                <div class="groups-tabs">
-                    <button class="groups-tab ${currentTab === 'groups' ? 'active' : ''}" data-tab="groups">
-                        👥 Grupper
-                    </button>
-                    <button class="groups-tab ${currentTab === 'passes' ? 'active' : ''}" data-tab="passes">
-                        🕐 Grundpass
-                    </button>
+    try {
+        const store = ctx?.store;
+        if (!store) {
+            container.innerHTML = `
+                <div class="groups-container">
+                    <div class="groups-content">
+                        <h1>❌ Fel</h1>
+                        <p class="empty-state">Store saknas i context. Kan inte visa grupper.</p>
+                    </div>
                 </div>
+            `;
+            return;
+        }
 
-                <!-- TAB 1: GRUPPER -->
-                ${currentTab === 'groups' ? `
-                    <div class="groups-form-section">
-                        <h2>Skapa ny grupp</h2>
-                        <form id="group-form" class="groups-form">
-                            <div class="form-group">
-                                <label for="group-name">Grupp-namn *</label>
-                                <input type="text" id="group-name" name="name" placeholder="t.ex. Restaurang Personal" required>
-                            </div>
+        const state = store.getState();
 
-                            <div class="form-group">
-                                <label>Välj medlemmar *</label>
-                                <div class="checkbox-grid">
-                                    ${people.length > 0 ? people.map(p => `
-                                        <div class="checkbox-item">
-                                            <input type="checkbox" id="member-${p.id}" name="members" value="${p.id}">
-                                            <label for="member-${p.id}">${p.name}</label>
-                                        </div>
-                                    `).join('') : '<p>Inga personer tilgängliga. Skapa personal först.</p>'}
-                                </div>
-                            </div>
+        const groups      = state.groups      && typeof state.groups === 'object'      ? state.groups      : {};
+        const shifts      = state.shifts      && typeof state.shifts === 'object'      ? state.shifts      : {};
+        const groupShifts = state.groupShifts && typeof state.groupShifts === 'object' ? state.groupShifts : {};
+        const people      = Array.isArray(state.people) ? state.people : [];
 
-                            <div class="form-buttons">
-                                <button type="submit" class="btn btn-primary">Skapa grupp</button>
-                                <button type="reset" class="btn btn-secondary">Rensa</button>
-                            </div>
-                        </form>
+        // Säkerställ att ctx är muterbar
+        if (!ctx || typeof ctx !== 'object') {
+            ctx = {};
+        }
+
+        const activeTab = ctx.groupsTab || 'groups';
+
+        container.innerHTML = `
+            <div class="groups-container">
+                <div class="groups-content">
+                    <h1>👥 Grupper & Grundpass</h1>
+                    <p class="groups-tagline">Hantera arbetsgrupper och kopplade grundpass.</p>
+
+                    <!-- TABS -->
+                    <div class="groups-tabs">
+                        <button class="groups-tab ${activeTab === 'groups' ? 'active' : ''}"
+                                data-tab="groups">
+                            👥 Grupper
+                        </button>
+                        <button class="groups-tab ${activeTab === 'shifts' ? 'active' : ''}"
+                                data-tab="shifts">
+                            📋 Grundpass
+                        </button>
                     </div>
 
-                    <div class="groups-table-section">
-                        <h2>Befintliga grupper</h2>
-                        ${groups.length > 0 ? `
-                            <div class="groups-table-wrapper">
-                                <table class="groups-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Grupp-namn</th>
-                                            <th>Medlemmar</th>
-                                            <th>Antal</th>
-                                            <th>Åtgärd</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${groups.map(group => `
-                                            <tr>
-                                                <td>${group.name}</td>
-                                                <td>${group.members.map(mid => {
-                                                    const person = people.find(p => p.id === mid);
-                                                    return person?.name || 'Okänd';
-                                                }).join(', ')}</td>
-                                                <td>${group.members.length}</td>
-                                                <td>
-                                                    <div class="groups-table-actions">
-                                                        <button class="btn-edit" data-action="edit" data-id="${group.id}">Redigera</button>
-                                                        <button class="btn-delete" data-action="delete-group" data-id="${group.id}">Radera</button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ` : `
-                            <div class="empty-state">
-                                Inga grupper skapade ännu. Skapa din första grupp ovan.
-                            </div>
-                        `}
+                    <!-- TAB CONTENT -->
+                    <div id="groups-tab-content">
+                        ${activeTab === 'groups'
+                            ? renderGroupsTab(groups, groupShifts, shifts, people)
+                            : renderShiftsTab(shifts, groupShifts, groups)}
                     </div>
-                ` : ''}
+                </div>
+            </div>
+        `;
 
-                <!-- TAB 2: GRUNDPASS -->
-                ${currentTab === 'passes' ? `
-                    <div class="groups-form-section">
-                        <h2>Skapa nytt grundpass</h2>
-                        <form id="pass-form" class="groups-form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="pass-name">Namn *</label>
-                                    <input type="text" id="pass-name" name="name" placeholder="t.ex. Semester" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="pass-color">Färg</label>
-                                    <input type="color" id="pass-color" name="color" value="#667eea">
-                                </div>
-                            </div>
+        // Setup tab-klick
+        setupTabListeners(container, ctx);
 
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="pass-start">Starttid *</label>
-                                    <input type="time" id="pass-start" name="startTime" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="pass-end">Sluttid *</label>
-                                    <input type="time" id="pass-end" name="endTime" required>
-                                </div>
-                            </div>
+    } catch (err) {
+        console.error('❌ renderGroups kraschade:', err);
+        container.innerHTML = `
+            <div class="groups-container">
+                <div class="groups-content">
+                    <h1>❌ Fel</h1>
+                    <p class="empty-state">Kunde inte rendera grupper: ${escapeHtml(String(err.message || err))}</p>
+                </div>
+            </div>
+        `;
+    }
+}
 
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="pass-break-start">Rast från</label>
-                                    <input type="time" id="pass-break-start" name="breakStart">
-                                </div>
-                                <div class="form-group">
-                                    <label for="pass-break-end">Rast till</label>
-                                    <input type="time" id="pass-break-end" name="breakEnd">
-                                </div>
-                            </div>
+/* ============================================================
+ * TAB: Grupper
+ * ============================================================ */
+function renderGroupsTab(groups, groupShifts, shifts, people) {
+    const groupsArr = Object.values(groups);
 
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="pass-cost">Kostnadsställe</label>
-                                    <input type="text" id="pass-cost" name="costCenter" placeholder="t.ex. 8 Semester">
-                                </div>
-                                <div class="form-group">
-                                    <label for="pass-workplace">Arbetsplats</label>
-                                    <input type="text" id="pass-workplace" name="workplace" placeholder="t.ex. Restaurang Borg">
-                                </div>
-                            </div>
+    if (groupsArr.length === 0) {
+        return `<div class="empty-state">Inga grupper hittades.</div>`;
+    }
 
-                            <div class="form-buttons">
-                                <button type="submit" class="btn btn-primary">Skapa grundpass</button>
-                                <button type="reset" class="btn btn-secondary">Rensa</button>
-                            </div>
-                        </form>
-                    </div>
+    const rows = groupsArr.map(g => {
+        // Räkna medlemmar: stöd både groups och groupIds
+        const memberCount = people.filter(p => {
+            const pGroups = Array.isArray(p.groups) ? p.groups
+                          : Array.isArray(p.groupIds) ? p.groupIds
+                          : [];
+            return pGroups.includes(g.id);
+        }).length;
 
-                    <div class="groups-table-section">
-                        <h2>Befintliga grundpass</h2>
-                        ${passes.length > 0 ? `
-                            <div class="groups-table-wrapper">
-                                <table class="groups-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Namn</th>
-                                            <th>Tid</th>
-                                            <th>Rast</th>
-                                            <th>Färg</th>
-                                            <th>Kostnadsställe</th>
-                                            <th>Arbetsplats</th>
-                                            <th>Åtgärd</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${passes.map(pass => `
-                                            <tr>
-                                                <td>${pass.name}</td>
-                                                <td>${pass.startTime} - ${pass.endTime}</td>
-                                                <td>${pass.breakStart && pass.breakEnd ? pass.breakStart + ' - ' + pass.breakEnd : '-'}</td>
-                                                <td>
-                                                    <span class="color-badge" style="background-color: ${pass.color};"></span>
-                                                </td>
-                                                <td>${pass.costCenter || '-'}</td>
-                                                <td>${pass.workplace || '-'}</td>
-                                                <td>
-                                                    <div class="groups-table-actions">
-                                                        <button class="btn-edit" data-action="edit" data-id="${pass.id}">Redigera</button>
-                                                        <button class="btn-delete" data-action="delete-pass" data-id="${pass.id}">Radera</button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ` : `
-                            <div class="empty-state">
-                                Inga grundpass skapade ännu. Skapa ditt första pass ovan.
-                            </div>
-                        `}
-                    </div>
-                ` : ''}
+        // Hämta kopplade pass via groupShifts
+        const linkedShiftIds = Array.isArray(groupShifts[g.id]) ? groupShifts[g.id] : [];
+        const linkedShiftNames = linkedShiftIds
+            .map(sid => shifts[sid]?.name || sid)
+            .join(', ') || '—';
+
+        return `
+            <tr>
+                <td>
+                    <span class="color-badge" style="background: ${sanitizeColor(g.color)}"></span>
+                </td>
+                <td><strong>${escapeHtml(g.name)}</strong></td>
+                <td>${escapeHtml(g.id)}</td>
+                <td>${memberCount}</td>
+                <td>${escapeHtml(linkedShiftNames)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div class="groups-table-section">
+            <h2>Registrerade grupper</h2>
+            <div class="groups-table-wrapper">
+                <table class="groups-table">
+                    <thead>
+                        <tr>
+                            <th>Färg</th>
+                            <th>Namn</th>
+                            <th>ID</th>
+                            <th>Medlemmar</th>
+                            <th>Kopplade pass</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
             </div>
         </div>
     `;
+}
 
-    container.innerHTML = html;
+/* ============================================================
+ * TAB: Grundpass (Shifts)
+ * ============================================================ */
+function renderShiftsTab(shifts, groupShifts, groups) {
+    const shiftsArr = Object.values(shifts);
 
-    // Setup event listeners
-    setupGroupsEventListeners(container, store, ctx);
+    if (shiftsArr.length === 0) {
+        return `<div class="empty-state">Inga grundpass hittades.</div>`;
+    }
+
+    const rows = shiftsArr.map(s => {
+        const timeStr = (s.startTime && s.endTime)
+            ? `${s.startTime} – ${s.endTime}`
+            : '— (Flex)';
+
+        const breakStr = (s.breakStart && s.breakEnd)
+            ? `${s.breakStart} – ${s.breakEnd}`
+            : '—';
+
+        // Vilka grupper använder detta pass?
+        const linkedGroups = Object.keys(groupShifts)
+            .filter(gid => {
+                const arr = groupShifts[gid];
+                return Array.isArray(arr) && arr.includes(s.id);
+            })
+            .map(gid => groups[gid]?.name || gid)
+            .join(', ') || '—';
+
+        return `
+            <tr>
+                <td>
+                    <span class="color-badge" style="background: ${sanitizeColor(s.color)}"></span>
+                </td>
+                <td><strong>${escapeHtml(s.name)}</strong></td>
+                <td>${escapeHtml(s.shortName || '—')}</td>
+                <td>${escapeHtml(timeStr)}</td>
+                <td>${escapeHtml(breakStr)}</td>
+                <td>${escapeHtml(linkedGroups)}</td>
+                <td class="shift-description">${escapeHtml(s.description || '—')}</td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div class="groups-table-section">
+            <h2>Registrerade grundpass</h2>
+            <div class="groups-table-wrapper">
+                <table class="groups-table">
+                    <thead>
+                        <tr>
+                            <th>Färg</th>
+                            <th>Namn</th>
+                            <th>Kort</th>
+                            <th>Tid</th>
+                            <th>Rast</th>
+                            <th>Grupper</th>
+                            <th>Beskrivning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+/* ============================================================
+ * EVENT LISTENERS (tab-switch only)
+ * ============================================================ */
+function setupTabListeners(container, ctx) {
+    // Guard: ctx måste vara muterbart objekt
+    if (!ctx || typeof ctx !== 'object') {
+        ctx = {};
+    }
+
+    const tabs = container.querySelectorAll('.groups-tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            try {
+                ctx.groupsTab = tab.dataset.tab;
+                renderGroups(container, ctx);
+            } catch (err) {
+                console.error('❌ Tab-switch fel:', err);
+            }
+        });
+    });
+}
+
+/* ============================================================
+ * HELPERS
+ * ============================================================ */
+
+/**
+ * sanitizeColor — Tillåter bara säkra CSS-färgformat.
+ * Accepterar: #hex, rgb(), rgba(), hsl(), hsla(), namngivna CSS-färger.
+ * Allt annat → fallback #777.
+ */
+const SAFE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*[\d.]+\s*\)|hsl\(\s*\d{1,3}\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*\)|hsla\(\s*\d{1,3}\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+\s*\)|[a-zA-Z]{1,20})$/;
+
+function sanitizeColor(input) {
+    if (typeof input !== 'string') return '#777';
+    const trimmed = input.trim();
+    return SAFE_COLOR_RE.test(trimmed) ? trimmed : '#777';
+}
+
+/**
+ * escapeHtml — XSS-skydd för textnoder i HTML-sträng.
+ */
+function escapeHtml(str) {
+    if (typeof str !== 'string') return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
