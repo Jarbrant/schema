@@ -1,12 +1,13 @@
 /* ============================================================
- * FIL: src/router.js  (HEL FIL) — AUTOPATCH v2
+ * FIL: src/router.js  (HEL FIL) — AUTOPATCH v2 + AO-03
  * NAMN: ROUTER — Route Management & Navigation
  *
  * Fixar:
  * - P0: routes-map innehåller ALLA routes som navbar + home-snabbnav länkar till
- * - P0: okända routes failar till default (home/login) utan “tyst” beteende
+ * - P0: okända routes failar till default (home/login) utan "tyst" beteende
  * - P0: navbar syns på ALLA skyddade routes (allt utom login)
  * - P1: placeholders för ej-implementerade vyer (stabilt i prod)
+ * - AO-03: groups route pekar på renderGroups istället för placeholder
  *
  * Policy:
  * - UI-only / GitHub Pages
@@ -19,6 +20,7 @@
  * ============================================================ */
 import { renderHome } from './views/home.js';
 import { renderPersonal } from './views/personal.js';
+import { renderGroups } from './views/groups.js';           // AO-03
 import { renderLogin } from './views/login-pin.js';
 import { renderError, renderNavbar } from './ui.js';
 import { reportError } from './diagnostics.js';
@@ -79,7 +81,7 @@ const routes = {
   // Protected
   home: renderHome,
   shifts: renderPlaceholder('Skift', '📋 Skiftvyn är under utveckling.'),
-  groups: renderPlaceholder('Grupper', '👥 Gruppvyn är under utveckling.'),
+  groups: renderGroups,                                      // AO-03 (var renderPlaceholder)
   personal: renderPersonal,
   calendar: renderCalendar,
   control: renderPlaceholder('Kontroll', '✓ Kontrollvyn är under utveckling.'),
@@ -147,7 +149,7 @@ function parseRoute() {
 
 /* ============================================================
  * BLOCK 8 — Navbar (topbar)
- * - Login ska vara “ren” sida utan navbar
+ * - Login ska vara "ren" sida utan navbar
  * ============================================================ */
 function setTopbarVisible(isVisible) {
   const navbar = document.getElementById('navbar');
@@ -165,7 +167,7 @@ function setTopbarVisible(isVisible) {
     return true;
   }
 
-  // Viktigt: återställ från “display:none” på andra routes
+  // Viktigt: återställ från "display:none" på andra routes
   navbar.style.display = 'block';
 
   // Rendera navbar om tom
