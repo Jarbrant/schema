@@ -1,11 +1,11 @@
 /*
- * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v10)
+ * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v11)
  *
- * Patch i denna version (ROBUSTHET):
- * 1) P0: Sektor-styling: trigga bara change på den radio som är checked (undviker fel highlight).
- * 2) P0: Reset i edit-läge laddar om vald person i formuläret (istället för att tömma fält och lämna UI i “halvt edit”).
- * 3) P0: “Avbryt redigering” rensar även ev. felruta (personal-error) och återställer formulärläge stabilt via rerender.
- * 4) P1: Sökresultat: tydligare fail-closed om resultsWrap saknas, och defensiva guards vid render.
+ * Patch i denna version:
+ * 1) P0: Cost display finns i formuläret och uppdateras live (salary/degree).
+ * 2) P0: vacationDaysPerYear beräknas deterministiskt vid add/edit (startDate + sector + degree).
+ * 3) P1: Rensar unused imports.
+ * 4) P2: Init-sektor-styling triggas direkt (så default “Privat” markeras utan klick).
  *
  * Features:
  * - Add/Edit/Delete person
@@ -16,18 +16,12 @@
  * - Employment degree (%), workdays per week
  * - Multi-group assignment
  * - Availability calendar (Mon-Sun)
- *
- * FAS 3.3: Cost display added
+ * - Cost display (FAS 3.3)
  */
 
 import { showSuccess, showWarning } from '../ui.js';
 import { reportError } from '../diagnostics.js';
-import {
-  getVacationDaysPerYear,
-  calculateYearsEmployed,
-  getPersonVacationYearInfo,
-  SECTOR_TYPES
-} from '../hr-rules.js';
+import { getVacationDaysPerYear, calculateYearsEmployed } from '../hr-rules.js';
 import { calculatePersonMonthlyCost, formatCurrency, formatCurrencyDetailed } from '../lib/cost-utils.js';
 
 const DAYS_OF_WEEK = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
@@ -311,7 +305,7 @@ export function renderPersonal(container, ctx) {
     };
     privateLabel.onmouseout = () => {
       privateLabel.style.borderColor = privateRadio.checked ? '#667eea' : '#ddd';
-      privateLabel.style.background = 'transparent';
+      privateLabel.style.background = privateRadio.checked ? '#f0f4ff' : 'transparent';
     };
 
     sectorContainer.appendChild(privateLabel);
@@ -347,7 +341,7 @@ export function renderPersonal(container, ctx) {
     };
     municipalLabel.onmouseout = () => {
       municipalLabel.style.borderColor = municipalRadio.checked ? '#667eea' : '#ddd';
-      municipalLabel.style.background = 'transparent';
+      municipalLabel.style.background = municipalRadio.checked ? '#f0f4ff' : 'transparent';
     };
 
     sectorContainer.appendChild(municipalLabel);
@@ -358,13 +352,22 @@ export function renderPersonal(container, ctx) {
       privateLabel.style.background = '#f0f4ff';
       municipalLabel.style.borderColor = '#ddd';
       municipalLabel.style.background = 'transparent';
+      updateCostDisplay(form); // P0: live
     };
     municipalRadio.onchange = () => {
       municipalLabel.style.borderColor = '#667eea';
       municipalLabel.style.background = '#f0f4ff';
       privateLabel.style.borderColor = '#ddd';
       privateLabel.style.background = 'transparent';
+      updateCostDisplay(form); // P0: live
     };
+
+    // P2: trigga initial styling direkt så default blir markerad utan klick
+    try {
+      if (privateRadio.checked) privateRadio.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch {
+      // ignore
+    }
 
     sectorInfo.appendChild(sectorContainer);
     form.appendChild(sectorInfo);
@@ -387,6 +390,7 @@ export function renderPersonal(container, ctx) {
     const salaryInput = salaryGroup.querySelector('input');
     ensureEditableInput(salaryInput);
     salaryInput.step = '1';
+    salaryInput.addEventListener('input', () => updateCostDisplay(form)); // P0: live
     salaryInfo.appendChild(salaryGroup);
 
     const savedVacationGroup = createFormGroup('personal-saved-vacation', 'Sparade semesterdagar', 'number', '0');
@@ -402,6 +406,17 @@ export function renderPersonal(container, ctx) {
     salaryInfo.appendChild(savedLeaveGroup);
 
     form.appendChild(salaryInfo);
+
+    // === KOSTNAD-DISPLAY (P0) ===
+    const costDisplay = document.createElement('div');
+    costDisplay.id = 'personal-cost-display';
+    costDisplay.style.marginTop = '1.5rem';
+    costDisplay.style.padding = '1rem';
+    costDisplay.style.background = '#f5f5f5';
+    costDisplay.style.borderRadius = '8px';
+    costDisplay.style.border = '1px solid #ddd';
+    costDisplay.textContent = '💰 Månadskostnad: (Fyll i lön för att beräkna)';
+    form.appendChild(costDisplay);
 
     // === GROUPS ===
     const groupsInfo = document.createElement('fieldset');
@@ -458,7 +473,7 @@ export function renderPersonal(container, ctx) {
       noGroupsMsg.style.fontStyle = 'italic';
       groupsContainer.appendChild(noGroupsMsg);
     } else {
-      groups.forEach(group => {
+      groups.forEach((group) => {
         const checkbox = document.createElement('label');
         checkbox.style.display = 'flex';
         checkbox.style.alignItems = 'center';
@@ -595,10 +610,14 @@ export function renderPersonal(container, ctx) {
     // P0: RESET robusthet i edit-läge -> ladda om vald person istället för att rensa
     form.addEventListener('reset', () => {
       try {
-        if (!__personalUI.selectedPersonId) return;
+        if (!__personalUI.selectedPersonId) {
+          // i add-läge: uppdatera cost display direkt (tomt)
+          setTimeout(() => updateCostDisplay(form), 0);
+          return;
+        }
         const st = store.getState();
         const ppl = st.people || [];
-        const selected = ppl.find(p => p?.id === __personalUI.selectedPersonId);
+        const selected = ppl.find((p) => p?.id === __personalUI.selectedPersonId);
         if (selected) {
           // queue så reset hinner rensa DOM först
           setTimeout(() => loadPersonIntoForm(selected), 0);
@@ -629,7 +648,7 @@ export function renderPersonal(container, ctx) {
       emptyMsg.style.fontStyle = 'italic';
       list.appendChild(emptyMsg);
     } else {
-      people.forEach(person => {
+      people.forEach((person) => {
         const card = createPersonCard(person, store, ctx, container, groups);
         list.appendChild(card);
       });
@@ -653,12 +672,18 @@ export function renderPersonal(container, ctx) {
       renderSearchResults(resultsWrap, people, store, ctx, container);
     });
 
+    // Live uppdatering cost om degree ändras (P0)
+    degreeInput.addEventListener('input', () => updateCostDisplay(form));
+
     // Render initial results (om query finns eller om edit är aktiv)
     renderSearchResults(resultsWrap, people, store, ctx, container);
 
+    // Init cost display (P0)
+    updateCostDisplay(form);
+
     // P0: Om vald person finns -> ladda i formulär efter DOM finns
     if (__personalUI.selectedPersonId) {
-      const selected = people.find(p => p?.id === __personalUI.selectedPersonId);
+      const selected = people.find((p) => p?.id === __personalUI.selectedPersonId);
       if (selected) {
         loadPersonIntoForm(selected);
       } else {
@@ -668,15 +693,9 @@ export function renderPersonal(container, ctx) {
     }
 
     console.log('✓ Personal view rendered');
-
   } catch (err) {
     console.error('❌ Error rendering personal:', err);
-    reportError(
-      'PERSONAL_RENDER_ERROR',
-      'PERSONAL_VIEW',
-      'src/views/personal.js',
-      err.message
-    );
+    reportError('PERSONAL_RENDER_ERROR', 'PERSONAL_VIEW', 'src/views/personal.js', err.message);
   }
 }
 
@@ -716,14 +735,16 @@ function renderSearchResults(resultsWrap, people, store, ctx, container) {
     resultsWrap.appendChild(header);
 
     const matches = q.length
-      ? people.filter(p => {
+      ? people.filter((p) => {
           const name = String(p?.name || '').toLowerCase();
           const email = String(p?.email || '').toLowerCase();
           const fn = String(p?.firstName || '').toLowerCase();
           const ln = String(p?.lastName || '').toLowerCase();
           return name.includes(q) || email.includes(q) || fn.includes(q) || ln.includes(q);
         })
-      : ( __personalUI.selectedPersonId ? people.filter(p => p?.id === __personalUI.selectedPersonId) : [] );
+      : __personalUI.selectedPersonId
+        ? people.filter((p) => p?.id === __personalUI.selectedPersonId)
+        : [];
 
     if (matches.length === 0) {
       const empty = document.createElement('div');
@@ -738,15 +759,15 @@ function renderSearchResults(resultsWrap, people, store, ctx, container) {
     ul.style.display = 'grid';
     ul.style.gap = '0.5rem';
 
-    matches.slice(0, 20).forEach(p => {
+    matches.slice(0, 20).forEach((p) => {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'btn btn-secondary';
       row.style.textAlign = 'left';
       row.style.padding = '0.65rem 0.75rem';
       row.style.borderRadius = '8px';
-      row.style.background = (p.id === __personalUI.selectedPersonId) ? '#eef3ff' : '#fff';
-      row.style.border = (p.id === __personalUI.selectedPersonId) ? '2px solid #667eea' : '1px solid #ddd';
+      row.style.background = p.id === __personalUI.selectedPersonId ? '#eef3ff' : '#fff';
+      row.style.border = p.id === __personalUI.selectedPersonId ? '2px solid #667eea' : '1px solid #ddd';
 
       const top = document.createElement('div');
       top.style.fontWeight = '700';
@@ -785,7 +806,7 @@ function loadPersonIntoForm(person) {
 
     if (nameEl) nameEl.value = person?.name || '';
     if (emailEl) emailEl.value = person?.email || '';
-    if (phoneEl) phoneEl.value = (person?.phone == null ? '' : String(person.phone));
+    if (phoneEl) phoneEl.value = person?.phone == null ? '' : String(person.phone);
 
     // Employment
     const startEl = document.getElementById('personal-start-date');
@@ -806,7 +827,7 @@ function loadPersonIntoForm(person) {
     if (slEl) slEl.value = String(person?.savedLeaveDays ?? 0);
 
     // Sector (ROBUST): trigga bara den radio som är checked
-    const sector = (person?.sector === 'municipal') ? 'municipal' : 'private';
+    const sector = person?.sector === 'municipal' ? 'municipal' : 'private';
     const priv = document.getElementById('sector-private');
     const mun = document.getElementById('sector-municipal');
     if (priv && mun) {
@@ -814,13 +835,17 @@ function loadPersonIntoForm(person) {
       mun.checked = sector === 'municipal';
 
       const target = priv.checked ? priv : mun;
-      try { target.dispatchEvent(new Event('change', { bubbles: true })); } catch { /* ignore */ }
+      try {
+        target.dispatchEvent(new Event('change', { bubbles: true }));
+      } catch {
+        /* ignore */
+      }
     }
 
     // Groups checkboxes
-    const gids = Array.isArray(person?.groupIds) ? person.groupIds : (Array.isArray(person?.groups) ? person.groups : []);
+    const gids = Array.isArray(person?.groupIds) ? person.groupIds : Array.isArray(person?.groups) ? person.groups : [];
     const groupChecks = Array.from(document.querySelectorAll('.group-checkbox'));
-    groupChecks.forEach(cb => {
+    groupChecks.forEach((cb) => {
       cb.checked = gids.includes(cb.value);
     });
 
@@ -828,11 +853,18 @@ function loadPersonIntoForm(person) {
     const avail = Array.isArray(person?.availability) ? person.availability : null;
     const avChecks = Array.from(document.querySelectorAll('.availability-checkbox'));
     avChecks.forEach((cb, idx) => {
-      cb.checked = avail ? !!avail[idx] : (idx < 5);
+      cb.checked = avail ? !!avail[idx] : idx < 5;
       // uppdatera label-färg genom att trigga change
-      try { cb.dispatchEvent(new Event('change', { bubbles: true })); } catch { /* ignore */ }
+      try {
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      } catch {
+        /* ignore */
+      }
     });
 
+    // P0: uppdatera cost display efter att vi laddat värden
+    const form = document.getElementById('personal-form');
+    if (form) updateCostDisplay(form);
   } catch (e) {
     console.warn('⚠️ loadPersonIntoForm failed', e);
   }
@@ -859,6 +891,48 @@ function ensureEditableInput(input) {
 }
 
 /**
+ * P0: Uppdatera kostnad-display (XSS-safe, ingen innerHTML)
+ */
+function updateCostDisplay(form) {
+  try {
+    const costEl = document.getElementById('personal-cost-display');
+    if (!costEl) return;
+
+    const salary = parseInt(form?.querySelector('#personal-salary')?.value || 0);
+    const degree = parseInt(form?.querySelector('#personal-degree')?.value || 100);
+
+    // Töm
+    while (costEl.firstChild) costEl.removeChild(costEl.firstChild);
+
+    if (!salary || salary <= 0) {
+      costEl.textContent = '💰 Månadskostnad: (Fyll i lön för att beräkna)';
+      return;
+    }
+
+    const personForCalc = { salary, employmentPct: degree };
+    const costs = calculatePersonMonthlyCost(personForCalc);
+
+    const line1 = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = `💰 Månadskostnad: ${formatCurrency(costs.totalCost)}`;
+    line1.appendChild(strong);
+
+    const line2 = document.createElement('div');
+    line2.style.marginTop = '0.35rem';
+    line2.style.fontSize = '0.9rem';
+    line2.style.color = '#555';
+    line2.textContent = `Lön: ${formatCurrency(costs.adjustedSalary)} + Arb.avg (${(costs.employerTaxRate * 100).toFixed(
+      1
+    )}%): ${formatCurrency(costs.employerTax)}`;
+
+    costEl.appendChild(line1);
+    costEl.appendChild(line2);
+  } catch (e) {
+    console.warn('⚠️ updateCostDisplay failed', e);
+  }
+}
+
+/**
  * Skapa grupp direkt från Personal
  */
 function createGroupFromPersonal(nameRaw, store, ctx, container) {
@@ -873,7 +947,7 @@ function createGroupFromPersonal(nameRaw, store, ctx, container) {
     const groupsRaw = state.groups;
 
     const groupsArr = Array.isArray(groupsRaw) ? groupsRaw : Object.values(groupsRaw || {});
-    const exists = groupsArr.some(g => (g?.name || '').toLowerCase() === name.toLowerCase());
+    const exists = groupsArr.some((g) => (g?.name || '').toLowerCase() === name.toLowerCase());
     if (exists) {
       showWarning('⚠️ Gruppen finns redan');
       return;
@@ -1030,19 +1104,20 @@ function createPersonCard(person, store, ctx, container, groups) {
 
   // Employment info
   const employmentSection = document.createElement('div');
-  const yearsEmployed = calculateYearsEmployed(person.startDate, person.sector || 'private');
-  const vacationDays = getVacationDaysPerYear(yearsEmployed, person.degree || 100, person.sector || 'private');
+  const sector = person?.sector === 'municipal' ? 'municipal' : 'private';
+  const yearsEmployed = calculateYearsEmployed(person.startDate, sector);
+  const vacationDays = getVacationDaysPerYear(yearsEmployed, person.degree || person.employmentPct || 100, sector);
 
   employmentSection.appendChild(createSectionTitle('Anställning'));
   employmentSection.appendChild(createInfoLine('Startdatum:', formatDate(person.startDate)));
   employmentSection.appendChild(createInfoLine('År:', String(yearsEmployed)));
-  employmentSection.appendChild(createInfoLine('Tjänstgöringsgrad:', `${person.degree || 100}%`));
+  employmentSection.appendChild(createInfoLine('Tjänstgöringsgrad:', `${person.degree || person.employmentPct || 100}%`));
   employmentSection.appendChild(createInfoLine('Arbetsdagar/vecka:', String(person.workdaysPerWeek || 5), { margin: '0' }));
   content.appendChild(employmentSection);
 
   // Salary & Costs
   const salarySection = document.createElement('div');
-  const sectorName = person.sector === 'municipal' ? 'Kommunal' : 'Privat';
+  const sectorName = sector === 'municipal' ? 'Kommunal' : 'Privat';
 
   const costs = calculatePersonMonthlyCost(person);
 
@@ -1068,8 +1143,9 @@ function createPersonCard(person, store, ctx, container, groups) {
   breakdownP.style.margin = '0 0 0.5rem 0';
   breakdownP.style.fontSize = '0.85rem';
   breakdownP.style.color = '#999';
-  breakdownP.textContent =
-    `Lön: ${formatCurrency(costs.adjustedSalary)} + Arb.avg (${(costs.employerTaxRate * 100).toFixed(1)}%): ${formatCurrency(costs.employerTax)}`;
+  breakdownP.textContent = `Lön: ${formatCurrency(costs.adjustedSalary)} + Arb.avg (${(costs.employerTaxRate * 100).toFixed(
+    1
+  )}%): ${formatCurrency(costs.employerTax)}`;
   salarySection.appendChild(breakdownP);
 
   // Hourly line
@@ -1077,8 +1153,9 @@ function createPersonCard(person, store, ctx, container, groups) {
   hourlyP.style.margin = '0 0 0.5rem 0';
   hourlyP.style.fontSize = '0.85rem';
   hourlyP.style.color = '#666';
-  hourlyP.textContent =
-    `Timlön: ${formatCurrencyDetailed(costs.hourlyRate)}/h | Timkostnad: ${formatCurrencyDetailed(costs.hourlyCost)}/h`;
+  hourlyP.textContent = `Timlön: ${formatCurrencyDetailed(costs.hourlyRate)}/h | Timkostnad: ${formatCurrencyDetailed(
+    costs.hourlyCost
+  )}/h`;
   salarySection.appendChild(hourlyP);
 
   // Divider + vacation/leave
@@ -1093,7 +1170,7 @@ function createPersonCard(person, store, ctx, container, groups) {
   // Groups
   const groupsSection = document.createElement('div');
   const personGroups = (person.groupIds || [])
-    .map(gid => groups.find(g => g.id === gid)?.name)
+    .map((gid) => groups.find((g) => g.id === gid)?.name)
     .filter(Boolean)
     .join(', ') || '-';
 
@@ -1110,7 +1187,7 @@ function createPersonCard(person, store, ctx, container, groups) {
   // Availability
   const availabilitySection = document.createElement('div');
   const availableDays = (person.availability || [])
-    .map((available, i) => available ? DAYS_OF_WEEK[i] : null)
+    .map((available, i) => (available ? DAYS_OF_WEEK[i] : null))
     .filter(Boolean)
     .join(', ') || '-';
 
@@ -1172,39 +1249,35 @@ function addPerson(form, errorDiv, store, ctx, container) {
     const sector = document.querySelector('input[name="sector"]:checked')?.value || 'private';
 
     // Get selected groups
-    const groupIds = Array.from(document.querySelectorAll('.group-checkbox:checked'))
-      .map(cb => cb.value);
+    const groupIds = Array.from(document.querySelectorAll('.group-checkbox:checked')).map((cb) => cb.value);
 
     // Get availability
-    const availability = Array.from(document.querySelectorAll('.availability-checkbox'))
-      .map(cb => cb.checked);
+    const availability = Array.from(document.querySelectorAll('.availability-checkbox')).map((cb) => cb.checked);
 
     // Validate
-    if (!name || name.length < 2) {
-      throw new Error('Namn krävs (min 2 tecken)');
-    }
-    if (!email || !email.includes('@')) {
-      throw new Error('Giltigt e-postadress krävs');
-    }
-    if (!startDate) {
-      throw new Error('Startdatum krävs');
-    }
+    if (!name || name.length < 2) throw new Error('Namn krävs (min 2 tecken)');
+    if (!email || !email.includes('@')) throw new Error('Giltigt e-postadress krävs');
+    if (!startDate) throw new Error('Startdatum krävs');
 
     // Split name into firstName and lastName
-    const nameParts = name.split(' ');
+    const nameParts = name.split(' ').filter(Boolean);
     const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || nameParts[0] || '';
 
     const state = store.getState();
     const people = state.people || [];
 
     // Check duplicate email
-    if (people.some(p => (p.email || '').toLowerCase() === email.toLowerCase())) {
+    if (people.some((p) => (p.email || '').toLowerCase() === email.toLowerCase())) {
       throw new Error('E-postadressen finns redan');
     }
 
     // Calculate hourlyWage from salary (167 hours per month standard)
     const hourlyWage = salary > 0 ? salary / 167 : 0;
+
+    // P0: beräkna semesterdagar deterministiskt
+    const yearsEmployed = calculateYearsEmployed(startDate, sector);
+    const vacationDaysPerYear = getVacationDaysPerYear(yearsEmployed, degree, sector);
 
     // Create person with correct schema
     const newPerson = {
@@ -1214,9 +1287,10 @@ function addPerson(form, errorDiv, store, ctx, container) {
       hourlyWage,
       employmentPct: degree,
       isActive: true,
-      vacationDaysPerYear: 25, // Default
+      vacationDaysPerYear,
       extraDaysStartBalance: savedVacation,
       groups: groupIds,
+
       // Additional fields for HR system
       name,
       email,
@@ -1232,12 +1306,12 @@ function addPerson(form, errorDiv, store, ctx, container) {
       availability,
       usedVacationDays: 0,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     store.setState({
       ...state,
-      people: [...people, newPerson]
+      people: [...people, newPerson],
     });
 
     console.log('✓ Person tillagd:', newPerson);
@@ -1246,7 +1320,6 @@ function addPerson(form, errorDiv, store, ctx, container) {
 
     // Re-render the personal view (stabilt)
     rerenderPersonal(ctx, container);
-
   } catch (err) {
     console.error('❌ Error adding person:', err);
     displayError(errorDiv, err.message);
@@ -1274,8 +1347,8 @@ function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
     const savedLeave = parseInt(form.querySelector('#personal-saved-leave')?.value || 0);
     const sector = document.querySelector('input[name="sector"]:checked')?.value || 'private';
 
-    const groupIds = Array.from(document.querySelectorAll('.group-checkbox:checked')).map(cb => cb.value);
-    const availability = Array.from(document.querySelectorAll('.availability-checkbox')).map(cb => cb.checked);
+    const groupIds = Array.from(document.querySelectorAll('.group-checkbox:checked')).map((cb) => cb.value);
+    const availability = Array.from(document.querySelectorAll('.availability-checkbox')).map((cb) => cb.checked);
 
     if (!name || name.length < 2) throw new Error('Namn krävs (min 2 tecken)');
     if (!email || !email.includes('@')) throw new Error('Giltigt e-postadress krävs');
@@ -1283,20 +1356,24 @@ function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
 
     const state = store.getState();
     const people = state.people || [];
-    const existing = people.find(p => p?.id === personId);
+    const existing = people.find((p) => p?.id === personId);
     if (!existing) throw new Error('Personen hittades inte längre (kanske borttagen).');
 
-    if (people.some(p => (p.email || '').toLowerCase() === email.toLowerCase() && p.id !== personId)) {
+    if (people.some((p) => (p.email || '').toLowerCase() === email.toLowerCase() && p.id !== personId)) {
       throw new Error('E-postadressen finns redan');
     }
 
-    const nameParts = name.split(' ');
+    const nameParts = name.split(' ').filter(Boolean);
     const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || nameParts[0] || '';
 
     const hourlyWage = salary > 0 ? salary / 167 : 0;
 
-    const updatedPeople = people.map(p => {
+    // P0: beräkna semesterdagar deterministiskt
+    const yearsEmployed = calculateYearsEmployed(startDate, sector);
+    const vacationDaysPerYear = getVacationDaysPerYear(yearsEmployed, degree, sector);
+
+    const updatedPeople = people.map((p) => {
       if (p.id !== personId) return p;
       return {
         ...p,
@@ -1304,6 +1381,8 @@ function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
         lastName,
         hourlyWage,
         employmentPct: degree,
+        vacationDaysPerYear,
+
         // HR-fält
         name,
         email,
@@ -1328,7 +1407,6 @@ function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
     // tillbaka till add-läge (men behåll ev query)
     __personalUI.selectedPersonId = null;
     rerenderPersonal(ctx, container);
-
   } catch (err) {
     console.error('❌ saveEditedPerson failed:', err);
     displayError(errorDiv, err.message);
@@ -1346,7 +1424,7 @@ function deletePerson(personId, store, ctx, container) {
     const state = store.getState();
     store.setState({
       ...state,
-      people: (state.people || []).filter(p => p.id !== personId)
+      people: (state.people || []).filter((p) => p.id !== personId),
     });
 
     // om vi råkar redigera samma person -> lämna edit-läge
@@ -1359,7 +1437,6 @@ function deletePerson(personId, store, ctx, container) {
 
     // Re-render the personal view (stabilt)
     rerenderPersonal(ctx, container);
-
   } catch (err) {
     console.error('❌ Error deleting person:', err);
     showWarning(`⚠️ ${err.message}`);
