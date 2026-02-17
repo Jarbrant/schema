@@ -1,16 +1,15 @@
 /*
- * AO-02 — CONTROL PAGE (UPPDATERAD för AO-05)
- * 
+ * AO-02 + AO-05 — CONTROL PAGE
+ *
  * Container-sida som komponerar flera sektioner.
  * Registrerar modul-healthcheck via Diagnostics.
- * 
- * Sektioner:
- * 1. Grupp-filter
- * 2. Grupp-skift
- * 3. Bemanningsbehov
- * 4. Schemagenerator
- * 
- * FAS 3.2: Kostnadswidget tillagd
+ *
+ * AO-05 FIX:
+ *   - state.groups/shifts är Object/Map — räkna med Object.keys()
+ *   - state.passes finns inte — heter state.shifts
+ *   - state.demands finns inte — heter state.demand (objekt med groupDemands)
+ *
+ * FAS 3.2: Kostnadswidget
  */
 
 import { reportError, diagnostics } from '../diagnostics.js';
@@ -31,10 +30,15 @@ export function renderControl(container, ctx) {
 
     const state = store.getState();
     const currentTab = ctx?.controlTab || 'control';
-    
+
     // Calculate costs for active people
     const activePeople = (state.people || []).filter(p => p.isActive);
     const totalCosts = calculateTotalMonthlyCost(activePeople);
+
+    // AO-05: groups/shifts är Object/Map — räkna med Object.keys()
+    const groupCount = Object.keys(state.groups || {}).length;
+    const shiftCount = Object.keys(state.shifts || {}).length;
+    const demandGroupCount = Object.keys(state.demand?.groupDemands || {}).length;
 
     const html = `
         <div class="control-container">
@@ -47,20 +51,20 @@ export function renderControl(container, ctx) {
                 <!-- Status Row with Cost Widget -->
                 <div class="control-status">
                     <div class="status-item">
-                        <span class="status-label">Schemalägd personal:</span>
-                        <span class="status-value">${state.shifts?.length || 0}</span>
+                        <span class="status-label">Aktiv personal:</span>
+                        <span class="status-value">${activePeople.length}</span>
                     </div>
                     <div class="status-item">
                         <span class="status-label">Grupper:</span>
-                        <span class="status-value">${state.groups?.length || 0}</span>
+                        <span class="status-value">${groupCount}</span>
                     </div>
                     <div class="status-item">
                         <span class="status-label">Grundpass:</span>
-                        <span class="status-value">${state.passes?.length || 0}</span>
+                        <span class="status-value">${shiftCount}</span>
                     </div>
                     <div class="status-item">
                         <span class="status-label">Bemanningsbehov:</span>
-                        <span class="status-value">${state.demands?.length || 0}</span>
+                        <span class="status-value">${demandGroupCount} grupper</span>
                     </div>
                     <div class="status-item cost-widget">
                         <span class="status-label">💰 Total Månadskostnad:</span>
@@ -85,10 +89,7 @@ export function renderControl(container, ctx) {
                 <!-- TAB 1: KONTROLL -->
                 ${currentTab === 'control' ? `
                     <div class="control-sections">
-                        <!-- Group Filter Section -->
                         <div id="section-group-filter" class="control-section"></div>
-
-                        <!-- Group Shifts Section -->
                         <div id="section-group-shifts" class="control-section"></div>
                     </div>
                 ` : ''}
@@ -96,10 +97,7 @@ export function renderControl(container, ctx) {
                 <!-- TAB 2: SCHEMALÄGGNING -->
                 ${currentTab === 'scheduling' ? `
                     <div class="control-sections">
-                        <!-- Demand Table Section -->
                         <div id="section-demand-table" class="control-section"></div>
-
-                        <!-- Schedule Generator Section -->
                         <div id="section-schedule-generator" class="control-section"></div>
                     </div>
                 ` : ''}
@@ -109,36 +107,21 @@ export function renderControl(container, ctx) {
 
     container.innerHTML = html;
 
-    // Setup tab switching
     setupTabListeners(container, ctx);
-
-    // Render sections based on active tab
     renderAllSections(container, ctx, currentTab);
 }
 
-/**
- * Setup tab switching listeners
- */
 function setupTabListeners(container, ctx) {
     const tabs = container.querySelectorAll('.control-tab');
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
-            const tabName = tab.dataset.tab;
-            
-            // Update context
-            ctx.controlTab = tabName;
-            
-            // Re-render the view
+            ctx.controlTab = tab.dataset.tab;
             renderControl(container, ctx);
         });
     });
 }
 
-/**
- * Render alla sektioner med error-handling + healthcheck
- */
 function renderAllSections(container, ctx, currentTab) {
-    // Define sections for each tab
     const controlSections = [
         {
             id: 'section-group-filter',
@@ -173,7 +156,6 @@ function renderAllSections(container, ctx, currentTab) {
         }
     ];
 
-    // Select sections based on current tab
     const sections = currentTab === 'control' ? controlSections : schedulingSections;
 
     sections.forEach(section => {
@@ -184,7 +166,6 @@ function renderAllSections(container, ctx, currentTab) {
         }
 
         try {
-            // Register module start (healthcheck)
             diagnostics.moduleStart(
                 section.moduleId,
                 `src/views/control/sections/${section.file}`
@@ -193,16 +174,13 @@ function renderAllSections(container, ctx, currentTab) {
             console.log(`🔄 Renderar sektion: ${section.name}`);
             section.render(sectionContainer, ctx);
 
-            // Mark module as OK (healthcheck)
             diagnostics.moduleOk(section.moduleId);
 
         } catch (err) {
             console.error(`❌ Fel i sektion ${section.name}:`, err);
 
-            // Mark module as failed (healthcheck)
             diagnostics.moduleFail(section.moduleId, err);
-            
-            // Rapportera via Diagnostics
+
             reportError(
                 `CONTROL_SECTION_ERROR_${section.name.toUpperCase()}`,
                 'CONTROL_PAGE',
@@ -210,7 +188,6 @@ function renderAllSections(container, ctx, currentTab) {
                 `Ett fel uppstod i ${section.name}-sektionen: ${err.message || 'Okänt fel'}`
             );
 
-            // Visa error i sektionen
             sectionContainer.innerHTML = `
                 <div class="section-error">
                     <div class="error-icon">⚠️</div>
