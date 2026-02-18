@@ -1,16 +1,16 @@
 /*
  * ============================================================
- * APP.JS — App Initialization & State Management (AUTOPATCH v1.1 + AO-05)
+ * APP.JS — App Initialization & State Management (AUTOPATCH v1.2 + AO-05)
  * Projekt: Schema-Program (UI-only / GitHub Pages)
  *
- * P0 FIX:
- * - Sluta skapa in-memory store som nollas vid refresh.
- * - Använd store.js (localStorage) som SINGLE SOURCE OF TRUTH.
- * - Behåll createStore()/DEFAULT_STATE exports för bakåtkompatibilitet,
- *   men createStore() proxar nu mot getStore().
+ * P0 FIX (NY):
+ * - Backspace ska fungera i input/textarea/contenteditable.
+ * - Vi stoppar propagation för Backspace i editfält för att hindra
+ *   globala shortcuts/guards från att köra preventDefault().
  *
- * AO-05: Rensat bort "passes" (spökvariabel). State-shape ägs av store.js.
- *        DEFAULT_STATE här är bara legacy-export — store.js skapar default-state.
+ * Policy:
+ * - UI-only
+ * - Inga nya storage keys
  * ============================================================
  */
 
@@ -30,21 +30,49 @@ function debugLog(level, message, data) {
 }
 
 /* ============================================================
+   BLOCK 1.5 — Keyboard guard (P0 FIX: Backspace)
+   ============================================================ */
+function installKeyboardGuardsOnce() {
+  if (window.__KB_GUARD_INSTALLED__) return;
+  window.__KB_GUARD_INSTALLED__ = true;
+
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'Backspace') return;
+
+      const t = e.target;
+      const isEditable =
+        t &&
+        (
+          t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.isContentEditable === true
+        );
+
+      // Backspace i editfält ska ALLTID få fungera.
+      // Vi stoppar propagation så att globala handlers inte kan preventDefault().
+      if (isEditable) {
+        e.stopImmediatePropagation();
+        // OBS: vi kallar INTE preventDefault här.
+      }
+    },
+    true // capture: körs tidigt
+  );
+
+  debugLog('log', 'Keyboard guard installed (Backspace safe in inputs)');
+}
+
+/* ============================================================
    BLOCK 2 — Default state (legacy export)
-   OBS: Används INTE som källa. store.js äger state + persist.
-   AO-05: groups/shifts är Object/Map i store.js, men här kvar som
-          legacy-placeholder. "passes" borttagen (finns inte i store).
    ============================================================ */
 export const DEFAULT_STATE = {
   user: null,
   isLoggedIn: false,
   people: [],
-  // AO-05: Dessa är Object/Map i store.js — här bara legacy-placeholder
-  shifts: {},       // store.js: Object/Map { [id]: { id, name, ... } }
-  groups: {},       // store.js: Object/Map { [id]: { id, name, color, textColor } }
-  groupShifts: {},  // store.js: Object/Map { [groupId]: [shiftId, ...] }
-  // AO-05: "passes" borttagen — hette "shifts" i store.js hela tiden
-  // AO-05: "demands" borttagen — heter "demand" (objekt) i store.js
+  shifts: {},
+  groups: {},
+  groupShifts: {},
   schedule: {
     year: new Date().getFullYear(),
     startDate: null,
@@ -84,6 +112,9 @@ export function createStore(_initialStateIgnored) {
    BLOCK 4 — Init
    ============================================================ */
 export function initApp() {
+  // P0: installera tidigt innan views/router kör shortcuts
+  installKeyboardGuardsOnce();
+
   const store = createStore(DEFAULT_STATE);
   debugLog('log', 'Store loaded (persistent)', store.getState());
 
