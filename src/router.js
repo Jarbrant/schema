@@ -1,21 +1,8 @@
 /* ============================================================
- * FIL: src/router.js  (HEL FIL) — AUTOPATCH v4 + AO-05
+ * FIL: src/router.js  (HEL FIL) — AUTOPATCH v4 + AO-05 + AO-06
  * NAMN: ROUTER — Route Management & Navigation
  *
- * Fixar:
- * - P0: routes-map innehåller ALLA routes som navbar + home-snabbnav länkar till
- * - P0: okända routes failar till default (home/login) utan "tyst" beteende
- * - P0: navbar syns på ALLA skyddade routes (allt utom login)
- * - P1: placeholders & calendar render XSS-safe (ingen innerHTML med interpolering)
- * - P2: route-normalisering (trailing slash) + deterministisk navbar-render
- * - AO-03: groups route pekar på renderGroups
- * - AO-05: shifts route pekar på renderShifts (shiftTemplates CRUD)
- *
- * Policy:
- * - UI-only / GitHub Pages
- * - Fail-closed
- * - Inga nya storage keys
- * - XSS-safe rendering: textContent (ingen osäker innerHTML)
+ * AO-06: Ny route 'week-templates' → renderWeekTemplates
  * ============================================================ */
 
 /* ============================================================
@@ -24,7 +11,8 @@
 import { renderHome } from './views/home.js';
 import { renderPersonal } from './views/personal.js';
 import { renderGroups } from './views/groups.js';
-import { renderShifts } from './views/shifts.js';    // AO-05
+import { renderShifts } from './views/shifts.js';
+import { renderWeekTemplates } from './views/week-templates.js';    // AO-06
 import { renderLogin } from './views/login-pin.js';
 import { renderError, renderNavbar } from './ui.js';
 import { reportError } from './diagnostics.js';
@@ -121,8 +109,9 @@ const routes = {
 
     // Protected
     home: renderHome,
-    shifts: renderShifts,                                                          // AO-05
+    shifts: renderShifts,
     groups: renderGroups,
+    'week-templates': renderWeekTemplates,                                         // AO-06
     personal: renderPersonal,
     calendar: renderCalendar,
     control: renderPlaceholder('Kontroll', '✓ Kontrollvyn är under utveckling.'),
