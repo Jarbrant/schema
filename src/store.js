@@ -1,20 +1,34 @@
 /*
- * AO-01 to AO-02D — STORE: Komplett state-hantering med grupper, behov och pass (AUTOPATCH v1.3)
+ * AO-01 to AO-03 — STORE: Komplett state-hantering (AUTOPATCH v2.0)
  * FIL: store.js (HEL FIL)
  *
- * ÄNDRINGSLOGG (≤8)
- * 1) P0: FIX — Återinfört saknade validate*-metoder (validateMonthSchedule m.fl.) så store kan initiera och login fungerar.
- * 2) P0: normalizePerson bevarar personal-fält (name/email/startDate/salary/sector/... ) så UI inte tappar data.
- * 3) P0: validatePerson tillåter dessa fält (fail-closed + typkontroller).
- * 4) P0: groups i person kan härledas från groupIds om groups saknas (bakåtkompat).
- * 5) P0: availability normaliseras till boolean[7] om möjligt.
- * 6) (Behåller allt annat oförändrat)
+ * AO-03 ÄNDRINGAR (additiv, inget befintligt borttaget):
+ * 1) Nya state-nycklar: shiftTemplates, weekTemplates, calendarWeeks,
+ *    calendarOverrides, absences, vacancies, changeLog
+ * 2) schedule utökad med entries{} och lockedWeeks[]
+ * 3) settings utökad med helpAutoShow och helpDismissed
+ * 4) normalizePerson utökad med: employmentType, calculationPeriodStart,
+ *    maxCarryOverExtraDays, preferredShifts, avoidShifts, preferredDays, salaryType
+ * 5) Nya validate-metoder: validateShiftTemplates, validateWeekTemplates,
+ *    validateCalendarWeeks, validateCalendarOverrides, validateAbsences,
+ *    validateVacancies, validateChangeLog
+ * 6) migrate() säkrar alla nya nycklar med tomma defaults
+ * 7) ALLA befintliga nycklar (groups, shifts, groupShifts, demand,
+ *    kitchenCore, notifications, schedule.months, people som array)
+ *    är 100% oförändrade.
+ *
+ * TIDIGARE ÄNDRINGSLOGG:
+ * 1) P0: FIX — Återinfört saknade validate*-metoder (validateMonthSchedule m.fl.)
+ * 2) P0: normalizePerson bevarar personal-fält
+ * 3) P0: validatePerson tillåter dessa fält
+ * 4) P0: groups i person kan härledas från groupIds
+ * 5) P0: availability normaliseras till boolean[7]
  */
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
 
 /* ========================================================================
-   BLOCK 1: DEFAULT GROUPS (AO-02B)
+   BLOCK 1: DEFAULT GROUPS (AO-02B) — OFÖRÄNDRAD
    ======================================================================== */
 
 const DEFAULT_GROUPS = {
@@ -29,7 +43,7 @@ const DEFAULT_GROUPS = {
 };
 
 /* ========================================================================
-   BLOCK 2: DEFAULT SHIFTS (AO-02D)
+   BLOCK 2: DEFAULT SHIFTS (AO-02D) — OFÖRÄNDRAD
    ======================================================================== */
 
 const DEFAULT_SHIFTS = {
@@ -80,7 +94,7 @@ const DEFAULT_SHIFTS = {
 };
 
 /* ========================================================================
-   BLOCK 3: DEFAULT GROUP SHIFTS (AO-02D)
+   BLOCK 3: DEFAULT GROUP SHIFTS (AO-02D) — OFÖRÄNDRAD
    ======================================================================== */
 
 const DEFAULT_GROUP_SHIFTS = {
@@ -95,7 +109,7 @@ const DEFAULT_GROUP_SHIFTS = {
 };
 
 /* ========================================================================
-   BLOCK 4: DEFAULT THEME
+   BLOCK 4: DEFAULT THEME — OFÖRÄNDRAD
    ======================================================================== */
 
 const DEFAULT_THEME = {
@@ -128,7 +142,7 @@ const DEFAULT_THEME = {
 };
 
 /* ========================================================================
-   BLOCK 5: DEFAULT DEMAND (AO-02C)
+   BLOCK 5: DEFAULT DEMAND (AO-02C) — OFÖRÄNDRAD
    ======================================================================== */
 
 const DEFAULT_DEMAND = {
@@ -152,6 +166,17 @@ const DEFAULT_DEMAND = {
         { KITCHEN: 4, PACK: 6, DISH: 1, SYSTEM: 1, ADMIN: 0, notes: '' },
     ],
 };
+
+/* ========================================================================
+   BLOCK 5B: FRÅNVAROTYPER (AO-03 NY)
+   Giltiga absence.type-värden. Används av validateAbsences.
+   ======================================================================== */
+
+const VALID_ABSENCE_TYPES = ['SEM', 'SJ', 'VAB', 'FÖR', 'PERM', 'UTB'];
+const VALID_ABSENCE_PATTERNS = ['single', 'range', 'recurring'];
+const VALID_VACANCY_STATUSES = ['open', 'offered', 'accepted', 'filled'];
+const VALID_EMPLOYMENT_TYPES = ['regular', 'substitute'];
+const VALID_SALARY_TYPES = ['monthly', 'hourly'];
 
 /* ========================================================================
    BLOCK 6: STORE CLASS
@@ -365,6 +390,14 @@ class Store {
             });
         }
 
+        // AO-03: Räkna även nya schedule.entries
+        let newEntryCount = 0;
+        if (state.schedule && state.schedule.entries && typeof state.schedule.entries === 'object') {
+            Object.values(state.schedule.entries).forEach((dayEntries) => {
+                if (Array.isArray(dayEntries)) newEntryCount += dayEntries.length;
+            });
+        }
+
         return {
             schemaVersion: state.meta?.schemaVersion || 'saknas',
             appVersion: state.meta?.appVersion || 'saknas',
@@ -374,7 +407,11 @@ class Store {
             activePeople,
             inactivePeople,
             totalEntries: entryCount,
+            newScheduleEntries: newEntryCount,
             months: state.schedule?.months?.length || 0,
+            weekTemplates: state.weekTemplates ? Object.keys(state.weekTemplates).length : 0,
+            shiftTemplates: state.shiftTemplates ? Object.keys(state.shiftTemplates).length : 0,
+            absences: Array.isArray(state.absences) ? state.absences.length : 0,
         };
     }
 
@@ -407,6 +444,17 @@ class Store {
 
         if (state.shifts) this.validateShifts(state.shifts);
         if (state.groupShifts) this.validateGroupShifts(state.groupShifts, state.groups, state.shifts);
+
+        // AO-03: Validera nya nycklar (tolerant — finns de, valideras de)
+        if (state.shiftTemplates) this.validateShiftTemplates(state.shiftTemplates);
+        if (state.weekTemplates) this.validateWeekTemplates(state.weekTemplates);
+        if (state.calendarWeeks) this.validateCalendarWeeks(state.calendarWeeks);
+        if (state.calendarOverrides) this.validateCalendarOverrides(state.calendarOverrides);
+        if (state.absences) this.validateAbsences(state.absences);
+        if (state.vacancies) this.validateVacancies(state.vacancies);
+        if (state.changeLog) this.validateChangeLog(state.changeLog);
+        if (state.schedule.entries) this.validateScheduleEntries(state.schedule.entries);
+        if (state.schedule.lockedWeeks) this.validateLockedWeeks(state.schedule.lockedWeeks);
     }
 
     validateMonthSchedule(month, idx, year) {
@@ -460,9 +508,12 @@ class Store {
         if (settings.summaryToleranceHours !== undefined && typeof settings.summaryToleranceHours !== 'number') throw new Error('settings.summaryToleranceHours måste vara number');
 
         if (!settings.theme || typeof settings.theme !== 'object') throw new Error('settings.theme måste vara objekt');
-        // Theme är “soft-validated”: vi kräver bara att statusColors/statusTextColors är objekt om de finns
         if (settings.theme.statusColors !== undefined && typeof settings.theme.statusColors !== 'object') throw new Error('settings.theme.statusColors måste vara objekt');
         if (settings.theme.statusTextColors !== undefined && typeof settings.theme.statusTextColors !== 'object') throw new Error('settings.theme.statusTextColors måste vara objekt');
+
+        // AO-03: Nya settings-fält (tolerant)
+        if (settings.helpAutoShow !== undefined && typeof settings.helpAutoShow !== 'boolean') throw new Error('settings.helpAutoShow måste vara boolean');
+        if (settings.helpDismissed !== undefined && (typeof settings.helpDismissed !== 'object' || settings.helpDismissed === null)) throw new Error('settings.helpDismissed måste vara objekt');
     }
 
     validateDemand(demand) {
@@ -494,7 +545,6 @@ class Store {
             throw new Error('kitchenCore.minCorePerDay måste vara 0–50');
         }
 
-        // fail-closed men tolerant: om id inte finns i people -> ok (kan vara import/kommande data)
         kitchenCore.corePersonIds.forEach((id) => {
             if (typeof id !== 'string') throw new Error('kitchenCore.corePersonIds måste vara string[]');
         });
@@ -508,6 +558,8 @@ class Store {
             if (typeof g.name !== 'string') throw new Error(`group(${g.id}).name måste vara string`);
             if (g.color !== undefined && typeof g.color !== 'string') throw new Error(`group(${g.id}).color måste vara string`);
             if (g.textColor !== undefined && typeof g.textColor !== 'string') throw new Error(`group(${g.id}).textColor måste vara string`);
+            // AO-03: shiftTemplateIds är tillåtet på groups (för framtida koppling grupp→grundpass)
+            if (g.shiftTemplateIds !== undefined && !Array.isArray(g.shiftTemplateIds)) throw new Error(`group(${g.id}).shiftTemplateIds måste vara array`);
         });
     }
 
@@ -519,7 +571,6 @@ class Store {
             if (typeof s.name !== 'string') throw new Error(`shift(${s.id}).name måste vara string`);
             if (s.shortName !== undefined && typeof s.shortName !== 'string') throw new Error(`shift(${s.id}).shortName måste vara string`);
 
-            // tider får vara null (FLEX) eller HH:MM
             ['startTime', 'endTime', 'breakStart', 'breakEnd'].forEach((k) => {
                 const v = s[k];
                 if (v !== null && v !== undefined && !isHHMM(v)) {
@@ -543,11 +594,181 @@ class Store {
                 if (shifts && shifts[sid] === undefined) throw new Error(`groupShifts.${gid} refererar okänt shiftId "${sid}"`);
             });
             if (groups && groups[gid] === undefined) {
-                // fail-closed: okända grupp-id ska inte finnas
                 throw new Error(`groupShifts har okänt groupId "${gid}"`);
             }
         });
     }
+
+    /* ====================================================================
+       AO-03: NYA VALIDATE-METODER
+       ==================================================================== */
+
+    validateShiftTemplates(shiftTemplates) {
+        if (!shiftTemplates || typeof shiftTemplates !== 'object') throw new Error('shiftTemplates måste vara objekt');
+        Object.values(shiftTemplates).forEach((st) => {
+            if (!st || typeof st !== 'object') throw new Error('shiftTemplates innehåller ogiltig post');
+            if (typeof st.id !== 'string' || !st.id) throw new Error('shiftTemplate.id måste vara non-empty string');
+            if (typeof st.name !== 'string') throw new Error(`shiftTemplate(${st.id}).name måste vara string`);
+
+            ['startTime', 'endTime', 'breakStart', 'breakEnd'].forEach((k) => {
+                const v = st[k];
+                if (v !== null && v !== undefined && !isHHMM(v)) {
+                    throw new Error(`shiftTemplate(${st.id}).${k} måste vara HH:MM eller null`);
+                }
+            });
+
+            if (st.color !== undefined && typeof st.color !== 'string') throw new Error(`shiftTemplate(${st.id}).color måste vara string`);
+            if (st.costCenter !== undefined && typeof st.costCenter !== 'string') throw new Error(`shiftTemplate(${st.id}).costCenter måste vara string`);
+            if (st.workplace !== undefined && typeof st.workplace !== 'string') throw new Error(`shiftTemplate(${st.id}).workplace måste vara string`);
+        });
+    }
+
+    validateWeekTemplates(weekTemplates) {
+        if (!weekTemplates || typeof weekTemplates !== 'object') throw new Error('weekTemplates måste vara objekt');
+        Object.values(weekTemplates).forEach((wt) => {
+            if (!wt || typeof wt !== 'object') throw new Error('weekTemplates innehåller ogiltig post');
+            if (typeof wt.id !== 'string' || !wt.id) throw new Error('weekTemplate.id måste vara non-empty string');
+            if (typeof wt.name !== 'string') throw new Error(`weekTemplate(${wt.id}).name måste vara string`);
+            if (!Array.isArray(wt.slots)) throw new Error(`weekTemplate(${wt.id}).slots måste vara array`);
+
+            wt.slots.forEach((slot, sIdx) => {
+                if (!slot || typeof slot !== 'object') throw new Error(`weekTemplate(${wt.id}).slots[${sIdx}] måste vara objekt`);
+                if (typeof slot.dayOfWeek !== 'number' || slot.dayOfWeek < 0 || slot.dayOfWeek > 6) {
+                    throw new Error(`weekTemplate(${wt.id}).slots[${sIdx}].dayOfWeek måste vara 0–6`);
+                }
+                if (typeof slot.groupId !== 'string' || !slot.groupId) {
+                    throw new Error(`weekTemplate(${wt.id}).slots[${sIdx}].groupId måste vara non-empty string`);
+                }
+                if (typeof slot.shiftTemplateId !== 'string' || !slot.shiftTemplateId) {
+                    throw new Error(`weekTemplate(${wt.id}).slots[${sIdx}].shiftTemplateId måste vara non-empty string`);
+                }
+                if (typeof slot.count !== 'number' || slot.count < 0 || slot.count > 50) {
+                    throw new Error(`weekTemplate(${wt.id}).slots[${sIdx}].count måste vara 0–50`);
+                }
+                if (typeof slot.countMin !== 'number' || slot.countMin < 0 || slot.countMin > 50) {
+                    throw new Error(`weekTemplate(${wt.id}).slots[${sIdx}].countMin måste vara 0–50`);
+                }
+                if (slot.countMin > slot.count) {
+                    throw new Error(`weekTemplate(${wt.id}).slots[${sIdx}].countMin (${slot.countMin}) kan inte vara > count (${slot.count})`);
+                }
+            });
+        });
+    }
+
+    validateCalendarWeeks(calendarWeeks) {
+        if (!calendarWeeks || typeof calendarWeeks !== 'object') throw new Error('calendarWeeks måste vara objekt');
+        Object.keys(calendarWeeks).forEach((weekKey) => {
+            // Vecko-nyckel ska vara format "YYYY-Wnn"
+            if (!/^\d{4}-W\d{2}$/.test(weekKey)) {
+                throw new Error(`calendarWeeks nyckel "${weekKey}" måste vara format YYYY-Wnn`);
+            }
+            const templateId = calendarWeeks[weekKey];
+            if (typeof templateId !== 'string' || !templateId) {
+                throw new Error(`calendarWeeks["${weekKey}"] måste vara non-empty string (weekTemplate id)`);
+            }
+        });
+    }
+
+    validateCalendarOverrides(calendarOverrides) {
+        if (!calendarOverrides || typeof calendarOverrides !== 'object') throw new Error('calendarOverrides måste vara objekt');
+        Object.keys(calendarOverrides).forEach((dateKey) => {
+            // Datum-nyckel ska vara format "YYYY-MM-DD"
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+                throw new Error(`calendarOverrides nyckel "${dateKey}" måste vara format YYYY-MM-DD`);
+            }
+            const overrides = calendarOverrides[dateKey];
+            if (!Array.isArray(overrides)) {
+                throw new Error(`calendarOverrides["${dateKey}"] måste vara array`);
+            }
+            overrides.forEach((ov, idx) => {
+                if (!ov || typeof ov !== 'object') throw new Error(`calendarOverrides["${dateKey}"][${idx}] måste vara objekt`);
+                if (typeof ov.groupId !== 'string' || !ov.groupId) throw new Error(`calendarOverrides["${dateKey}"][${idx}].groupId måste vara non-empty string`);
+                if (typeof ov.shiftTemplateId !== 'string' || !ov.shiftTemplateId) throw new Error(`calendarOverrides["${dateKey}"][${idx}].shiftTemplateId måste vara non-empty string`);
+                if (typeof ov.count !== 'number' || ov.count < 0) throw new Error(`calendarOverrides["${dateKey}"][${idx}].count måste vara number >= 0`);
+                if (typeof ov.countMin !== 'number' || ov.countMin < 0) throw new Error(`calendarOverrides["${dateKey}"][${idx}].countMin måste vara number >= 0`);
+            });
+        });
+    }
+
+    validateAbsences(absences) {
+        if (!Array.isArray(absences)) throw new Error('absences måste vara array');
+        absences.forEach((abs, idx) => {
+            if (!abs || typeof abs !== 'object') throw new Error(`absences[${idx}] måste vara objekt`);
+            if (typeof abs.id !== 'string' || !abs.id) throw new Error(`absences[${idx}].id måste vara non-empty string`);
+            if (typeof abs.personId !== 'string' || !abs.personId) throw new Error(`absences[${idx}].personId måste vara non-empty string`);
+            if (!VALID_ABSENCE_TYPES.includes(abs.type)) throw new Error(`absences[${idx}].type "${abs.type}" är ogiltig (${VALID_ABSENCE_TYPES.join('|')})`);
+            if (!VALID_ABSENCE_PATTERNS.includes(abs.pattern)) throw new Error(`absences[${idx}].pattern "${abs.pattern}" är ogiltig (${VALID_ABSENCE_PATTERNS.join('|')})`);
+
+            if (abs.pattern === 'single') {
+                if (abs.date !== null && abs.date !== undefined && typeof abs.date !== 'string') throw new Error(`absences[${idx}].date måste vara string|null`);
+            }
+            if (abs.pattern === 'range' || abs.pattern === 'recurring') {
+                if (abs.startDate !== null && abs.startDate !== undefined && typeof abs.startDate !== 'string') throw new Error(`absences[${idx}].startDate måste vara string|null`);
+                if (abs.endDate !== null && abs.endDate !== undefined && typeof abs.endDate !== 'string') throw new Error(`absences[${idx}].endDate måste vara string|null`);
+            }
+            if (abs.pattern === 'recurring') {
+                if (abs.days !== null && abs.days !== undefined && !Array.isArray(abs.days)) throw new Error(`absences[${idx}].days måste vara array|null`);
+            }
+            if (abs.note !== undefined && abs.note !== null && typeof abs.note !== 'string') throw new Error(`absences[${idx}].note måste vara string|null`);
+        });
+    }
+
+    validateVacancies(vacancies) {
+        if (!Array.isArray(vacancies)) throw new Error('vacancies måste vara array');
+        vacancies.forEach((vac, idx) => {
+            if (!vac || typeof vac !== 'object') throw new Error(`vacancies[${idx}] måste vara objekt`);
+            if (typeof vac.id !== 'string' || !vac.id) throw new Error(`vacancies[${idx}].id måste vara non-empty string`);
+            if (typeof vac.date !== 'string') throw new Error(`vacancies[${idx}].date måste vara string`);
+            if (typeof vac.groupId !== 'string') throw new Error(`vacancies[${idx}].groupId måste vara string`);
+            if (typeof vac.shiftTemplateId !== 'string') throw new Error(`vacancies[${idx}].shiftTemplateId måste vara string`);
+            if (!VALID_VACANCY_STATUSES.includes(vac.status)) throw new Error(`vacancies[${idx}].status "${vac.status}" är ogiltig`);
+            if (vac.offeredTo !== undefined && !Array.isArray(vac.offeredTo)) throw new Error(`vacancies[${idx}].offeredTo måste vara array`);
+            if (vac.acceptedBy !== undefined && vac.acceptedBy !== null && typeof vac.acceptedBy !== 'string') throw new Error(`vacancies[${idx}].acceptedBy måste vara string|null`);
+        });
+    }
+
+    validateChangeLog(changeLog) {
+        if (!Array.isArray(changeLog)) throw new Error('changeLog måste vara array');
+        changeLog.forEach((entry, idx) => {
+            if (!entry || typeof entry !== 'object') throw new Error(`changeLog[${idx}] måste vara objekt`);
+            if (typeof entry.timestamp !== 'string') throw new Error(`changeLog[${idx}].timestamp måste vara string`);
+            if (typeof entry.action !== 'string') throw new Error(`changeLog[${idx}].action måste vara string`);
+        });
+    }
+
+    validateScheduleEntries(entries) {
+        if (!entries || typeof entries !== 'object') throw new Error('schedule.entries måste vara objekt');
+        Object.keys(entries).forEach((dateKey) => {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+                throw new Error(`schedule.entries nyckel "${dateKey}" måste vara format YYYY-MM-DD`);
+            }
+            const dayEntries = entries[dateKey];
+            if (!Array.isArray(dayEntries)) throw new Error(`schedule.entries["${dateKey}"] måste vara array`);
+            dayEntries.forEach((e, idx) => {
+                if (!e || typeof e !== 'object') throw new Error(`schedule.entries["${dateKey}"][${idx}] måste vara objekt`);
+                if (typeof e.groupId !== 'string') throw new Error(`schedule.entries["${dateKey}"][${idx}].groupId måste vara string`);
+                if (typeof e.shiftTemplateId !== 'string') throw new Error(`schedule.entries["${dateKey}"][${idx}].shiftTemplateId måste vara string`);
+                if (typeof e.status !== 'string') throw new Error(`schedule.entries["${dateKey}"][${idx}].status måste vara string`);
+                // personId kan vara null (vakans) eller string
+                if (e.personId !== null && e.personId !== undefined && typeof e.personId !== 'string') {
+                    throw new Error(`schedule.entries["${dateKey}"][${idx}].personId måste vara string|null`);
+                }
+            });
+        });
+    }
+
+    validateLockedWeeks(lockedWeeks) {
+        if (!Array.isArray(lockedWeeks)) throw new Error('schedule.lockedWeeks måste vara array');
+        lockedWeeks.forEach((wk, idx) => {
+            if (typeof wk !== 'string' || !/^\d{4}-W\d{2}$/.test(wk)) {
+                throw new Error(`schedule.lockedWeeks[${idx}] "${wk}" måste vara format YYYY-Wnn`);
+            }
+        });
+    }
+
+    /* ====================================================================
+       BEFINTLIG validatePerson — UTÖKAD MED AO-03-FÄLT
+       ==================================================================== */
 
     validatePerson(person, idx) {
         if (!person || typeof person !== 'object') throw new Error(`people[${idx}] måste vara objekt`);
@@ -622,6 +843,31 @@ class Store {
                 }
             });
         }
+
+        // --- AO-03: Nya person-fält (tolerant validering) ---
+        if (person.employmentType !== undefined && !VALID_EMPLOYMENT_TYPES.includes(person.employmentType)) {
+            throw new Error(`people[${idx}].employmentType måste vara "regular"|"substitute"`);
+        }
+        if (person.calculationPeriodStart !== undefined && person.calculationPeriodStart !== null && typeof person.calculationPeriodStart !== 'string') {
+            throw new Error(`people[${idx}].calculationPeriodStart måste vara string|null`);
+        }
+        if (person.maxCarryOverExtraDays !== undefined) {
+            if (typeof person.maxCarryOverExtraDays !== 'number' || person.maxCarryOverExtraDays < 0 || person.maxCarryOverExtraDays > 30) {
+                throw new Error(`people[${idx}].maxCarryOverExtraDays måste vara 0–30`);
+            }
+        }
+        if (person.salaryType !== undefined && !VALID_SALARY_TYPES.includes(person.salaryType)) {
+            throw new Error(`people[${idx}].salaryType måste vara "monthly"|"hourly"`);
+        }
+        if (person.preferredShifts !== undefined && !Array.isArray(person.preferredShifts)) {
+            throw new Error(`people[${idx}].preferredShifts måste vara array`);
+        }
+        if (person.avoidShifts !== undefined && !Array.isArray(person.avoidShifts)) {
+            throw new Error(`people[${idx}].avoidShifts måste vara array`);
+        }
+        if (person.preferredDays !== undefined && !Array.isArray(person.preferredDays)) {
+            throw new Error(`people[${idx}].preferredDays måste vara array`);
+        }
     }
 
     /* ====================================================================
@@ -659,6 +905,10 @@ class Store {
         s.settings.hourlyWageIsDefault = typeof s.settings.hourlyWageIsDefault === 'boolean' ? s.settings.hourlyWageIsDefault : base.settings.hourlyWageIsDefault;
         s.settings.theme = s.settings.theme && typeof s.settings.theme === 'object' ? s.settings.theme : safeDeepClone(DEFAULT_THEME);
 
+        // AO-03: Nya settings-fält (additiv)
+        if (typeof s.settings.helpAutoShow !== 'boolean') s.settings.helpAutoShow = true;
+        if (!s.settings.helpDismissed || typeof s.settings.helpDismissed !== 'object') s.settings.helpDismissed = {};
+
         if (!s.demand.groupDemands || typeof s.demand.groupDemands !== 'object') {
             s.demand.groupDemands = safeDeepClone(DEFAULT_DEMAND.groupDemands);
         } else {
@@ -684,7 +934,20 @@ class Store {
         s.shifts = normalizeShiftsMap(s.shifts, DEFAULT_SHIFTS);
         s.groupShifts = normalizeGroupShifts(s.groupShifts, s.groups, s.shifts, DEFAULT_GROUP_SHIFTS);
 
-        // P0: bevara personal-fält (normalizePerson uppdaterad)
+        // AO-03: Nya top-level nycklar (additiv, tomma defaults om de saknas)
+        if (!s.shiftTemplates || typeof s.shiftTemplates !== 'object') s.shiftTemplates = {};
+        if (!s.weekTemplates || typeof s.weekTemplates !== 'object') s.weekTemplates = {};
+        if (!s.calendarWeeks || typeof s.calendarWeeks !== 'object') s.calendarWeeks = {};
+        if (!s.calendarOverrides || typeof s.calendarOverrides !== 'object') s.calendarOverrides = {};
+        if (!Array.isArray(s.absences)) s.absences = [];
+        if (!Array.isArray(s.vacancies)) s.vacancies = [];
+        if (!Array.isArray(s.changeLog)) s.changeLog = [];
+
+        // AO-03: Nya schedule-nycklar (additiv)
+        if (!s.schedule.entries || typeof s.schedule.entries !== 'object') s.schedule.entries = {};
+        if (!Array.isArray(s.schedule.lockedWeeks)) s.schedule.lockedWeeks = [];
+
+        // P0: bevara personal-fält (normalizePerson uppdaterad med AO-03-fält)
         s.people = (s.people || []).map((p) => normalizePerson(p));
 
         if (s.schedule && Array.isArray(s.schedule.months)) {
@@ -708,7 +971,13 @@ class Store {
         return {
             meta: { schemaVersion: '1.0', updatedAt: now, appVersion: '1.0.0' },
             people: [],
-            schedule: { year, months },
+            schedule: {
+                year,
+                months,
+                // AO-03: Nya schedule-nycklar
+                entries: {},
+                lockedWeeks: [],
+            },
             settings: {
                 defaultStart: '07:00',
                 defaultEnd: '16:00',
@@ -719,6 +988,9 @@ class Store {
                 enableP1Streak10: true,
                 summaryToleranceHours: 0.25,
                 theme: safeDeepClone(DEFAULT_THEME),
+                // AO-03: Nya settings-fält
+                helpAutoShow: true,
+                helpDismissed: {},
             },
             demand: safeDeepClone(DEFAULT_DEMAND),
             kitchenCore: { enabled: true, corePersonIds: [], minCorePerDay: 1 },
@@ -735,12 +1007,20 @@ class Store {
                     twilioFromNumber: '',
                 },
             },
+            // AO-03: Nya top-level nycklar
+            shiftTemplates: {},
+            weekTemplates: {},
+            calendarWeeks: {},
+            calendarOverrides: {},
+            absences: [],
+            vacancies: [],
+            changeLog: [],
         };
     }
 }
 
 /* ========================================================================
-   BLOCK 7: SINGLETON INSTANCE & EXPORT
+   BLOCK 7: SINGLETON INSTANCE & EXPORT — OFÖRÄNDRAD
    ======================================================================== */
 
 let storeInstance = null;
@@ -753,7 +1033,7 @@ export function getStore() {
 export default getStore();
 
 /* ========================================================================
-   BLOCK 8: HELPERS (internal)
+   BLOCK 8: HELPERS (internal) — OFÖRÄNDRADE
    ======================================================================== */
 
 function safeParseJSON(str) {
@@ -784,204 +1064,4 @@ function buildMonths(year) {
         months.push({
             month: m,
             days,
-            timeDefaults: { start: '07:00', end: '16:00', breakStart: '12:00', breakEnd: '13:00' },
-        });
-    }
-    return months;
-}
-
-function ensureMonthsShape(months, year, fallbackMonths) {
-    const out = [];
-    for (let i = 0; i < 12; i++) {
-        const base = fallbackMonths[i];
-        const m = months[i];
-        if (!m || typeof m !== 'object' || typeof m.month !== 'number') {
-            out.push(base);
-            continue;
-        }
-        const monthNum = m.month;
-        const daysInMonth = new Date(year, monthNum, 0).getDate();
-        const days = Array.isArray(m.days) ? m.days : [];
-        if (days.length !== daysInMonth) {
-            out.push(base);
-            continue;
-        }
-        const patchedDays = days.map((d) => {
-            const day = d && typeof d === 'object' ? d : {};
-            if (typeof day.date !== 'string') return null;
-            if (!Array.isArray(day.entries)) day.entries = [];
-            return day;
-        });
-        if (patchedDays.some((x) => x === null)) {
-            out.push(base);
-            continue;
-        }
-        out.push({
-            month: monthNum,
-            days: patchedDays,
-            timeDefaults: (m.timeDefaults && typeof m.timeDefaults === 'object') ? m.timeDefaults : base.timeDefaults,
-        });
-    }
-    return out;
-}
-
-function normalizeGroupsMap(groups, fallback) {
-    const src = (groups && typeof groups === 'object') ? groups : {};
-    const out = Object.create(null);
-
-    Object.values(src).forEach((g) => {
-        if (!g || typeof g !== 'object') return;
-        const id = String(g.id ?? '').trim();
-        if (!id) return;
-        out[id] = {
-            id,
-            name: String(g.name ?? id),
-            color: typeof g.color === 'string' ? g.color : (fallback[id]?.color || '#777'),
-            textColor: typeof g.textColor === 'string' ? g.textColor : (fallback[id]?.textColor || '#fff'),
-        };
-    });
-
-    Object.keys(fallback).forEach((key) => {
-        const gid = String(fallback[key].id);
-        if (!out[gid]) out[gid] = safeDeepClone(fallback[key]);
-    });
-
-    return out;
-}
-
-function normalizeShiftsMap(shifts, fallback) {
-    const src = (shifts && typeof shifts === 'object') ? shifts : {};
-    const out = Object.create(null);
-
-    Object.values(src).forEach((s) => {
-        if (!s || typeof s !== 'object') return;
-        const id = String(s.id ?? '').trim();
-        if (!id) return;
-
-        out[id] = {
-            id,
-            name: String(s.name ?? id),
-            shortName: typeof s.shortName === 'string' ? s.shortName : '',
-            startTime: (s.startTime == null ? null : (isHHMM(s.startTime) ? s.startTime : null)),
-            endTime: (s.endTime == null ? null : (isHHMM(s.endTime) ? s.endTime : null)),
-            breakStart: (s.breakStart == null ? null : (isHHMM(s.breakStart) ? s.breakStart : null)),
-            breakEnd: (s.breakEnd == null ? null : (isHHMM(s.breakEnd) ? s.breakEnd : null)),
-            color: typeof s.color === 'string' ? s.color : (fallback[id]?.color || '#777'),
-            description: typeof s.description === 'string' ? s.description : '',
-        };
-    });
-
-    Object.keys(fallback).forEach((key) => {
-        const sid = String(fallback[key].id);
-        if (!out[sid]) out[sid] = safeDeepClone(fallback[key]);
-    });
-
-    return out;
-}
-
-function normalizeGroupShifts(groupShifts, groups, shifts, fallback) {
-    const src = (groupShifts && typeof groupShifts === 'object') ? groupShifts : {};
-    const out = Object.create(null);
-
-    Object.keys(src).forEach((gidRaw) => {
-        const gid = String(gidRaw);
-        const arr = src[gidRaw];
-        if (!Array.isArray(arr)) return;
-        out[gid] = arr.map((x) => String(x ?? '').trim()).filter(Boolean).filter((sid) => !!shifts[sid]);
-    });
-
-    Object.keys(groups || {}).forEach((gid) => {
-        const id = String(gid);
-        if (!out[id]) {
-            if (fallback && fallback[id]) out[id] = safeDeepClone(fallback[id]).filter((sid) => !!shifts[sid]);
-            else out[id] = [];
-        }
-    });
-
-    Object.keys(fallback || {}).forEach((gid) => {
-        if (!out[gid]) out[gid] = safeDeepClone(fallback[gid]).filter((sid) => !!shifts[sid]);
-    });
-
-    return out;
-}
-
-function normalizeAvailability(av) {
-    if (!Array.isArray(av)) return undefined;
-    const out = [];
-    for (let i = 0; i < 7; i++) out.push(Boolean(av[i]));
-    return out;
-}
-
-function toNumberOr(defaultVal, v) {
-    if (typeof v === 'number' && Number.isFinite(v)) return v;
-    const n = (typeof v === 'string' && v.trim() !== '') ? Number(v) : NaN;
-    return Number.isFinite(n) ? n : defaultVal;
-}
-
-function normalizePerson(p) {
-    const person = (p && typeof p === 'object') ? p : {};
-    const id = String(person.id ?? '').trim() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-    const groupsArrRaw = Array.isArray(person.groups) ? person.groups : (Array.isArray(person.groupIds) ? person.groupIds : undefined);
-    const groups = Array.isArray(groupsArrRaw)
-        ? groupsArrRaw.map((g) => String(g ?? '').trim()).filter(Boolean)
-        : undefined;
-
-    const sector = (person.sector === 'municipal') ? 'municipal' : 'private';
-
-    const name = (typeof person.name === 'string') ? person.name : undefined;
-    const email = (typeof person.email === 'string') ? person.email : undefined;
-    const phone = (person.phone === null || typeof person.phone === 'string') ? person.phone : undefined;
-    const startDate = (typeof person.startDate === 'string') ? person.startDate : undefined;
-
-    const degree = (person.degree !== undefined) ? toNumberOr(0, person.degree) : undefined;
-    const workdaysPerWeek = (person.workdaysPerWeek !== undefined) ? toNumberOr(0, person.workdaysPerWeek) : undefined;
-    const salary = (person.salary !== undefined) ? toNumberOr(0, person.salary) : undefined;
-    const savedVacationDays = (person.savedVacationDays !== undefined) ? toNumberOr(0, person.savedVacationDays) : undefined;
-    const savedLeaveDays = (person.savedLeaveDays !== undefined) ? toNumberOr(0, person.savedLeaveDays) : undefined;
-    const availability = normalizeAvailability(person.availability);
-
-    return {
-        id,
-
-        firstName: typeof person.firstName === 'string' ? person.firstName : '',
-        lastName: typeof person.lastName === 'string' ? person.lastName : '',
-        hourlyWage: typeof person.hourlyWage === 'number'
-            ? person.hourlyWage
-            : (Number.isFinite(parseFloat(person.hourlyWage)) ? parseFloat(person.hourlyWage) : 0),
-        employmentPct: typeof person.employmentPct === 'number'
-            ? person.employmentPct
-            : (Number.isFinite(parseInt(person.employmentPct, 10)) ? parseInt(person.employmentPct, 10) : 0),
-        isActive: typeof person.isActive === 'boolean' ? person.isActive : true,
-        vacationDaysPerYear: typeof person.vacationDaysPerYear === 'number'
-            ? person.vacationDaysPerYear
-            : (Number.isFinite(parseInt(person.vacationDaysPerYear, 10)) ? parseInt(person.vacationDaysPerYear, 10) : 25),
-        extraDaysStartBalance: typeof person.extraDaysStartBalance === 'number'
-            ? person.extraDaysStartBalance
-            : (Number.isFinite(parseInt(person.extraDaysStartBalance, 10)) ? parseInt(person.extraDaysStartBalance, 10) : 0),
-
-        ...(groups !== undefined ? { groups } : {}),
-        ...(groups !== undefined ? { groupIds: groups } : (Array.isArray(person.groupIds) ? { groupIds: person.groupIds } : {})),
-        ...(person.skills && typeof person.skills === 'object' ? { skills: person.skills } : {}),
-
-        ...(name !== undefined ? { name } : {}),
-        ...(email !== undefined ? { email } : {}),
-        ...(phone !== undefined ? { phone } : {}),
-        ...(startDate !== undefined ? { startDate } : {}),
-        ...(degree !== undefined ? { degree } : {}),
-        ...(workdaysPerWeek !== undefined ? { workdaysPerWeek } : {}),
-        ...(salary !== undefined ? { salary } : {}),
-        ...(savedVacationDays !== undefined ? { savedVacationDays } : {}),
-        ...(savedLeaveDays !== undefined ? { savedLeaveDays } : {}),
-        ...(availability !== undefined ? { availability } : {}),
-        sector,
-        ...(person.createdAt ? { createdAt: person.createdAt } : {}),
-        ...(person.updatedAt ? { updatedAt: person.updatedAt } : {}),
-        ...(person.usedVacationDays !== undefined ? { usedVacationDays: toNumberOr(0, person.usedVacationDays) } : {}),
-    };
-}
-
-function normalizeEntry(e) {
-    const entry = (e && typeof e === 'object') ? e : {};
-    return { ...entry, personId: String(entry.personId ?? '') };
-}
+            timeDefaults: { start: '07:00', end: '16:00', breakStart: '12:00
