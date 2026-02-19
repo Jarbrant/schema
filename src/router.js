@@ -1,8 +1,9 @@
 /* ============================================================
- * FIL: src/router.js  (HEL FIL) — AUTOPATCH v4 + AO-05 + AO-06
+ * FIL: src/router.js  (HEL FIL) — AUTOPATCH v5 + AO-07
  * NAMN: ROUTER — Route Management & Navigation
  *
- * AO-06: Ny route 'week-templates' → renderWeekTemplates
+ * AO-06: Route 'week-templates' → renderWeekTemplates
+ * AO-07: Route 'calendar' �� renderCalendar (från views/calendar.js)
  * ============================================================ */
 
 /* ============================================================
@@ -13,6 +14,7 @@ import { renderPersonal } from './views/personal.js';
 import { renderGroups } from './views/groups.js';
 import { renderShifts } from './views/shifts.js';
 import { renderWeekTemplates } from './views/week-templates.js';    // AO-06
+import { renderCalendar } from './views/calendar.js';               // AO-07
 import { renderLogin } from './views/login-pin.js';
 import { renderError, renderNavbar } from './ui.js';
 import { reportError } from './diagnostics.js';
@@ -58,50 +60,11 @@ function renderPlaceholder(title, note) {
 }
 
 /* ============================================================
- * BLOCK 4 — CALENDAR view (din baseline) — XSS-safe
- * ============================================================ */
-export function renderCalendar(container, ctx) {
-    safeClear(container);
-
-    const store = ctx?.store;
-    const wrap = el('div', 'view-container');
-
-    if (!store) {
-        const h2 = el('h2');
-        addText(h2, 'Fel');
-        const p = el('p');
-        addText(p, 'Store saknas.');
-        wrap.appendChild(h2);
-        wrap.appendChild(p);
-        container.appendChild(wrap);
-        return;
-    }
-
-    const state = store.getState?.();
-    const h2 = el('h2');
-    addText(h2, 'Kalender 2026');
-    wrap.appendChild(h2);
-
-    if (!state?.schedule || state.schedule.year !== 2026) {
-        const pErr = el('p', 'error-text');
-        addText(pErr, 'Schedule är korrupt eller fel år. Kan inte visa kalender.');
-        wrap.appendChild(pErr);
-        container.appendChild(wrap);
-        return;
-    }
-
-    const p = el('p', 'empty-state');
-    p.appendChild(document.createTextNode('📅 Kalendervyn är under utveckling (AO-09+).'));
-    p.appendChild(document.createElement('br'));
-    p.appendChild(document.createTextNode('För nu: Använd "Personal" för att lägga till personal och "Kontroll" för att se statistik.'));
-    wrap.appendChild(p);
-
-    container.appendChild(wrap);
-}
-
-/* ============================================================
- * BLOCK 5 — Route-map (ENDA källan för vilka views som finns)
+ * BLOCK 4 — Route-map (ENDA källan för vilka views som finns)
  * OBS: Måste matcha href i navbar (ui.js) + home-snabbnav
+ *
+ * AO-07: calendar pekar nu på renderCalendar från views/calendar.js
+ *        (gammal inline-placeholder borttagen)
  * ============================================================ */
 const routes = {
     // Public
@@ -113,15 +76,15 @@ const routes = {
     groups: renderGroups,
     'week-templates': renderWeekTemplates,                                         // AO-06
     personal: renderPersonal,
-    calendar: renderCalendar,
+    calendar: renderCalendar,                                                      // AO-07
     control: renderPlaceholder('Kontroll', '✓ Kontrollvyn är under utveckling.'),
     summary: renderPlaceholder('Sammanställning', '📊 Sammanställningsvyn är under utveckling.'),
     rules: renderPlaceholder('Regler', '⚖️ Regelvyn är under utveckling.'),
-    export: renderPlaceholder('Export', '💾 Export/Import är under utveckling.')
+    export: renderPlaceholder('Export', '💾 Export/Import är under utveckling.'),
 };
 
 /* ============================================================
- * BLOCK 6 — Router state (DOM hooks + ctx)
+ * BLOCK 5 — Router state (DOM hooks + ctx)
  * ============================================================ */
 let container = null;
 let errorPanel = null;
@@ -134,7 +97,7 @@ function debugLog(message) {
 }
 
 /* ============================================================
- * BLOCK 7 — Auth (SINGLE SOURCE OF TRUTH)
+ * BLOCK 6 — Auth (SINGLE SOURCE OF TRUTH)
  * - Fail-closed: om oklart -> false
  * ============================================================ */
 function isLoggedIn() {
@@ -160,7 +123,7 @@ function getDefaultRoute() {
 }
 
 /* ============================================================
- * BLOCK 8 — Parse route (hash) — robust normalisering
+ * BLOCK 7 — Parse route (hash) — robust normalisering
  * - Fail-closed: okänd route -> default
  * ============================================================ */
 function normalizeRouteName(name) {
@@ -180,7 +143,7 @@ function parseRoute() {
 }
 
 /* ============================================================
- * BLOCK 9 — Navbar (topbar)
+ * BLOCK 8 — Navbar (topbar)
  * - Login ska vara "ren" sida utan navbar
  * ============================================================ */
 function setTopbarVisible(isVisible) {
@@ -225,7 +188,7 @@ function markActive(routeName) {
 }
 
 /* ============================================================
- * BLOCK 10 — Render route (kärnan)
+ * BLOCK 9 — Render route (kärnan)
  * ============================================================ */
 function renderRoute(routeName) {
     try {
@@ -273,7 +236,7 @@ function renderRoute(routeName) {
 }
 
 /* ============================================================
- * BLOCK 11 — Event: hashchange
+ * BLOCK 10 — Event: hashchange
  * ============================================================ */
 function onHashChange() {
     const route = parseRoute();
@@ -281,7 +244,7 @@ function onHashChange() {
 }
 
 /* ============================================================
- * BLOCK 12 — setupRouter (init)
+ * BLOCK 11 — setupRouter (init)
  * ============================================================ */
 export function setupRouter(store) {
     if (window.__ROUTER_INIT__) {
