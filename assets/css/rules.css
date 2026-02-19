@@ -1,1 +1,382 @@
+/* ============================================================
+ * AO-10 — Rules View CSS
+ * Arbetstidsregler: CRUD, regelkort, formulär
+ * ============================================================ */
 
+/* ── Container ── */
+.rules-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 1rem 1.5rem 2rem;
+}
+
+.rules-error {
+    padding: 2rem;
+    text-align: center;
+    color: #721c24;
+    background: #ffe8e8;
+    border-radius: 12px;
+    margin: 2rem;
+}
+
+/* ── TOP BAR ── */
+.rules-topbar {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    padding: 0.75rem 1.5rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.rules-topbar h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #333;
+}
+
+.rules-topbar-right {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* ── STATS ROW ── */
+.rules-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.rules-stat-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.rules-stat-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+    font-weight: 600;
+}
+
+.rules-stat-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #333;
+}
+
+.rules-stat-card.s-active { border-left: 4px solid #4caf50; }
+.rules-stat-card.s-inactive { border-left: 4px solid #bdbdbd; }
+.rules-stat-card.s-total { border-left: 4px solid #2196f3; }
+
+/* ── RULES LIST ── */
+.rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* ── RULE CARD ── */
+.rules-card {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+    transition: box-shadow 0.15s;
+}
+
+.rules-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.rules-card.inactive {
+    opacity: 0.6;
+}
+
+.rules-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid #f0f0f0;
+    gap: 0.75rem;
+}
+
+.rules-card-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.rules-card-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+
+.rules-card-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rules-card-type {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.rules-type-time { background: #e3f2fd; color: #1565c0; }
+.rules-type-rest { background: #fce4ec; color: #c62828; }
+.rules-type-cost { background: #fff3e0; color: #e65100; }
+.rules-type-staff { background: #e8f5e9; color: #2e7d32; }
+.rules-type-custom { background: #f3e5f5; color: #6a1b9a; }
+
+.rules-card-actions {
+    display: flex;
+    gap: 0.3rem;
+    flex-shrink: 0;
+}
+
+.rules-card-body {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.85rem;
+    color: #555;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.rules-card-desc {
+    color: #666;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.rules-card-params {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.rules-param {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    background: #f5f7fa;
+    border-radius: 6px;
+    font-size: 0.78rem;
+}
+
+.rules-param-label {
+    color: #888;
+    font-weight: 500;
+}
+
+.rules-param-value {
+    color: #333;
+    font-weight: 700;
+}
+
+.rules-card-footer {
+    padding: 0.5rem 1.25rem;
+    background: #fafbfc;
+    border-top: 1px solid #f0f0f0;
+    font-size: 0.75rem;
+    color: #999;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.rules-active-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-weight: 600;
+}
+
+.rules-active-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.rules-active-dot.on { background: #4caf50; }
+.rules-active-dot.off { background: #bdbdbd; }
+
+/* ── MODAL ── */
+.rules-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.rules-modal {
+    background: #fff;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.rules-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.rules-modal-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.rules-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #999;
+    padding: 0 0.3rem;
+    line-height: 1;
+}
+
+.rules-modal-close:hover {
+    color: #333;
+}
+
+.rules-modal-body {
+    padding: 1rem 1.5rem 1.5rem;
+}
+
+/* ── FORM ── */
+.rules-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.rules-form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.rules-form-row label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #555;
+}
+
+.rules-form-row input,
+.rules-form-row select,
+.rules-form-row textarea {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.rules-form-row textarea {
+    min-height: 60px;
+    resize: vertical;
+}
+
+.rules-form-row input:focus,
+.rules-form-row select:focus,
+.rules-form-row textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.rules-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.rules-form-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f0f0f0;
+}
+
+/* ── EMPTY ── */
+.rules-empty {
+    text-align: center;
+    padding: 3rem 2rem;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.rules-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+}
+
+.rules-empty h3 {
+    margin: 0 0 0.5rem;
+    color: #333;
+}
+
+.rules-empty p {
+    color: #999;
+    font-size: 0.9rem;
+    margin: 0 0 1rem;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 600px) {
+    .rules-container {
+        padding: 0.5rem;
+    }
+    .rules-topbar {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .rules-form-grid {
+        grid-template-columns: 1fr;
+    }
+    .rules-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
