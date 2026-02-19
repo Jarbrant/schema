@@ -1033,7 +1033,7 @@ export function getStore() {
 export default getStore();
 
 /* ========================================================================
-   BLOCK 8: HELPERS (internal) — OFÖRÄNDRADE
+   BLOCK 8: HELPERS (internal)
    ======================================================================== */
 
 function safeParseJSON(str) {
@@ -1064,4 +1064,228 @@ function buildMonths(year) {
         months.push({
             month: m,
             days,
-            timeDefaults: { start: '07:00', end: '16:00', breakStart: '12:00
+            timeDefaults: { start: '07:00', end: '16:00', breakStart: '12:00', breakEnd: '13:00' },
+        });
+    }
+    return months;
+}
+
+function ensureMonthsShape(months, year, fallbackMonths) {
+    const out = [];
+    for (let i = 0; i < 12; i++) {
+        const base = fallbackMonths[i];
+        const m = months[i];
+        if (!m || typeof m !== 'object' || typeof m.month !== 'number') {
+            out.push(base);
+            continue;
+        }
+        const monthNum = m.month;
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        const days = Array.isArray(m.days) ? m.days : [];
+        if (days.length !== daysInMonth) {
+            out.push(base);
+            continue;
+        }
+        const patchedDays = days.map((d) => {
+            const day = d && typeof d === 'object' ? d : {};
+            if (typeof day.date !== 'string') return null;
+            if (!Array.isArray(day.entries)) day.entries = [];
+            return day;
+        });
+        if (patchedDays.some((x) => x === null)) {
+            out.push(base);
+            continue;
+        }
+        out.push({
+            month: monthNum,
+            days: patchedDays,
+            timeDefaults: (m.timeDefaults && typeof m.timeDefaults === 'object') ? m.timeDefaults : base.timeDefaults,
+        });
+    }
+    return out;
+}
+
+function normalizeGroupsMap(groups, fallback) {
+    const src = (groups && typeof groups === 'object') ? groups : {};
+    const out = Object.create(null);
+
+    Object.values(src).forEach((g) => {
+        if (!g || typeof g !== 'object') return;
+        const id = String(g.id ?? '').trim();
+        if (!id) return;
+        out[id] = {
+            id,
+            name: String(g.name ?? id),
+            color: typeof g.color === 'string' ? g.color : (fallback[id]?.color || '#777'),
+            textColor: typeof g.textColor === 'string' ? g.textColor : (fallback[id]?.textColor || '#fff'),
+            // AO-03: Bevara shiftTemplateIds om de finns
+            ...(Array.isArray(g.shiftTemplateIds) ? { shiftTemplateIds: g.shiftTemplateIds } : {}),
+        };
+    });
+
+    Object.keys(fallback).forEach((key) => {
+        const gid = String(fallback[key].id);
+        if (!out[gid]) out[gid] = safeDeepClone(fallback[key]);
+    });
+
+    return out;
+}
+
+function normalizeShiftsMap(shifts, fallback) {
+    const src = (shifts && typeof shifts === 'object') ? shifts : {};
+    const out = Object.create(null);
+
+    Object.values(src).forEach((s) => {
+        if (!s || typeof s !== 'object') return;
+        const id = String(s.id ?? '').trim();
+        if (!id) return;
+
+        out[id] = {
+            id,
+            name: String(s.name ?? id),
+            shortName: typeof s.shortName === 'string' ? s.shortName : '',
+            startTime: (s.startTime == null ? null : (isHHMM(s.startTime) ? s.startTime : null)),
+            endTime: (s.endTime == null ? null : (isHHMM(s.endTime) ? s.endTime : null)),
+            breakStart: (s.breakStart == null ? null : (isHHMM(s.breakStart) ? s.breakStart : null)),
+            breakEnd: (s.breakEnd == null ? null : (isHHMM(s.breakEnd) ? s.breakEnd : null)),
+            color: typeof s.color === 'string' ? s.color : (fallback[id]?.color || '#777'),
+            description: typeof s.description === 'string' ? s.description : '',
+        };
+    });
+
+    Object.keys(fallback).forEach((key) => {
+        const sid = String(fallback[key].id);
+        if (!out[sid]) out[sid] = safeDeepClone(fallback[key]);
+    });
+
+    return out;
+}
+
+function normalizeGroupShifts(groupShifts, groups, shifts, fallback) {
+    const src = (groupShifts && typeof groupShifts === 'object') ? groupShifts : {};
+    const out = Object.create(null);
+
+    Object.keys(src).forEach((gidRaw) => {
+        const gid = String(gidRaw);
+        const arr = src[gidRaw];
+        if (!Array.isArray(arr)) return;
+        out[gid] = arr.map((x) => String(x ?? '').trim()).filter(Boolean).filter((sid) => !!shifts[sid]);
+    });
+
+    Object.keys(groups || {}).forEach((gid) => {
+        const id = String(gid);
+        if (!out[id]) {
+            if (fallback && fallback[id]) out[id] = safeDeepClone(fallback[id]).filter((sid) => !!shifts[sid]);
+            else out[id] = [];
+        }
+    });
+
+    Object.keys(fallback || {}).forEach((gid) => {
+        if (!out[gid]) out[gid] = safeDeepClone(fallback[gid]).filter((sid) => !!shifts[sid]);
+    });
+
+    return out;
+}
+
+function normalizeAvailability(av) {
+    if (!Array.isArray(av)) return undefined;
+    const out = [];
+    for (let i = 0; i < 7; i++) out.push(Boolean(av[i]));
+    return out;
+}
+
+function toNumberOr(defaultVal, v) {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    const n = (typeof v === 'string' && v.trim() !== '') ? Number(v) : NaN;
+    return Number.isFinite(n) ? n : defaultVal;
+}
+
+function normalizePerson(p) {
+    const person = (p && typeof p === 'object') ? p : {};
+    const id = String(person.id ?? '').trim() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    const groupsArrRaw = Array.isArray(person.groups) ? person.groups : (Array.isArray(person.groupIds) ? person.groupIds : undefined);
+    const groups = Array.isArray(groupsArrRaw)
+        ? groupsArrRaw.map((g) => String(g ?? '').trim()).filter(Boolean)
+        : undefined;
+
+    const sector = (person.sector === 'municipal') ? 'municipal' : 'private';
+
+    const name = (typeof person.name === 'string') ? person.name : undefined;
+    const email = (typeof person.email === 'string') ? person.email : undefined;
+    const phone = (person.phone === null || typeof person.phone === 'string') ? person.phone : undefined;
+    const startDate = (typeof person.startDate === 'string') ? person.startDate : undefined;
+
+    const degree = (person.degree !== undefined) ? toNumberOr(0, person.degree) : undefined;
+    const workdaysPerWeek = (person.workdaysPerWeek !== undefined) ? toNumberOr(0, person.workdaysPerWeek) : undefined;
+    const salary = (person.salary !== undefined) ? toNumberOr(0, person.salary) : undefined;
+    const savedVacationDays = (person.savedVacationDays !== undefined) ? toNumberOr(0, person.savedVacationDays) : undefined;
+    const savedLeaveDays = (person.savedLeaveDays !== undefined) ? toNumberOr(0, person.savedLeaveDays) : undefined;
+    const availability = normalizeAvailability(person.availability);
+
+    // AO-03: Nya person-fält
+    const employmentType = VALID_EMPLOYMENT_TYPES.includes(person.employmentType) ? person.employmentType : 'regular';
+    const salaryType = VALID_SALARY_TYPES.includes(person.salaryType) ? person.salaryType : 'monthly';
+    const calculationPeriodStart = (typeof person.calculationPeriodStart === 'string') ? person.calculationPeriodStart : (startDate || null);
+    const maxCarryOverExtraDays = (typeof person.maxCarryOverExtraDays === 'number' && person.maxCarryOverExtraDays >= 0 && person.maxCarryOverExtraDays <= 30)
+        ? person.maxCarryOverExtraDays : 4;
+    const preferredShifts = Array.isArray(person.preferredShifts) ? person.preferredShifts : [];
+    const avoidShifts = Array.isArray(person.avoidShifts) ? person.avoidShifts : [];
+    const preferredDays = Array.isArray(person.preferredDays) ? person.preferredDays : [];
+
+    return {
+        id,
+
+        firstName: typeof person.firstName === 'string' ? person.firstName : '',
+        lastName: typeof person.lastName === 'string' ? person.lastName : '',
+        hourlyWage: typeof person.hourlyWage === 'number'
+            ? person.hourlyWage
+            : (Number.isFinite(parseFloat(person.hourlyWage)) ? parseFloat(person.hourlyWage) : 0),
+        employmentPct: typeof person.employmentPct === 'number'
+            ? person.employmentPct
+            : (Number.isFinite(parseInt(person.employmentPct, 10)) ? parseInt(person.employmentPct, 10) : 0),
+        isActive: typeof person.isActive === 'boolean' ? person.isActive : true,
+        vacationDaysPerYear: typeof person.vacationDaysPerYear === 'number'
+            ? person.vacationDaysPerYear
+            : (Number.isFinite(parseInt(person.vacationDaysPerYear, 10)) ? parseInt(person.vacationDaysPerYear, 10) : 25),
+        extraDaysStartBalance: typeof person.extraDaysStartBalance === 'number'
+            ? person.extraDaysStartBalance
+            : (Number.isFinite(parseInt(person.extraDaysStartBalance, 10)) ? parseInt(person.extraDaysStartBalance, 10) : 0),
+
+        ...(groups !== undefined ? { groups } : {}),
+        ...(groups !== undefined ? { groupIds: groups } : (Array.isArray(person.groupIds) ? { groupIds: person.groupIds } : {})),
+        ...(person.skills && typeof person.skills === 'object' ? { skills: person.skills } : {}),
+
+        ...(name !== undefined ? { name } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(phone !== undefined ? { phone } : {}),
+        ...(startDate !== undefined ? { startDate } : {}),
+        ...(degree !== undefined ? { degree } : {}),
+        ...(workdaysPerWeek !== undefined ? { workdaysPerWeek } : {}),
+        ...(salary !== undefined ? { salary } : {}),
+        ...(savedVacationDays !== undefined ? { savedVacationDays } : {}),
+        ...(savedLeaveDays !== undefined ? { savedLeaveDays } : {}),
+        ...(availability !== undefined ? { availability } : {}),
+        sector,
+        ...(person.createdAt ? { createdAt: person.createdAt } : {}),
+        ...(person.updatedAt ? { updatedAt: person.updatedAt } : {}),
+        ...(person.usedVacationDays !== undefined ? { usedVacationDays: toNumberOr(0, person.usedVacationDays) } : {}),
+        ...(person.employerTaxRate !== undefined ? { employerTaxRate: toNumberOr(0, person.employerTaxRate) } : {}),
+        ...(person.taxRate !== undefined ? { taxRate: toNumberOr(0, person.taxRate) } : {}),
+        ...(person.age !== undefined ? { age: toNumberOr(0, person.age) } : {}),
+
+        // AO-03: Nya fält (alltid med i output)
+        employmentType,
+        salaryType,
+        calculationPeriodStart,
+        maxCarryOverExtraDays,
+        preferredShifts,
+        avoidShifts,
+        preferredDays,
+    };
+}
+
+function normalizeEntry(e) {
+    const entry = (e && typeof e === 'object') ? e : {};
+    return { ...entry, personId: String(entry.personId ?? '') };
+}
