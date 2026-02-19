@@ -1,10 +1,12 @@
 /*
- * AO-07 — Schedule View (Calendar) — v2.3 STANDALONE (AUTOPATCH)
+ * AO-07 — Schedule View (Calendar) — v2.4 STANDALONE (AUTOPATCH)
  * FIL: src/views/calendar.js
  *
+ * Fixar v2.4:
+ *   - Enskilda pass-rader kan fällas ihop/döljas (toggle per shift)
  * Fixar v2.3:
- *   - ◀ ▶ Idag fungerar (listeners dedupliceras via AbortController)
- *   - weekOffset max 53 (inte 52)
+ *   - ◀ ▶ Idag fungerar (AbortController)
+ *   - weekOffset max 53
  *   - "Idag" beräknar korrekt veckooffset
  * Fixar v2.2:
  *   - Modal-stängning (overlay-klick + ×-knapp)
@@ -34,8 +36,6 @@ const STATUS_COLORS = {
     A:{bg:'#c8e6c9',text:'#1b5e20',border:'#66bb6a'}, L:{bg:'#f0f0f0',text:'#424242',border:'#bdbdbd'},
     X:{bg:'#bbdefb',text:'#0d47a1',border:'#42a5f5'}, EXTRA:{bg:'#424242',text:'#ffeb3b',border:'#616161'},
 };
-
-/* FIX v2.3: Max antal veckor i ett år */
 const MAX_WEEK_OFFSET = 53;
 
 /* ── MAIN RENDER ── */
@@ -66,10 +66,15 @@ export function renderCalendar(container, ctx) {
         if (!ctx._cal) {
             ctx._cal = {
                 weekOffset: calcCurrentWeekOffset(year),
-                collapsedGroups: {}, assignModal: null, editModal: null, generatePreview: null,
+                collapsedGroups: {},
+                collapsedShifts: {},  /* FIX v2.4: per-shift toggle */
+                assignModal: null, editModal: null, generatePreview: null,
             };
         }
         const cal = ctx._cal;
+        /* FIX v2.4: säkerställ att collapsedShifts finns (äldre ctx) */
+        if (!cal.collapsedShifts) cal.collapsedShifts = {};
+
         const weekDates = getWeekDates(year, cal.weekOffset);
         const weekNum = getISOWeekNumber(weekDates[0]);
         const weekKey = `${year}-W${String(weekNum).padStart(2,'0')}`;
@@ -98,7 +103,6 @@ export function renderCalendar(container, ctx) {
                 ${cal.editModal ? renderEditModal(cal.editModal, groups, shifts, shiftTemplates, people, state) : ''}
             </div>`;
 
-        /* FIX v2.3: Avbryt gamla listeners innan nya läggs till */
         setupListeners(container, store, ctx, isLocked, linkedTemplate);
         setupDragAndDrop(container, store, ctx, isLocked);
     } catch (err) {
@@ -107,15 +111,11 @@ export function renderCalendar(container, ctx) {
     }
 }
 
-/* FIX v2.3: Beräkna veckooffset för "idag" korrekt */
 function calcCurrentWeekOffset(year) {
     const now = new Date();
-    const jan1 = new Date(year, 0, 1);
-    const jan1Day = jan1.getDay();
-    const daysToMonday = jan1Day === 0 ? -6 : 1 - jan1Day;
-    const firstMonday = new Date(year, 0, 1 + daysToMonday);
-    const diffMs = now.getTime() - firstMonday.getTime();
-    const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+    const jan1 = new Date(year, 0, 1), d1 = jan1.getDay(), dtm = d1===0?-6:1-d1;
+    const firstMonday = new Date(year, 0, 1 + dtm);
+    const diffDays = Math.floor((now.getTime() - firstMonday.getTime()) / (24*60*60*1000));
     return Math.max(0, Math.min(MAX_WEEK_OFFSET, Math.floor(diffDays / 7)));
 }
 
@@ -192,26 +192,45 @@ function renderGroupSections(weekSchedule, weekDates, groups, shifts, shiftTempl
                 <div class="cal-group-day-summary">${ds.map(d=>`<div class="cal-day-summary-cell">
                     <span class="cal-summary-hours">${d.hours.toFixed(1)} tim</span><span class="cal-summary-cost">${formatCurrency(d.cost)}</span></div>`).join('')}</div>
             </div>
-            ${!collapsed ? renderGroupBody(gid, gd, weekDates, shifts, shiftTemplates, linkedShifts, people, absences, vacancies, isLocked) : ''}
+            ${!collapsed ? renderGroupBody(gid, gd, weekDates, shifts, shiftTemplates, linkedShifts, people, absences, vacancies, isLocked, cal) : ''}
         </div>`;
     }).join('');
 }
 
-/* ── GROUP BODY ── */
-function renderGroupBody(gid, groupData, weekDates, shifts, shiftTemplates, linkedShiftIds, people, absences, vacancies, isLocked) {
+/* ══════════════════════════════════════════════════════════
+ * GROUP BODY — FIX v2.4: per-shift toggle (dölja pass-rad)
+ * ══════════════════════════════════════════════════════════ */
+function renderGroupBody(gid, groupData, weekDates, shifts, shiftTemplates, linkedShiftIds, people, absences, vacancies, isLocked, cal) {
     if (!linkedShiftIds.length) return `<div class="cal-group-body"><p class="cal-empty-small">Inga grundpass kopplade.</p></div>`;
     const allShifts = { ...shifts, ...shiftTemplates };
     return `<div class="cal-group-body">${linkedShiftIds.map(sid => {
         const shift = allShifts[sid]; if (!shift) return '';
         const timeStr = shift.startTime && shift.endTime ? `${shift.startTime} – ${shift.endTime}` : 'Flex';
         const sc = sanitizeColor(shift.color||'#777');
-        return `<div class="cal-shift-section">
-            <div class="cal-shift-label" style="border-left:4px solid ${sc}">
+        const shiftKey = `${gid}::${sid}`;
+        const isShiftCollapsed = !!cal.collapsedShifts[shiftKey];
+
+        /* FIX v2.4: Räkna tilldelade denna vecka för sammanfattning */
+        let shiftWeekPersons = 0;
+        if (isShiftCollapsed) {
+            weekDates.forEach(date => {
+                const dateStr = formatISO(date), dd = groupData[dateStr]||{entries:[]};
+                shiftWeekPersons += dd.entries.filter(e=>e.shiftId===sid&&e.groupId===gid&&e.personId&&e.status==='A').length;
+            });
+        }
+
+        return `<div class="cal-shift-section ${isShiftCollapsed ? 'cal-shift-collapsed' : ''}">
+            <div class="cal-shift-label" style="border-left:4px solid ${sc};cursor:pointer;"
+                 data-cal="toggle-shift" data-shift-key="${escapeHtml(shiftKey)}">
+                <span class="cal-shift-toggle" style="font-size:0.7rem;color:#999;margin-right:0.25rem;">${isShiftCollapsed?'▶':'▼'}</span>
                 <span class="cal-shift-dot" style="background:${sc}"></span>
                 <div class="cal-shift-info"><strong>${escapeHtml(shift.name)}</strong>
                     <span class="cal-shift-time">${escapeHtml(timeStr)}</span>
-                    <span class="cal-shift-hours">${calcShiftHours(shift,{}).toFixed(1)} tim/pass</span></div></div>
-            <div class="cal-shift-days">${weekDates.map((date,dayIdx) => {
+                    <span class="cal-shift-hours">${calcShiftHours(shift,{}).toFixed(1)} tim/pass</span>
+                    ${isShiftCollapsed && shiftWeekPersons > 0 ? `<span style="color:#667eea;font-weight:600;font-size:0.75rem;">· ${shiftWeekPersons} tilldelningar</span>` : ''}
+                </div>
+            </div>
+            ${!isShiftCollapsed ? `<div class="cal-shift-days">${weekDates.map((date,dayIdx) => {
                 const dateStr = formatISO(date), dd = groupData[dateStr]||{entries:[]};
                 const se = dd.entries.filter(e=>e.shiftId===sid&&e.groupId===gid);
                 const gp = people.filter(p=>(p.groups||p.groupIds||[]).includes(gid));
@@ -238,7 +257,8 @@ function renderGroupBody(gid, groupData, weekDates, shifts, shiftTemplates, link
                     ${dv.map(v=>`<div class="cal-person-card cal-vacancy-card"><span class="cal-card-status">Utlagt pass</span><span class="cal-card-time">${escapeHtml(timeStr)}</span>
                         ${!isLocked?`<button class="btn btn-sm cal-vacancy-accept" data-cal="fill-vacancy" data-vacancy-id="${escapeHtml(v.id)}" data-date="${dateStr}">+ Fyll</button>`:''}</div>`).join('')}
                     ${!isLocked?`<button class="cal-add-btn" data-cal="open-assign" data-date="${dateStr}" data-group-id="${escapeHtml(gid)}" data-shift-id="${escapeHtml(sid)}">+</button>`:''}</div>`;
-            }).join('')}</div></div>`;
+            }).join('')}</div>` : ''}
+        </div>`;
     }).join('')}</div>`;
 }
 
@@ -357,10 +377,9 @@ function buildWeekSchedule(weekDates, state, groups, shifts, shiftTemplates, peo
 }
 
 /* ══════════════════════════════════════════════════════════
- * EVENT LISTENERS — FIX v2.3: AbortController deduplicerar
+ * EVENT LISTENERS — v2.4: toggle-shift action tillagd
  * ══════════════════════════════════════════════════════════ */
 function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
-    /* FIX v2.3: Avbryt tidigare listeners via AbortController */
     if (ctx._calAbort) ctx._calAbort.abort();
     ctx._calAbort = new AbortController();
     const signal = ctx._calAbort.signal;
@@ -389,13 +408,17 @@ function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
                 cal.generatePreview = null;
                 renderCalendar(container, ctx);
             } else if (action==='today') {
-                const s = store.getState();
-                cal.weekOffset = calcCurrentWeekOffset(s.schedule.year);
+                cal.weekOffset = calcCurrentWeekOffset(store.getState().schedule.year);
                 cal.generatePreview = null;
                 renderCalendar(container, ctx);
             } else if (action==='toggle-group') {
                 const gid = btn.dataset.groupId;
                 if (gid) cal.collapsedGroups[gid] = !cal.collapsedGroups[gid];
+                renderCalendar(container, ctx);
+            /* FIX v2.4: toggle-shift */
+            } else if (action==='toggle-shift') {
+                const key = btn.dataset.shiftKey;
+                if (key) cal.collapsedShifts[key] = !cal.collapsedShifts[key];
                 renderCalendar(container, ctx);
             } else if (action==='open-assign' && !isLocked) {
                 cal.assignModal = { date: btn.dataset.date, groupId: btn.dataset.groupId, shiftId: btn.dataset.shiftId };
@@ -492,8 +515,7 @@ function handleDeleteEntry(btn, cal, store, container, ctx) {
 }
 
 function handleLockWeek(store, ctx, container) {
-    const cal = ctx._cal;
-    const s = store.getState(), yr = s.schedule.year;
+    const cal = ctx._cal, s = store.getState(), yr = s.schedule.year;
     const weekDates = getWeekDates(yr, cal.weekOffset);
     const wn = getISOWeekNumber(weekDates[0]), wk = `${yr}-W${String(wn).padStart(2,'0')}`;
     store.update(s => { if(!Array.isArray(s.schedule.lockedWeeks)) s.schedule.lockedWeeks=[];
@@ -502,8 +524,7 @@ function handleLockWeek(store, ctx, container) {
 }
 
 function handleUnlockWeek(store, ctx, container) {
-    const cal = ctx._cal;
-    const s = store.getState(), yr = s.schedule.year;
+    const cal = ctx._cal, s = store.getState(), yr = s.schedule.year;
     const weekDates = getWeekDates(yr, cal.weekOffset);
     const wn = getISOWeekNumber(weekDates[0]), wk = `${yr}-W${String(wn).padStart(2,'0')}`;
     store.update(s => { if(!Array.isArray(s.schedule.lockedWeeks)) return;
@@ -512,8 +533,7 @@ function handleUnlockWeek(store, ctx, container) {
 }
 
 function handleGenerate(store, linkedTemplate, cal, container, ctx) {
-    const s = store.getState();
-    const weekDates = getWeekDates(s.schedule.year, cal.weekOffset);
+    const s = store.getState(), weekDates = getWeekDates(s.schedule.year, cal.weekOffset);
     cal.generatePreview = generateWeekSchedule({ weekDates, weekTemplate:linkedTemplate, groups:s.groups, shifts:s.shifts, shiftTemplates:s.shiftTemplates,
         groupShifts:s.groupShifts, people:(s.people||[]).filter(p=>p.isActive), absences:s.absences||[], existingEntries:{}, demand:s.demand });
     renderCalendar(container, ctx);
@@ -534,17 +554,12 @@ function handleFillVacancy(btn, cal, store, container, ctx) {
     cal.assignModal = { date:v.date, groupId:v.groupId, shiftId:v.shiftTemplateId }; renderCalendar(container, ctx);
 }
 
-/* ══════════════════════════════════════════════════════════
- * DRAG & DROP — FIX v2.3: AbortController deduplicerar
- * ══════════════════════════════════════════════════════════ */
+/* ── DRAG & DROP ── */
 function setupDragAndDrop(container, store, ctx, isLocked) {
     if (isLocked) return;
-
-    /* FIX v2.3: Avbryt tidigare drag-listeners */
     if (ctx._calDragAbort) ctx._calDragAbort.abort();
     ctx._calDragAbort = new AbortController();
     const signal = ctx._calDragAbort.signal;
-
     let dragData = null;
 
     container.addEventListener('dragstart', (e) => {
