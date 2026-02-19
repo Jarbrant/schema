@@ -1,28 +1,15 @@
 /*
- * AO-01 to AO-03 — STORE: Komplett state-hantering (AUTOPATCH v2.0)
+ * AO-01 to AO-03B — STORE: Komplett state-hantering (AUTOPATCH v3.0)
  * FIL: store.js (HEL FIL)
  *
- * AO-03 ÄNDRINGAR (additiv, inget befintligt borttaget):
- * 1) Nya state-nycklar: shiftTemplates, weekTemplates, calendarWeeks,
- *    calendarOverrides, absences, vacancies, changeLog
- * 2) schedule utökad med entries{} och lockedWeeks[]
- * 3) settings utökad med helpAutoShow och helpDismissed
- * 4) normalizePerson utökad med: employmentType, calculationPeriodStart,
- *    maxCarryOverExtraDays, preferredShifts, avoidShifts, preferredDays, salaryType
- * 5) Nya validate-metoder: validateShiftTemplates, validateWeekTemplates,
- *    validateCalendarWeeks, validateCalendarOverrides, validateAbsences,
- *    validateVacancies, validateChangeLog
- * 6) migrate() säkrar alla nya nycklar med tomma defaults
- * 7) ALLA befintliga nycklar (groups, shifts, groupShifts, demand,
- *    kitchenCore, notifications, schedule.months, people som array)
- *    är 100% oförändrade.
- *
- * TIDIGARE ÄNDRINGSLOGG:
- * 1) P0: FIX — Återinfört saknade validate*-metoder (validateMonthSchedule m.fl.)
- * 2) P0: normalizePerson bevarar personal-fält
- * 3) P0: validatePerson tillåter dessa fält
- * 4) P0: groups i person kan härledas från groupIds
- * 5) P0: availability normaliseras till boolean[7]
+ * AO-03B ÄNDRINGAR (additiv):
+ * 1) Ny konstant: VALID_COLLECTIVE_AGREEMENTS, DEFAULT_COST_RATES
+ * 2) settings utökad med: defaultCollectiveAgreement, defaultVacationPayRate,
+ *    defaultForaRate, defaultEmployerTaxRate
+ * 3) person utökad med: collectiveAgreement, vacationPayRate, foraRate
+ * 4) validateSettings + validatePerson utökade
+ * 5) migrate() säkrar nya settings-defaults
+ * 6) normalizePerson() sätter defaults för nya fält
  */
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
@@ -168,8 +155,7 @@ const DEFAULT_DEMAND = {
 };
 
 /* ========================================================================
-   BLOCK 5B: FRÅNVAROTYPER (AO-03 NY)
-   Giltiga absence.type-värden. Används av validateAbsences.
+   BLOCK 5B: KONSTANTER — AO-03 + AO-03B
    ======================================================================== */
 
 const VALID_ABSENCE_TYPES = ['SEM', 'SJ', 'VAB', 'FÖR', 'PERM', 'UTB'];
@@ -177,6 +163,15 @@ const VALID_ABSENCE_PATTERNS = ['single', 'range', 'recurring'];
 const VALID_VACANCY_STATUSES = ['open', 'offered', 'accepted', 'filled'];
 const VALID_EMPLOYMENT_TYPES = ['regular', 'substitute'];
 const VALID_SALARY_TYPES = ['monthly', 'hourly'];
+
+// AO-03B: Kollektivavtal + kostnadssatser
+const VALID_COLLECTIVE_AGREEMENTS = ['HRF', 'Unionen', 'Kommunal', 'none'];
+
+const DEFAULT_COST_RATES = {
+    employerTaxRate: 0.3142,
+    vacationPayRate: 0.12,
+    foraRate: 0.043,
+};
 
 /* ========================================================================
    BLOCK 6: STORE CLASS
@@ -275,22 +270,15 @@ class Store {
         }
     }
 
-    /**
-     * P0: Kompatibilitet med UI som använder store.setState(...)
-     * - next kan vara ett HELT state eller ett PARTIAL (merge ovanpå current)
-     * - Kör migrate+validate+save+notify så det alltid persisteras.
-     */
     setState(next) {
         try {
             const current = this.getState();
             const isObject = next && typeof next === 'object' && !Array.isArray(next);
 
-            // Fail-closed: om next inte är objekt, avbryt med tydligt fel
             if (!isObject) {
                 throw new Error('setState(next) kräver objekt (full state eller partial)');
             }
 
-            // Heuristik: om next ser ut som "full state" (har meta+schedule+settings+people) -> använd som bas
             const looksFull =
                 !!next.meta && !!next.schedule && !!next.settings && Array.isArray(next.people);
 
@@ -390,7 +378,6 @@ class Store {
             });
         }
 
-        // AO-03: Räkna även nya schedule.entries
         let newEntryCount = 0;
         if (state.schedule && state.schedule.entries && typeof state.schedule.entries === 'object') {
             Object.values(state.schedule.entries).forEach((dayEntries) => {
@@ -441,11 +428,9 @@ class Store {
         if (state.demand) this.validateDemand(state.demand);
         if (state.kitchenCore) this.validateKitchenCore(state.kitchenCore, state.people);
         if (state.groups) this.validateGroups(state.groups);
-
         if (state.shifts) this.validateShifts(state.shifts);
         if (state.groupShifts) this.validateGroupShifts(state.groupShifts, state.groups, state.shifts);
 
-        // AO-03: Validera nya nycklar (tolerant — finns de, valideras de)
         if (state.shiftTemplates) this.validateShiftTemplates(state.shiftTemplates);
         if (state.weekTemplates) this.validateWeekTemplates(state.weekTemplates);
         if (state.calendarWeeks) this.validateCalendarWeeks(state.calendarWeeks);
@@ -476,7 +461,6 @@ class Store {
             day.entries.forEach((e, eIdx) => {
                 if (!e || typeof e !== 'object') throw new Error(`entries[${eIdx}] måste vara objekt`);
                 if (typeof e.personId !== 'string') throw new Error(`entries[${eIdx}].personId måste vara string`);
-                // Övriga entry-fält valideras inte här (scope: bevara befintliga varianter)
             });
         });
 
@@ -511,9 +495,29 @@ class Store {
         if (settings.theme.statusColors !== undefined && typeof settings.theme.statusColors !== 'object') throw new Error('settings.theme.statusColors måste vara objekt');
         if (settings.theme.statusTextColors !== undefined && typeof settings.theme.statusTextColors !== 'object') throw new Error('settings.theme.statusTextColors måste vara objekt');
 
-        // AO-03: Nya settings-fält (tolerant)
+        // AO-03
         if (settings.helpAutoShow !== undefined && typeof settings.helpAutoShow !== 'boolean') throw new Error('settings.helpAutoShow måste vara boolean');
         if (settings.helpDismissed !== undefined && (typeof settings.helpDismissed !== 'object' || settings.helpDismissed === null)) throw new Error('settings.helpDismissed måste vara objekt');
+
+        // AO-03B: Kostnads-settings
+        if (settings.defaultCollectiveAgreement !== undefined && !VALID_COLLECTIVE_AGREEMENTS.includes(settings.defaultCollectiveAgreement)) {
+            throw new Error('settings.defaultCollectiveAgreement måste vara "HRF"|"Unionen"|"Kommunal"|"none"');
+        }
+        if (settings.defaultVacationPayRate !== undefined) {
+            if (typeof settings.defaultVacationPayRate !== 'number' || settings.defaultVacationPayRate < 0 || settings.defaultVacationPayRate > 0.5) {
+                throw new Error('settings.defaultVacationPayRate måste vara 0–0.5');
+            }
+        }
+        if (settings.defaultForaRate !== undefined) {
+            if (typeof settings.defaultForaRate !== 'number' || settings.defaultForaRate < 0 || settings.defaultForaRate > 0.2) {
+                throw new Error('settings.defaultForaRate måste vara 0–0.2');
+            }
+        }
+        if (settings.defaultEmployerTaxRate !== undefined) {
+            if (typeof settings.defaultEmployerTaxRate !== 'number' || settings.defaultEmployerTaxRate < 0 || settings.defaultEmployerTaxRate > 0.5) {
+                throw new Error('settings.defaultEmployerTaxRate måste vara 0–0.5');
+            }
+        }
     }
 
     validateDemand(demand) {
@@ -544,7 +548,6 @@ class Store {
         if (typeof kitchenCore.minCorePerDay !== 'number' || kitchenCore.minCorePerDay < 0 || kitchenCore.minCorePerDay > 50) {
             throw new Error('kitchenCore.minCorePerDay måste vara 0–50');
         }
-
         kitchenCore.corePersonIds.forEach((id) => {
             if (typeof id !== 'string') throw new Error('kitchenCore.corePersonIds måste vara string[]');
         });
@@ -558,7 +561,6 @@ class Store {
             if (typeof g.name !== 'string') throw new Error(`group(${g.id}).name måste vara string`);
             if (g.color !== undefined && typeof g.color !== 'string') throw new Error(`group(${g.id}).color måste vara string`);
             if (g.textColor !== undefined && typeof g.textColor !== 'string') throw new Error(`group(${g.id}).textColor måste vara string`);
-            // AO-03: shiftTemplateIds är tillåtet på groups (för framtida koppling grupp→grundpass)
             if (g.shiftTemplateIds !== undefined && !Array.isArray(g.shiftTemplateIds)) throw new Error(`group(${g.id}).shiftTemplateIds måste vara array`);
         });
     }
@@ -570,14 +572,12 @@ class Store {
             if (typeof s.id !== 'string' || !s.id) throw new Error('shift.id måste vara non-empty string');
             if (typeof s.name !== 'string') throw new Error(`shift(${s.id}).name måste vara string`);
             if (s.shortName !== undefined && typeof s.shortName !== 'string') throw new Error(`shift(${s.id}).shortName måste vara string`);
-
             ['startTime', 'endTime', 'breakStart', 'breakEnd'].forEach((k) => {
                 const v = s[k];
                 if (v !== null && v !== undefined && !isHHMM(v)) {
                     throw new Error(`shift(${s.id}).${k} måste vara HH:MM eller null`);
                 }
             });
-
             if (s.color !== undefined && typeof s.color !== 'string') throw new Error(`shift(${s.id}).color måste vara string`);
             if (s.description !== undefined && typeof s.description !== 'string') throw new Error(`shift(${s.id}).description måste vara string`);
         });
@@ -585,7 +585,6 @@ class Store {
 
     validateGroupShifts(groupShifts, groups, shifts) {
         if (!groupShifts || typeof groupShifts !== 'object') throw new Error('groupShifts måste vara objekt');
-
         Object.keys(groupShifts).forEach((gid) => {
             const arr = groupShifts[gid];
             if (!Array.isArray(arr)) throw new Error(`groupShifts.${gid} måste vara array`);
@@ -609,14 +608,12 @@ class Store {
             if (!st || typeof st !== 'object') throw new Error('shiftTemplates innehåller ogiltig post');
             if (typeof st.id !== 'string' || !st.id) throw new Error('shiftTemplate.id måste vara non-empty string');
             if (typeof st.name !== 'string') throw new Error(`shiftTemplate(${st.id}).name måste vara string`);
-
             ['startTime', 'endTime', 'breakStart', 'breakEnd'].forEach((k) => {
                 const v = st[k];
                 if (v !== null && v !== undefined && !isHHMM(v)) {
                     throw new Error(`shiftTemplate(${st.id}).${k} måste vara HH:MM eller null`);
                 }
             });
-
             if (st.color !== undefined && typeof st.color !== 'string') throw new Error(`shiftTemplate(${st.id}).color måste vara string`);
             if (st.costCenter !== undefined && typeof st.costCenter !== 'string') throw new Error(`shiftTemplate(${st.id}).costCenter måste vara string`);
             if (st.workplace !== undefined && typeof st.workplace !== 'string') throw new Error(`shiftTemplate(${st.id}).workplace måste vara string`);
@@ -630,7 +627,6 @@ class Store {
             if (typeof wt.id !== 'string' || !wt.id) throw new Error('weekTemplate.id måste vara non-empty string');
             if (typeof wt.name !== 'string') throw new Error(`weekTemplate(${wt.id}).name måste vara string`);
             if (!Array.isArray(wt.slots)) throw new Error(`weekTemplate(${wt.id}).slots måste vara array`);
-
             wt.slots.forEach((slot, sIdx) => {
                 if (!slot || typeof slot !== 'object') throw new Error(`weekTemplate(${wt.id}).slots[${sIdx}] måste vara objekt`);
                 if (typeof slot.dayOfWeek !== 'number' || slot.dayOfWeek < 0 || slot.dayOfWeek > 6) {
@@ -658,7 +654,6 @@ class Store {
     validateCalendarWeeks(calendarWeeks) {
         if (!calendarWeeks || typeof calendarWeeks !== 'object') throw new Error('calendarWeeks måste vara objekt');
         Object.keys(calendarWeeks).forEach((weekKey) => {
-            // Vecko-nyckel ska vara format "YYYY-Wnn"
             if (!/^\d{4}-W\d{2}$/.test(weekKey)) {
                 throw new Error(`calendarWeeks nyckel "${weekKey}" måste vara format YYYY-Wnn`);
             }
@@ -672,7 +667,6 @@ class Store {
     validateCalendarOverrides(calendarOverrides) {
         if (!calendarOverrides || typeof calendarOverrides !== 'object') throw new Error('calendarOverrides måste vara objekt');
         Object.keys(calendarOverrides).forEach((dateKey) => {
-            // Datum-nyckel ska vara format "YYYY-MM-DD"
             if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
                 throw new Error(`calendarOverrides nyckel "${dateKey}" måste vara format YYYY-MM-DD`);
             }
@@ -698,7 +692,6 @@ class Store {
             if (typeof abs.personId !== 'string' || !abs.personId) throw new Error(`absences[${idx}].personId måste vara non-empty string`);
             if (!VALID_ABSENCE_TYPES.includes(abs.type)) throw new Error(`absences[${idx}].type "${abs.type}" är ogiltig (${VALID_ABSENCE_TYPES.join('|')})`);
             if (!VALID_ABSENCE_PATTERNS.includes(abs.pattern)) throw new Error(`absences[${idx}].pattern "${abs.pattern}" är ogiltig (${VALID_ABSENCE_PATTERNS.join('|')})`);
-
             if (abs.pattern === 'single') {
                 if (abs.date !== null && abs.date !== undefined && typeof abs.date !== 'string') throw new Error(`absences[${idx}].date måste vara string|null`);
             }
@@ -749,7 +742,6 @@ class Store {
                 if (typeof e.groupId !== 'string') throw new Error(`schedule.entries["${dateKey}"][${idx}].groupId måste vara string`);
                 if (typeof e.shiftTemplateId !== 'string') throw new Error(`schedule.entries["${dateKey}"][${idx}].shiftTemplateId måste vara string`);
                 if (typeof e.status !== 'string') throw new Error(`schedule.entries["${dateKey}"][${idx}].status måste vara string`);
-                // personId kan vara null (vakans) eller string
                 if (e.personId !== null && e.personId !== undefined && typeof e.personId !== 'string') {
                     throw new Error(`schedule.entries["${dateKey}"][${idx}].personId måste vara string|null`);
                 }
@@ -767,7 +759,7 @@ class Store {
     }
 
     /* ====================================================================
-       BEFINTLIG validatePerson — UTÖKAD MED AO-03-FÄLT
+       validatePerson — UTÖKAD MED AO-03 + AO-03B
        ==================================================================== */
 
     validatePerson(person, idx) {
@@ -779,21 +771,17 @@ class Store {
         if (person.salary !== undefined && person.salary !== null) {
             if (typeof person.salary !== 'number' || person.salary < 0) throw new Error(`people[${idx}].salary måste vara number >= 0`);
         }
-
         if (typeof person.hourlyWage !== 'number' || person.hourlyWage < 0) throw new Error(`people[${idx}].hourlyWage måste vara number >= 0`);
-
         if (person.employerTaxRate !== undefined && person.employerTaxRate !== null) {
             if (typeof person.employerTaxRate !== 'number' || person.employerTaxRate < 0 || person.employerTaxRate > 1) {
                 throw new Error(`people[${idx}].employerTaxRate måste vara 0–1 (decimal)`);
             }
         }
-
         if (person.taxRate !== undefined && person.taxRate !== null) {
             if (typeof person.taxRate !== 'number' || person.taxRate < 0 || person.taxRate > 1) {
                 throw new Error(`people[${idx}].taxRate måste vara 0–1 (decimal)`);
             }
         }
-
         if (typeof person.employmentPct !== 'number' || person.employmentPct < 0 || person.employmentPct > 100) {
             throw new Error(`people[${idx}].employmentPct måste vara 0–100`);
         }
@@ -805,7 +793,6 @@ class Store {
             throw new Error(`people[${idx}].extraDaysStartBalance måste vara 0–365`);
         }
 
-        // grupper (kan heta groups och/eller groupIds)
         if (person.groups !== undefined) {
             if (!Array.isArray(person.groups)) throw new Error(`people[${idx}].groups måste vara array`);
             person.groups.forEach((groupId, groupIdx) => {
@@ -816,7 +803,6 @@ class Store {
             if (!Array.isArray(person.groupIds)) throw new Error(`people[${idx}].groupIds måste vara array`);
         }
 
-        // --- Personal-vy-fält (P0 kompat) ---
         if (person.name !== undefined && typeof person.name !== 'string') throw new Error(`people[${idx}].name måste vara string`);
         if (person.email !== undefined && typeof person.email !== 'string') throw new Error(`people[${idx}].email måste vara string`);
         if (person.phone !== undefined && person.phone !== null && typeof person.phone !== 'string') throw new Error(`people[${idx}].phone måste vara string|null`);
@@ -834,17 +820,16 @@ class Store {
         if (person.availability !== undefined) {
             if (!Array.isArray(person.availability)) throw new Error(`people[${idx}].availability måste vara array`);
         }
-
         if (person.skills && typeof person.skills === 'object') {
             const skillNames = ['KITCHEN', 'PACK', 'DISH', 'SYSTEM', 'ADMIN'];
             skillNames.forEach((skill) => {
                 if (person.skills[skill] !== undefined && typeof person.skills[skill] !== 'boolean') {
-                    throw new Error(`people[${idx}].skills.${skill} måste vara boolean`);
+                    throw new Error(`people[${idx}].skills.${skill} m��ste vara boolean`);
                 }
             });
         }
 
-        // --- AO-03: Nya person-fält (tolerant validering) ---
+        // AO-03
         if (person.employmentType !== undefined && !VALID_EMPLOYMENT_TYPES.includes(person.employmentType)) {
             throw new Error(`people[${idx}].employmentType måste vara "regular"|"substitute"`);
         }
@@ -867,6 +852,21 @@ class Store {
         }
         if (person.preferredDays !== undefined && !Array.isArray(person.preferredDays)) {
             throw new Error(`people[${idx}].preferredDays måste vara array`);
+        }
+
+        // AO-03B: Kostnads-fält per person
+        if (person.collectiveAgreement !== undefined && !VALID_COLLECTIVE_AGREEMENTS.includes(person.collectiveAgreement)) {
+            throw new Error(`people[${idx}].collectiveAgreement måste vara "HRF"|"Unionen"|"Kommunal"|"none"`);
+        }
+        if (person.vacationPayRate !== undefined) {
+            if (typeof person.vacationPayRate !== 'number' || person.vacationPayRate < 0 || person.vacationPayRate > 0.5) {
+                throw new Error(`people[${idx}].vacationPayRate måste vara 0–0.5`);
+            }
+        }
+        if (person.foraRate !== undefined) {
+            if (typeof person.foraRate !== 'number' || person.foraRate < 0 || person.foraRate > 0.2) {
+                throw new Error(`people[${idx}].foraRate måste vara 0–0.2`);
+            }
         }
     }
 
@@ -905,9 +905,15 @@ class Store {
         s.settings.hourlyWageIsDefault = typeof s.settings.hourlyWageIsDefault === 'boolean' ? s.settings.hourlyWageIsDefault : base.settings.hourlyWageIsDefault;
         s.settings.theme = s.settings.theme && typeof s.settings.theme === 'object' ? s.settings.theme : safeDeepClone(DEFAULT_THEME);
 
-        // AO-03: Nya settings-fält (additiv)
+        // AO-03
         if (typeof s.settings.helpAutoShow !== 'boolean') s.settings.helpAutoShow = true;
         if (!s.settings.helpDismissed || typeof s.settings.helpDismissed !== 'object') s.settings.helpDismissed = {};
+
+        // AO-03B: Kostnads-defaults i settings
+        if (typeof s.settings.defaultCollectiveAgreement !== 'string') s.settings.defaultCollectiveAgreement = 'HRF';
+        if (typeof s.settings.defaultVacationPayRate !== 'number') s.settings.defaultVacationPayRate = DEFAULT_COST_RATES.vacationPayRate;
+        if (typeof s.settings.defaultForaRate !== 'number') s.settings.defaultForaRate = DEFAULT_COST_RATES.foraRate;
+        if (typeof s.settings.defaultEmployerTaxRate !== 'number') s.settings.defaultEmployerTaxRate = DEFAULT_COST_RATES.employerTaxRate;
 
         if (!s.demand.groupDemands || typeof s.demand.groupDemands !== 'object') {
             s.demand.groupDemands = safeDeepClone(DEFAULT_DEMAND.groupDemands);
@@ -934,7 +940,7 @@ class Store {
         s.shifts = normalizeShiftsMap(s.shifts, DEFAULT_SHIFTS);
         s.groupShifts = normalizeGroupShifts(s.groupShifts, s.groups, s.shifts, DEFAULT_GROUP_SHIFTS);
 
-        // AO-03: Nya top-level nycklar (additiv, tomma defaults om de saknas)
+        // AO-03
         if (!s.shiftTemplates || typeof s.shiftTemplates !== 'object') s.shiftTemplates = {};
         if (!s.weekTemplates || typeof s.weekTemplates !== 'object') s.weekTemplates = {};
         if (!s.calendarWeeks || typeof s.calendarWeeks !== 'object') s.calendarWeeks = {};
@@ -943,11 +949,9 @@ class Store {
         if (!Array.isArray(s.vacancies)) s.vacancies = [];
         if (!Array.isArray(s.changeLog)) s.changeLog = [];
 
-        // AO-03: Nya schedule-nycklar (additiv)
         if (!s.schedule.entries || typeof s.schedule.entries !== 'object') s.schedule.entries = {};
         if (!Array.isArray(s.schedule.lockedWeeks)) s.schedule.lockedWeeks = [];
 
-        // P0: bevara personal-fält (normalizePerson uppdaterad med AO-03-fält)
         s.people = (s.people || []).map((p) => normalizePerson(p));
 
         if (s.schedule && Array.isArray(s.schedule.months)) {
@@ -974,7 +978,6 @@ class Store {
             schedule: {
                 year,
                 months,
-                // AO-03: Nya schedule-nycklar
                 entries: {},
                 lockedWeeks: [],
             },
@@ -988,9 +991,13 @@ class Store {
                 enableP1Streak10: true,
                 summaryToleranceHours: 0.25,
                 theme: safeDeepClone(DEFAULT_THEME),
-                // AO-03: Nya settings-fält
                 helpAutoShow: true,
                 helpDismissed: {},
+                // AO-03B: Kostnads-defaults
+                defaultCollectiveAgreement: 'HRF',
+                defaultVacationPayRate: 0.12,
+                defaultForaRate: 0.043,
+                defaultEmployerTaxRate: 0.3142,
             },
             demand: safeDeepClone(DEFAULT_DEMAND),
             kitchenCore: { enabled: true, corePersonIds: [], minCorePerDay: 1 },
@@ -1007,7 +1014,6 @@ class Store {
                     twilioFromNumber: '',
                 },
             },
-            // AO-03: Nya top-level nycklar
             shiftTemplates: {},
             weekTemplates: {},
             calendarWeeks: {},
@@ -1018,9 +1024,8 @@ class Store {
         };
     }
 }
-
 /* ========================================================================
-   BLOCK 7: SINGLETON INSTANCE & EXPORT — OFÖRÄNDRAD
+   BLOCK 7: SINGLETON INSTANCE & EXPORT
    ======================================================================== */
 
 let storeInstance = null;
@@ -1118,7 +1123,6 @@ function normalizeGroupsMap(groups, fallback) {
             name: String(g.name ?? id),
             color: typeof g.color === 'string' ? g.color : (fallback[id]?.color || '#777'),
             textColor: typeof g.textColor === 'string' ? g.textColor : (fallback[id]?.textColor || '#fff'),
-            // AO-03: Bevara shiftTemplateIds om de finns
             ...(Array.isArray(g.shiftTemplateIds) ? { shiftTemplateIds: g.shiftTemplateIds } : {}),
         };
     });
@@ -1233,6 +1237,13 @@ function normalizePerson(p) {
     const avoidShifts = Array.isArray(person.avoidShifts) ? person.avoidShifts : [];
     const preferredDays = Array.isArray(person.preferredDays) ? person.preferredDays : [];
 
+    // AO-03B: Kostnads-fält
+    const collectiveAgreement = VALID_COLLECTIVE_AGREEMENTS.includes(person.collectiveAgreement) ? person.collectiveAgreement : 'HRF';
+    const vacationPayRate = (typeof person.vacationPayRate === 'number' && person.vacationPayRate >= 0 && person.vacationPayRate <= 0.5)
+        ? person.vacationPayRate : DEFAULT_COST_RATES.vacationPayRate;
+    const foraRate = (typeof person.foraRate === 'number' && person.foraRate >= 0 && person.foraRate <= 0.2)
+        ? person.foraRate : DEFAULT_COST_RATES.foraRate;
+
     return {
         id,
 
@@ -1274,7 +1285,7 @@ function normalizePerson(p) {
         ...(person.taxRate !== undefined ? { taxRate: toNumberOr(0, person.taxRate) } : {}),
         ...(person.age !== undefined ? { age: toNumberOr(0, person.age) } : {}),
 
-        // AO-03: Nya fält (alltid med i output)
+        // AO-03
         employmentType,
         salaryType,
         calculationPeriodStart,
@@ -1282,6 +1293,11 @@ function normalizePerson(p) {
         preferredShifts,
         avoidShifts,
         preferredDays,
+
+        // AO-03B
+        collectiveAgreement,
+        vacationPayRate,
+        foraRate,
     };
 }
 
