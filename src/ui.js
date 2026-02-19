@@ -1,9 +1,10 @@
 /*
- * UI.JS — Shared UI Utilities (UPPDATERAD)
+ * UI.JS — Shared UI Utilities (UPPDATERAD AO-05)
  *
  * Nytt i denna version:
  * - P0: EN källa för nav-länkar: NAV_ITEMS (används av navbar + quicklinks)
  * - P0: renderQuickLinks(container, opts) -> rutor/snabbnavigation för alla topbar routes
+ * - AO-05: "Skift" → "Grundpass" i navbar + quicklinks
  *
  * Funktioner:
  * - renderNavbar: Visa navigeringsfältet
@@ -22,7 +23,7 @@ import { diagnostics } from './diagnostics.js';
  * ============================================================ */
 const NAV_ITEMS = [
   { route: 'home',    label: 'Hem',            icon: '🏠', desc: 'Startsida' },
-  { route: 'shifts',  label: 'Skift',          icon: '📋', desc: 'Planera skift' },
+  { route: 'shifts',  label: 'Grundpass',      icon: '📋', desc: 'Hantera passmallar' },    // AO-05
   { route: 'groups',  label: 'Grupper',        icon: '👥', desc: 'Hantera grupper' },
   { route: 'personal',label: 'Personal',       icon: '👤', desc: 'Hantera personaldata' },
   { route: 'calendar',label: 'Kalender',       icon: '📅', desc: 'Redigera schema' },
@@ -53,7 +54,6 @@ export function renderNavbar(container) {
   try {
     const linksHtml = NAV_ITEMS.map(item => {
       const href = routeToHash(item.route);
-      // icon + label för bättre visuellt matchning (som du visar i screenshots)
       return `<a href="${escapeHtml(href)}" class="nav-link">${escapeHtml(item.icon)} ${escapeHtml(item.label)}</a>`;
     }).join('');
 
@@ -85,11 +85,6 @@ export function renderNavbar(container) {
 
 /* ============================================================
  * BLOCK 3 — QuickLinks (rutor/snabbnavigation)
- * - Kan användas på valfri sida för att visa rutor för alla topbar-länkar
- * - opts:
- *   - title: rubrik (default "Snabb-navigation")
- *   - currentRoute: markerar aktiv (om din CSS stödjer .active)
- *   - excludeRoutes: array, routes att dölja (t.ex. ['home'] om du vill)
  * ============================================================ */
 export function renderQuickLinks(container, opts = {}) {
   if (!container) return;
@@ -103,7 +98,6 @@ export function renderQuickLinks(container, opts = {}) {
   const cardsHtml = items.map(item => {
     const href = routeToHash(item.route);
     const isActive = item.route === currentRoute;
-    // Återanvänder befintliga home-klasser så vi slipper ny CSS
     return `
       <a href="${escapeHtml(href)}" class="home-nav-item${isActive ? ' active' : ''}">
         <span class="home-nav-item-icon">${escapeHtml(item.icon)}</span>
@@ -113,8 +107,6 @@ export function renderQuickLinks(container, opts = {}) {
     `;
   }).join('');
 
-  // Vi använder samma wrapper-klasser som Home redan använder (home-nav-section/home-nav-grid)
-  // Om en sida inte har "home-container/home-content" gör det inget; dessa sektioner funkar ändå.
   const html = `
     <div class="home-nav-section">
       <h2>${escapeHtml(title)}</h2>
@@ -137,7 +129,6 @@ export function renderError(container, errorOrReport) {
   }
 
   try {
-    // Konvertera Error till DiagnosticReport om nödvändigt
     let report;
 
     if (errorOrReport instanceof Error) {
@@ -154,7 +145,6 @@ export function renderError(container, errorOrReport) {
     const publicMsg = report.getPublicMessage();
     const debugMsg = report.getDebugMessage();
 
-    // Hämta modul-healthcheck
     const moduleHealth = diagnostics.getModuleHealth();
     const allModuleStatuses = diagnostics.getAllModuleStatuses();
 
@@ -219,7 +209,6 @@ export function renderError(container, errorOrReport) {
     console.log('✓ Error-panel renderad');
   } catch (err) {
     console.error('❌ KRITISKT: Error-panel render failed:', err);
-    // Fallback: Visa simpel text-error
     if (container) {
       container.innerHTML = `
         <div style="padding: 2rem; background: #ffe8e8; border: 2px solid #d63031; border-radius: 8px; color: #721c24;">
