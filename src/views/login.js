@@ -1,143 +1,147 @@
-/*
- * LOGIN.JS — Login View (BUGFIX v2)
- * 
- * AO-06 Update:
- * - Secure rendering (no innerHTML with user input)
- * - Fail-closed validation
- * - Safe error handling via Diagnostics
- * - BUGFIX: Fixed sessionStorage parsing, form reset, and error fallback
- */
+/* ============================================================
+ * FIL: src/views/login-pin.js
+ * NAMN: PIN-LOGIN.JS — PIN-based Login View
+ *
+ * AUTOPATCH (utan att ta bort funktioner):
+ * - Behåller sessionStorage (schema_user) som extra info.
+ * - MEN: Router-kontrakt gäller: auth = store.getState().isLoggedIn
+ * - Därför: exporterar inte längre isLoggedIn() som "sanning" för routing.
+ *   (Funktionen finns kvar internt som hjälp om du vill visa status, men
+ *    routern ska inte importera den.)
+ *
+ * OBS: Den här filen ritar UI direkt i container och fungerar utan store,
+ * men om ctx.store finns så uppdateras store för att routern ska släppa in.
+ *
+ * BUGFIX: Keyboard-lyssnaren har nu en DOM-guard som kollar att PIN-padden
+ * fortfarande finns i DOM. Utan detta blockerade lyssnaren siffertangenter
+ * och backspace på ALLA vyer (t.ex. lönefältet på Personal-sidan).
+ * ============================================================ */
 
 import { showSuccess, showWarning } from '../ui.js';
 import { reportError } from '../diagnostics.js';
 
-/**
- * Check if user is logged in
- */
-export function isLoggedIn() {
+/* ============================================================
+ * BLOCK 1 — Intern hjälp: läsa session (extra info, ej routing-sanning)
+ * ============================================================ */
+// NOTE: Behålls för kompatibilitet/debug, men ska inte styra routing.
+// INLINE: Om JSON är trasig -> fail-closed = "ej inloggad".
+function readSessionUser() {
     try {
-        const state = typeof window !== 'undefined' 
-            ? sessionStorage.getItem('schema_user') 
-            : null;
-        
-        if (!state) return false;
-        
-        const parsed = JSON.parse(state);
-        return parsed?.isLoggedIn === true;
+        if (typeof window === 'undefined') return null;
+        const raw = sessionStorage.getItem('schema_user');
+        if (!raw) return null;
+        return JSON.parse(raw);
     } catch (err) {
-        console.warn('⚠️ Error checking login status:', err);
-        return false;
+        console.warn('⚠️ sessionStorage schema_user kunde inte läsas:', err);
+        return null;
     }
 }
 
-/**
- * Render login view
- */
+/* ============================================================
+ * BLOCK 2 — Export: renderLogin (view)
+ * ============================================================ */
 export function renderLogin(container, ctx) {
     try {
-        if (!container) {
-            throw new Error('Container element missing');
-        }
+        /* ---------- BLOCK 2.1 — Guards ---------- */
+        if (!container) throw new Error('Container element missing');
 
-        // Clear any previous content
-        while (container.firstChild) {
-            container.removeChild(container.firstChild);
-        }
+        // Clear any previous content (safe)
+        while (container.firstChild) container.removeChild(container.firstChild);
 
-        // Create login page wrapper
+        /* ---------- BLOCK 2.2 — DOM: Wrapper + Card ---------- */
         const loginPage = document.createElement('div');
         loginPage.className = 'login-page';
 
-        // Create login container
         const loginContainer = document.createElement('div');
         loginContainer.className = 'login-container';
 
-        // Create login card
         const loginCard = document.createElement('div');
-        loginCard.className = 'login-card';
+        loginCard.className = 'login-card pin-login-card';
 
-        // Header
+        /* ---------- BLOCK 2.3 — Header ---------- */
         const title = document.createElement('h1');
         title.textContent = '📅 Schema-Program';
 
         const subtitle = document.createElement('h2');
-        subtitle.textContent = 'Logga in';
+        subtitle.textContent = 'Ange PIN-kod';
 
-        // Form
-        const form = document.createElement('form');
-        form.className = 'login-form';
-        form.id = 'login-form';
+        /* ---------- BLOCK 2.4 — PIN display (4 dots) ---------- */
+        const pinDisplay = document.createElement('div');
+        pinDisplay.className = 'pin-display';
+        pinDisplay.id = 'pin-display';
 
-        // Username field
-        const usernameGroup = document.createElement('div');
-        usernameGroup.className = 'form-group';
+        for (let i = 0; i < 4; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'pin-dot';
+            dot.id = `pin-dot-${i}`;
+            pinDisplay.appendChild(dot);
+        }
 
-        const usernameLabel = document.createElement('label');
-        usernameLabel.textContent = 'Användarnamn';
-        usernameLabel.setAttribute('for', 'login-username');
+        /* ---------- BLOCK 2.5 — Hidden input (stores pin) ---------- */
+        const pinInput = document.createElement('input');
+        pinInput.type = 'password';
+        pinInput.id = 'pin-input';
+        pinInput.style.position = 'absolute';
+        pinInput.style.left = '-9999px';
+        pinInput.maxLength = 4;
+        pinInput.pattern = '[0-9]{4}';
 
-        const usernameInput = document.createElement('input');
-        usernameInput.type = 'text';
-        usernameInput.id = 'login-username';
-        usernameInput.className = 'form-control';
-        usernameInput.placeholder = 'Ex: demo';
-        usernameInput.required = true;
-        usernameInput.autocomplete = 'username';
+        /* ---------- BLOCK 2.6 — PIN pad (buttons) ---------- */
+        const pinPad = document.createElement('div');
+        pinPad.className = 'pin-pad';
 
-        usernameGroup.appendChild(usernameLabel);
-        usernameGroup.appendChild(usernameInput);
+        for (let i = 1; i <= 9; i++) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'pin-button';
+            btn.textContent = String(i);
+            btn.dataset.value = String(i);
+            pinPad.appendChild(btn);
+        }
 
-        // Password field
-        const passwordGroup = document.createElement('div');
-        passwordGroup.className = 'form-group';
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'pin-button pin-button-clear';
+        clearBtn.textContent = '⌫';
+        clearBtn.title = 'Radera';
 
-        const passwordLabel = document.createElement('label');
-        passwordLabel.textContent = 'Lösenord';
-        passwordLabel.setAttribute('for', 'login-password');
+        const zeroBtn = document.createElement('button');
+        zeroBtn.type = 'button';
+        zeroBtn.className = 'pin-button';
+        zeroBtn.textContent = '0';
+        zeroBtn.dataset.value = '0';
 
-        const passwordInput = document.createElement('input');
-        passwordInput.type = 'password';
-        passwordInput.id = 'login-password';
-        passwordInput.className = 'form-control';
-        passwordInput.placeholder = 'Ditt lösenord';
-        passwordInput.required = true;
-        passwordInput.autocomplete = 'current-password';
-
-        passwordGroup.appendChild(passwordLabel);
-        passwordGroup.appendChild(passwordInput);
-
-        // Submit button
         const submitBtn = document.createElement('button');
-        submitBtn.type = 'submit';
-        submitBtn.className = 'btn btn-primary btn-login';
-        submitBtn.textContent = '🔓 Logga in';
+        submitBtn.type = 'button';
+        submitBtn.className = 'pin-button pin-button-submit';
+        submitBtn.textContent = '✓';
+        submitBtn.title = 'Logga in';
+        submitBtn.disabled = true;
 
-        form.appendChild(usernameGroup);
-        form.appendChild(passwordGroup);
-        form.appendChild(submitBtn);
+        pinPad.appendChild(clearBtn);
+        pinPad.appendChild(zeroBtn);
+        pinPad.appendChild(submitBtn);
 
-        // Status message (initially hidden)
+        /* ---------- BLOCK 2.7 — Status + Demo-info + Footer ---------- */
         const statusDiv = document.createElement('div');
         statusDiv.className = 'login-status';
         statusDiv.id = 'login-status';
         statusDiv.style.display = 'none';
 
-        // Demo info
         const demoInfo = document.createElement('div');
         demoInfo.className = 'alert alert-info';
         demoInfo.style.marginTop = '1rem';
 
         const demoTitle = document.createElement('strong');
-        demoTitle.textContent = 'Demo-inloggning:';
+        demoTitle.textContent = 'Demo PIN-kod:';
 
         const demoParagraph = document.createElement('p');
         demoParagraph.style.margin = '0.5rem 0 0 0';
-        demoParagraph.textContent = 'Användarnamn: demo | Lösenord: demo123';
+        demoParagraph.textContent = '1234';
 
         demoInfo.appendChild(demoTitle);
         demoInfo.appendChild(demoParagraph);
 
-        // Footer
         const footer = document.createElement('div');
         footer.className = 'login-footer';
 
@@ -147,162 +151,180 @@ export function renderLogin(container, ctx) {
 
         footer.appendChild(footerText);
 
-        // Assemble card
+        /* ---------- BLOCK 2.8 — Assemble ---------- */
         loginCard.appendChild(title);
         loginCard.appendChild(subtitle);
-        loginCard.appendChild(form);
+        loginCard.appendChild(pinDisplay);
+        loginCard.appendChild(pinInput);
+        loginCard.appendChild(pinPad);
         loginCard.appendChild(statusDiv);
         loginCard.appendChild(demoInfo);
         loginCard.appendChild(footer);
 
-        // Assemble container
         loginContainer.appendChild(loginCard);
-
-        // Assemble page
         loginPage.appendChild(loginContainer);
-
-        // Add to DOM
         container.appendChild(loginPage);
 
-        console.log('✓ Login form rendered');
+        console.log('✓ PIN login rendered');
 
-        // Setup event listeners
-        setupLoginListeners(form, statusDiv, ctx);
-
+        /* ---------- BLOCK 2.9 — Activate listeners ---------- */
+        setupPinListeners(pinInput, pinDisplay, pinPad, submitBtn, statusDiv, ctx);
     } catch (err) {
-        console.error('❌ Error rendering login:', err);
+        console.error('❌ Error rendering PIN login:', err);
         reportError(
-            'LOGIN_RENDER_ERROR',
-            'LOGIN_VIEW',
-            'src/views/login.js',
-            'Inloggningssidan kunde inte renderas'
+            'PIN_LOGIN_RENDER_ERROR',
+            'PIN_LOGIN_VIEW',
+            'src/views/login-pin.js',
+            'PIN-inloggningssidan kunde inte renderas'
         );
-
-        // Fallback: Safe DOM-based error display
-        try {
-            if (container) {
-                while (container.firstChild) {
-                    container.removeChild(container.firstChild);
-                }
-
-                const errorDiv = document.createElement('div');
-                errorDiv.style.cssText = 'padding: 2rem; text-align: center; background: #ffe8e8; border-radius: 8px; margin: 2rem;';
-
-                const errorTitle = document.createElement('h2');
-                errorTitle.textContent = '⚠️ Ett fel uppstod';
-                errorTitle.style.color = '#721c24';
-
-                const errorMsg = document.createElement('p');
-                errorMsg.textContent = 'Inloggningssidan kunde inte läsas in. Försök ladda om sidan.';
-                errorMsg.style.color = '#721c24';
-
-                const reloadBtn = document.createElement('button');
-                reloadBtn.className = 'btn btn-primary';
-                reloadBtn.textContent = '🔄 Ladda om';
-                reloadBtn.onclick = () => window.location.reload();
-
-                errorDiv.appendChild(errorTitle);
-                errorDiv.appendChild(errorMsg);
-                errorDiv.appendChild(reloadBtn);
-
-                container.appendChild(errorDiv);
-            }
-        } catch (fallbackErr) {
-            console.error('❌ CRITICAL: Fallback error rendering failed:', fallbackErr);
-        }
+        renderErrorFallback(container);
     }
 }
 
-/**
- * Setup login form event listeners
- */
-function setupLoginListeners(form, statusDiv, ctx) {
+/* ============================================================
+ * BLOCK 3 — PIN listeners (UI events)
+ *
+ * BUGFIX: Keyboard-lyssnaren kollar nu att .pin-pad finns i DOM
+ * innan den kör preventDefault(). Utan detta fångades siffror,
+ * backspace och enter globalt — även på andra vyer (t.ex. Personal).
+ * ============================================================ */
+function setupPinListeners(pinInput, pinDisplay, pinPad, submitBtn, statusDiv, ctx) {
     try {
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            handleLogin(form, statusDiv, ctx);
+        let currentPin = '';
+
+        // UPDATE: uppdaterar prickarna + submit enabled
+        function updateDisplay() {
+            for (let i = 0; i < 4; i++) {
+                const dot = document.getElementById(`pin-dot-${i}`);
+                if (!dot) continue;
+
+                if (i < currentPin.length) dot.classList.add('filled');
+                else dot.classList.remove('filled');
+            }
+            submitBtn.disabled = currentPin.length !== 4;
+        }
+
+        function addDigit(digit) {
+            if (currentPin.length >= 4) return;
+            currentPin += digit;
+            pinInput.value = currentPin;
+            updateDisplay();
+
+            // Auto-submit på 4 siffror (behåller funktion)
+            if (currentPin.length === 4) {
+                setTimeout(() => handlePinSubmit(currentPin, statusDiv, ctx), 200);
+            }
+        }
+
+        function clearDigit() {
+            if (currentPin.length === 0) return;
+            currentPin = currentPin.slice(0, -1);
+            pinInput.value = currentPin;
+            updateDisplay();
+            statusDiv.style.display = 'none';
+        }
+
+        function resetPin() {
+            currentPin = '';
+            pinInput.value = '';
+            updateDisplay();
+        }
+
+        // Buttons 0–9
+        const numberButtons = pinPad.querySelectorAll('.pin-button[data-value]');
+        numberButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const value = btn.dataset.value;
+                if (value) addDigit(value);
+            });
         });
 
-        console.log('✓ Login listeners setup');
+        // Clear
+        const clearBtnEl = pinPad.querySelector('.pin-button-clear');
+        if (clearBtnEl) clearBtnEl.addEventListener('click', clearDigit);
 
+        // Submit
+        submitBtn.addEventListener('click', () => {
+            if (currentPin.length === 4) handlePinSubmit(currentPin, statusDiv, ctx);
+        });
+
+        // Keyboard input
+        // BUGFIX: Guard — bara aktiv om PIN-padden fortfarande finns i DOM.
+        // Utan denna guard fångades tangenter globalt även på andra vyer
+        // (t.ex. lönefältet på Personal-sidan kunde inte ta emot siffror).
+        document.addEventListener('keydown', (e) => {
+            if (!document.querySelector('.pin-pad')) return;
+
+            if (e.key >= '0' && e.key <= '9') {
+                e.preventDefault();
+                addDigit(e.key);
+            } else if (e.key === 'Backspace' || e.key === 'Delete') {
+                e.preventDefault();
+                clearDigit();
+            } else if (e.key === 'Enter' && currentPin.length === 4) {
+                e.preventDefault();
+                handlePinSubmit(currentPin, statusDiv, ctx);
+            }
+        });
+
+        // Keep feature: expose reset for after failed login
+        pinPad.dataset.resetPin = 'true';
+        window._resetPin = resetPin;
+
+        console.log('✓ PIN listeners setup');
     } catch (err) {
-        console.error('❌ Error setting up login listeners:', err);
+        console.error('❌ Error setting up PIN listeners:', err);
         reportError(
-            'LOGIN_LISTENER_SETUP_ERROR',
-            'LOGIN_VIEW',
-            'src/views/login.js',
-            'Login-formuläret kunde inte initialiseras'
+            'PIN_LISTENER_SETUP_ERROR',
+            'PIN_LOGIN_VIEW',
+            'src/views/login-pin.js',
+            'PIN-tangentbordet kunde inte initialiseras'
         );
     }
 }
 
-/**
- * Handle login form submission
- */
-function handleLogin(form, statusDiv, ctx) {
+/* ============================================================
+ * BLOCK 4 — PIN submit (validation + "login")
+ * ============================================================ */
+function handlePinSubmit(pin, statusDiv, ctx) {
     try {
-        // Get input values (safe extraction)
-        const usernameInput = form.querySelector('#login-username');
-        const passwordInput = form.querySelector('#login-password');
-
-        if (!usernameInput || !passwordInput) {
-            throw new Error('Form inputs not found');
-        }
-
-        const username = (usernameInput.value || '').trim();
-        const password = passwordInput.value || '';
-
         // Fail-closed validation
-        if (!username || username.length < 2) {
-            showWarning('⚠️ Användarnamn krävs (min 2 tecken)');
-            displayStatus(statusDiv, 'error', 'Användarnamn krävs');
-            usernameInput.focus();
+        if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+            showWarning('⚠️ PIN måste vara exakt 4 siffror');
+            displayStatus(statusDiv, 'error', 'Ogiltig PIN-kod');
+            if (window._resetPin) window._resetPin();
             return;
         }
 
-        if (!password || password.length < 4) {
-            showWarning('⚠️ Lösenord krävs (min 4 tecken)');
-            displayStatus(statusDiv, 'error', 'Lösenord krävs');
-            passwordInput.focus();
-            return;
-        }
+        displayStatus(statusDiv, 'info', '🔄 Verifierar PIN...');
 
-        // Show loading state
-        const submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.textContent = '🔄 Loggar in...';
-        }
-
-        // Simulate API call (in real app: call backend)
+        // Simulated validation (behåller funktion)
         setTimeout(() => {
             try {
-                // Fail-closed: only demo/demo123
-                const isValid = username.toLowerCase() === 'demo' && password === 'demo123';
+                const isValid = pin === '1234';
 
                 if (isValid) {
-                    console.log('✓ Login successful');
+                    console.log('✓ PIN login successful');
 
-                    // Save login state safely
+                    // FEATURE KEPT: sessionStorage "schema_user" (extra info)
                     try {
                         const loginData = {
                             isLoggedIn: true,
-                            username: username,
-                            loginTime: new Date().toISOString()
+                            username: 'demo',
+                            loginTime: new Date().toISOString(),
+                            loginMethod: 'PIN'
                         };
                         sessionStorage.setItem('schema_user', JSON.stringify(loginData));
                     } catch (storageErr) {
                         console.warn('⚠️ sessionStorage not available:', storageErr);
                     }
 
-                    // Update app context
-                    if (ctx?.store) {
+                    // CONTRACT: store är routing-sanningen → uppdatera store säkert
+                    if (ctx?.store && typeof ctx.store.setState === 'function') {
                         try {
-                            const state = ctx.store.getState();
                             ctx.store.setState({
-                                ...state,
                                 isLoggedIn: true,
-                                user: { name: username }
+                                user: { name: 'demo' }
                             });
                         } catch (stateErr) {
                             console.warn('⚠️ Failed to update state:', stateErr);
@@ -310,67 +332,56 @@ function handleLogin(form, statusDiv, ctx) {
                     }
 
                     showSuccess('✓ Inloggning lyckades!');
-                    displayStatus(statusDiv, 'success', '✓ Inloggning lyckades');
+                    displayStatus(statusDiv, 'success', '✓ PIN godkänd');
 
-                    // Redirect to home
                     setTimeout(() => {
                         window.location.hash = '#/home';
                     }, 500);
-
                 } else {
-                    console.warn('❌ Login failed: Invalid credentials');
-                    displayStatus(statusDiv, 'error', '❌ Ogiltiga inloggningsuppgifter');
-                    showWarning('⚠️ Ogiltiga inloggningsuppgifter');
+                    console.warn('❌ PIN login failed: Invalid PIN');
+                    displayStatus(statusDiv, 'error', '❌ Felaktig PIN-kod');
+                    showWarning('⚠️ Felaktig PIN-kod');
 
-                    // Reset form safely
-                    try {
-                        form.reset();
-                        usernameInput.focus();
-                    } catch (resetErr) {
-                        console.warn('⚠️ Failed to reset form:', resetErr);
+                    if (window._resetPin) {
+                        setTimeout(() => window._resetPin(), 1000);
                     }
                 }
-
             } catch (err) {
-                console.error('❌ Login processing error:', err);
-                displayStatus(statusDiv, 'error', '❌ Ett fel uppstod vid inloggning');
+                console.error('❌ PIN processing error:', err);
+                displayStatus(statusDiv, 'error', '❌ Ett fel uppstod');
                 showWarning('⚠️ Ett fel uppstod');
-            } finally {
-                // Reset button
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = '🔓 Logga in';
-                }
+                if (window._resetPin) window._resetPin();
             }
         }, 800);
-
     } catch (err) {
-        console.error('❌ Error handling login:', err);
+        console.error('❌ Error handling PIN submit:', err);
         reportError(
-            'LOGIN_HANDLE_ERROR',
-            'LOGIN_VIEW',
-            'src/views/login.js',
-            'Inloggning kunde inte bearbetas'
+            'PIN_SUBMIT_ERROR',
+            'PIN_LOGIN_VIEW',
+            'src/views/login-pin.js',
+            'PIN-verifiering misslyckades'
         );
         showWarning('⚠️ Ett kritiskt fel uppstod');
     }
 }
 
-/**
- * Display status message safely (DOM-based, no innerHTML)
- */
+/* ============================================================
+ * BLOCK 5 — Status UI helper (safe textContent)
+ * ============================================================ */
 function displayStatus(statusDiv, type, message) {
     if (!statusDiv) return;
 
     try {
-        // Clear previous content safely
-        while (statusDiv.firstChild) {
-            statusDiv.removeChild(statusDiv.firstChild);
-        }
+        while (statusDiv.firstChild) statusDiv.removeChild(statusDiv.firstChild);
 
-        // Create status element
         const statusElement = document.createElement('div');
-        statusElement.className = `alert alert-${type === 'success' ? 'success' : 'danger'}`;
+
+        let className = 'alert ';
+        if (type === 'success') className += 'alert-success';
+        else if (type === 'error') className += 'alert-danger';
+        else className += 'alert-info';
+
+        statusElement.className = className;
 
         const messageElement = document.createElement('p');
         messageElement.textContent = message;
@@ -379,8 +390,43 @@ function displayStatus(statusDiv, type, message) {
         statusElement.appendChild(messageElement);
         statusDiv.appendChild(statusElement);
         statusDiv.style.display = 'block';
-
     } catch (err) {
         console.error('❌ Error displaying status:', err);
+    }
+}
+
+/* ============================================================
+ * BLOCK 6 — Fail-closed fallback
+ * ============================================================ */
+function renderErrorFallback(container) {
+    try {
+        if (!container) return;
+
+        while (container.firstChild) container.removeChild(container.firstChild);
+
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText =
+            'padding: 2rem; text-align: center; background: #ffe8e8; border-radius: 8px; margin: 2rem;';
+
+        const errorTitle = document.createElement('h2');
+        errorTitle.textContent = '⚠️ Ett fel uppstod';
+        errorTitle.style.color = '#721c24';
+
+        const errorMsg = document.createElement('p');
+        errorMsg.textContent = 'PIN-inloggningssidan kunde inte läsas in. Försök ladda om sidan.';
+        errorMsg.style.color = '#721c24';
+
+        const reloadBtn = document.createElement('button');
+        reloadBtn.className = 'btn btn-primary';
+        reloadBtn.textContent = '🔄 Ladda om';
+        reloadBtn.onclick = () => window.location.reload();
+
+        errorDiv.appendChild(errorTitle);
+        errorDiv.appendChild(errorMsg);
+        errorDiv.appendChild(reloadBtn);
+
+        container.appendChild(errorDiv);
+    } catch (fallbackErr) {
+        console.error('❌ CRITICAL: Fallback error rendering failed:', fallbackErr);
     }
 }
