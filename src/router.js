@@ -37,17 +37,6 @@ function safeClear(el) {
     while (el.firstChild) el.removeChild(el.firstChild);
 }
 
-function el(tag, className) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    return node;
-}
-
-function addText(node, text) {
-    node.textContent = String(text ?? '');
-    return node;
-}
-
 /* ============================================================
  * BLOCK 3 — Route-map  (INGA PLACEHOLDERS KVAR!)
  * ============================================================ */
@@ -83,6 +72,7 @@ function debugLog(message) {
 
 /* ============================================================
  * BLOCK 5 — Auth (SINGLE SOURCE OF TRUTH)
+ * - Fail-closed: om oklart -> false
  * ============================================================ */
 function isLoggedIn() {
     try {
@@ -107,7 +97,8 @@ function getDefaultRoute() {
 }
 
 /* ============================================================
- * BLOCK 6 — Parse route (hash)
+ * BLOCK 6 — Parse route (hash) — robust normalisering
+ * - Fail-closed: okänd route -> default
  * ============================================================ */
 function normalizeRouteName(name) {
     let route = String(name ?? '');
@@ -127,6 +118,7 @@ function parseRoute() {
 
 /* ============================================================
  * BLOCK 7 — Navbar (topbar)
+ * - Login ska vara "ren" sida utan navbar
  * ============================================================ */
 function setTopbarVisible(isVisible) {
     const navbar = document.getElementById('navbar');
