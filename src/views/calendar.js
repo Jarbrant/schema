@@ -1,10 +1,14 @@
 /*
- * AO-07 — Schedule View (Calendar) — v2.2 STANDALONE (AUTOPATCH)
+ * AO-07 — Schedule View (Calendar) — v2.3 STANDALONE (AUTOPATCH)
  * FIL: src/views/calendar.js
  *
+ * Fixar v2.3:
+ *   - ◀ ▶ Idag fungerar (listeners dedupliceras via AbortController)
+ *   - weekOffset max 53 (inte 52)
+ *   - "Idag" beräknar korrekt veckooffset
  * Fixar v2.2:
  *   - Modal-stängning (overlay-klick + ×-knapp)
- *   - Assign skapar months/days om de saknas i schedule
+ *   - Assign skapar months/days om de saknas
  *   - Tidsredigering i assign-modalen
  */
 
@@ -31,6 +35,9 @@ const STATUS_COLORS = {
     X:{bg:'#bbdefb',text:'#0d47a1',border:'#42a5f5'}, EXTRA:{bg:'#424242',text:'#ffeb3b',border:'#616161'},
 };
 
+/* FIX v2.3: Max antal veckor i ett år */
+const MAX_WEEK_OFFSET = 53;
+
 /* ── MAIN RENDER ── */
 export function renderCalendar(container, ctx) {
     if (!container) return;
@@ -50,7 +57,6 @@ export function renderCalendar(container, ctx) {
         const groupShifts = (typeof state.groupShifts === 'object' && state.groupShifts) || {};
         const people = Array.isArray(state.people) ? state.people.filter(p => p.isActive) : [];
         const allPeople = Array.isArray(state.people) ? state.people : [];
-        const demand = state.demand || {};
         const absences = Array.isArray(state.absences) ? state.absences : [];
         const vacancies = Array.isArray(state.vacancies) ? state.vacancies : [];
         const weekTemplates = (typeof state.weekTemplates === 'object' && state.weekTemplates) || {};
@@ -58,9 +64,8 @@ export function renderCalendar(container, ctx) {
         const lockedWeeks = Array.isArray(state.schedule.lockedWeeks) ? state.schedule.lockedWeeks : [];
 
         if (!ctx._cal) {
-            const now = new Date();
             ctx._cal = {
-                weekOffset: Math.max(0, Math.floor((now - new Date(year, 0, 1)) / (7*24*60*60*1000))),
+                weekOffset: calcCurrentWeekOffset(year),
                 collapsedGroups: {}, assignModal: null, editModal: null, generatePreview: null,
             };
         }
@@ -88,17 +93,30 @@ export function renderCalendar(container, ctx) {
                             <span class="cal-day-date">${formatDayMonth(d)}</span>
                         </div>`).join('')}
                 </div>
-                ${renderGroupSections(weekSchedule, weekDates, groups, shifts, shiftTemplates, groupShifts, people, demand, absences, vacancies, cal, isLocked)}
+                ${renderGroupSections(weekSchedule, weekDates, groups, shifts, shiftTemplates, groupShifts, people, absences, vacancies, cal, isLocked)}
                 ${cal.assignModal ? renderAssignModal(cal.assignModal, groups, shifts, shiftTemplates, groupShifts, people, absences, state) : ''}
                 ${cal.editModal ? renderEditModal(cal.editModal, groups, shifts, shiftTemplates, people, state) : ''}
             </div>`;
 
-        setupListeners(container, store, ctx, weekDates, isLocked, linkedTemplate);
+        /* FIX v2.3: Avbryt gamla listeners innan nya läggs till */
+        setupListeners(container, store, ctx, isLocked, linkedTemplate);
         setupDragAndDrop(container, store, ctx, isLocked);
     } catch (err) {
         console.error('❌ renderCalendar kraschade:', err);
         container.innerHTML = `<div class="cal-error"><h2>❌ Fel</h2><p>${escapeHtml(String(err.message))}</p></div>`;
     }
+}
+
+/* FIX v2.3: Beräkna veckooffset för "idag" korrekt */
+function calcCurrentWeekOffset(year) {
+    const now = new Date();
+    const jan1 = new Date(year, 0, 1);
+    const jan1Day = jan1.getDay();
+    const daysToMonday = jan1Day === 0 ? -6 : 1 - jan1Day;
+    const firstMonday = new Date(year, 0, 1 + daysToMonday);
+    const diffMs = now.getTime() - firstMonday.getTime();
+    const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+    return Math.max(0, Math.min(MAX_WEEK_OFFSET, Math.floor(diffDays / 7)));
 }
 
 /* ── TOP BAR ── */
@@ -156,7 +174,7 @@ function renderGeneratePreview(preview, people, groups, shifts, shiftTemplates) 
 }
 
 /* ── GROUP SECTIONS ── */
-function renderGroupSections(weekSchedule, weekDates, groups, shifts, shiftTemplates, groupShifts, people, demand, absences, vacancies, cal, isLocked) {
+function renderGroupSections(weekSchedule, weekDates, groups, shifts, shiftTemplates, groupShifts, people, absences, vacancies, cal, isLocked) {
     const gids = Object.keys(groups).filter(g => g !== 'SYSTEM_ADMIN');
     if (!gids.length) return '<p class="cal-empty">Inga grupper.</p>';
     return gids.map(gid => {
@@ -224,16 +242,13 @@ function renderGroupBody(gid, groupData, weekDates, shifts, shiftTemplates, link
     }).join('')}</div>`;
 }
 
-/* ══════════════════════════════════════════════════════════
- * ASSIGN MODAL — FIX v2.2: tidsredigering + overlay-stängning
- * ══════════════════════════════════════════════════════════ */
+/* ── ASSIGN MODAL ── */
 function renderAssignModal(modal, groups, shifts, shiftTemplates, groupShifts, people, absences, state) {
     const { date, groupId, shiftId } = modal;
     const allShifts = { ...shifts, ...shiftTemplates };
     const group = groups[groupId], shift = allShifts[shiftId];
     if (!group || !shift) return '';
-    const startTime = shift.startTime || '07:00';
-    const endTime = shift.endTime || '16:00';
+    const startTime = shift.startTime || '07:00', endTime = shift.endTime || '16:00';
     const timeStr = `${startTime} – ${endTime}`;
     const dayData = state.schedule?.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)];
     const eligible = getEligiblePersons({ date, groupId, shiftId, groups, shifts, groupShifts, people, dayData, absences, scheduleMonths: state.schedule?.months });
@@ -283,9 +298,7 @@ function renderAssignModal(modal, groups, shifts, shiftTemplates, groupShifts, p
     </div>`;
 }
 
-/* ══════════════════════════════════════════════════════════
- * EDIT MODAL — FIX v2.2: overlay-stängning
- * ══════════════════════════════════════════════════════════ */
+/* ── EDIT MODAL ── */
 function renderEditModal(modal, groups, shifts, shiftTemplates, people, state) {
     const { date, personId, shiftId, groupId } = modal;
     const allShifts = { ...shifts, ...shiftTemplates };
@@ -344,202 +357,236 @@ function buildWeekSchedule(weekDates, state, groups, shifts, shiftTemplates, peo
 }
 
 /* ══════════════════════════════════════════════════════════
- * EVENT LISTENERS — FIX v2.2: overlay-klick stänger modal
+ * EVENT LISTENERS — FIX v2.3: AbortController deduplicerar
  * ══════════════════════════════════════════════════════════ */
-function setupListeners(container, store, ctx, weekDates, isLocked, linkedTemplate) {
+function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
+    /* FIX v2.3: Avbryt tidigare listeners via AbortController */
+    if (ctx._calAbort) ctx._calAbort.abort();
+    ctx._calAbort = new AbortController();
+    const signal = ctx._calAbort.signal;
+
     container.addEventListener('click', (e) => {
         const cal = ctx._cal;
 
-        /* ── Overlay-klick: stäng modal om man klickar UTANFÖR modal-rutan ── */
+        /* Overlay-klick: stäng modal */
         const overlay = e.target.closest('[data-cal-overlay]');
         if (overlay && !e.target.closest('[data-cal-modal-inner]') && !e.target.closest('[data-cal]')) {
             if (overlay.dataset.calOverlay === 'assign') { cal.assignModal = null; renderCalendar(container, ctx); return; }
             if (overlay.dataset.calOverlay === 'edit')   { cal.editModal = null;   renderCalendar(container, ctx); return; }
         }
 
-        /* ── Button-actions ── */
         const btn = e.target.closest('[data-cal]');
         if (!btn) return;
         const action = btn.dataset.cal;
 
         try {
-            if (action==='prev-week') { cal.weekOffset=Math.max(0,cal.weekOffset-1); cal.generatePreview=null; renderCalendar(container,ctx); }
-            else if (action==='next-week') { cal.weekOffset=Math.min(52,cal.weekOffset+1); cal.generatePreview=null; renderCalendar(container,ctx); }
-            else if (action==='today') { const s=store.getState(); cal.weekOffset=Math.max(0,Math.floor((new Date()-new Date(s.schedule.year,0,1))/604800000)); cal.generatePreview=null; renderCalendar(container,ctx); }
-            else if (action==='toggle-group') { const gid=btn.dataset.groupId; if(gid) cal.collapsedGroups[gid]=!cal.collapsedGroups[gid]; renderCalendar(container,ctx); }
-            else if (action==='open-assign'&&!isLocked) { cal.assignModal={date:btn.dataset.date,groupId:btn.dataset.groupId,shiftId:btn.dataset.shiftId}; renderCalendar(container,ctx); }
-            else if (action==='close-modal') { cal.assignModal=null; renderCalendar(container,ctx); }
-            else if (action==='close-edit') { cal.editModal=null; renderCalendar(container,ctx); }
-            else if (action==='assign-person'&&!isLocked) { handleAssign(btn,cal,store,container,ctx); }
-            else if ((action==='unassign'||action==='unassign-modal')&&!isLocked) { handleUnassign(btn,action,cal,store,container,ctx); }
-            else if (action==='edit-entry'&&!isLocked) { cal.editModal={date:btn.dataset.date,personId:btn.dataset.personId,shiftId:btn.dataset.shiftId,groupId:btn.dataset.groupId}; renderCalendar(container,ctx); }
-            else if (action==='save-edit'&&!isLocked) { handleSaveEdit(cal,store,container,ctx); }
-            else if (action==='delete-entry'&&!isLocked) { handleDeleteEntry(btn,cal,store,container,ctx); }
-            else if (action==='lock-week') { handleLockWeek(store,weekDates,container,ctx,true); }
-            else if (action==='unlock-week') { handleLockWeek(store,weekDates,container,ctx,false); }
-            else if (action==='generate'&&!isLocked&&linkedTemplate) { handleGenerate(store,weekDates,linkedTemplate,cal,container,ctx); }
-            else if (action==='apply-generate'&&!isLocked) { handleApplyGenerate(cal,store,container,ctx); }
-            else if (action==='cancel-generate') { cal.generatePreview=null; renderCalendar(container,ctx); }
-            else if (action==='fill-vacancy'&&!isLocked) { handleFillVacancy(btn,cal,store,container,ctx); }
-        } catch(err) { console.error('❌ Calendar error:',err); showWarning('❌ Ett fel uppstod'); }
-    });
+            if (action==='prev-week') {
+                cal.weekOffset = Math.max(0, cal.weekOffset - 1);
+                cal.generatePreview = null;
+                renderCalendar(container, ctx);
+            } else if (action==='next-week') {
+                cal.weekOffset = Math.min(MAX_WEEK_OFFSET, cal.weekOffset + 1);
+                cal.generatePreview = null;
+                renderCalendar(container, ctx);
+            } else if (action==='today') {
+                const s = store.getState();
+                cal.weekOffset = calcCurrentWeekOffset(s.schedule.year);
+                cal.generatePreview = null;
+                renderCalendar(container, ctx);
+            } else if (action==='toggle-group') {
+                const gid = btn.dataset.groupId;
+                if (gid) cal.collapsedGroups[gid] = !cal.collapsedGroups[gid];
+                renderCalendar(container, ctx);
+            } else if (action==='open-assign' && !isLocked) {
+                cal.assignModal = { date: btn.dataset.date, groupId: btn.dataset.groupId, shiftId: btn.dataset.shiftId };
+                renderCalendar(container, ctx);
+            } else if (action==='close-modal') {
+                cal.assignModal = null;
+                renderCalendar(container, ctx);
+            } else if (action==='close-edit') {
+                cal.editModal = null;
+                renderCalendar(container, ctx);
+            } else if (action==='assign-person' && !isLocked) {
+                handleAssign(btn, cal, store, container, ctx);
+            } else if ((action==='unassign' || action==='unassign-modal') && !isLocked) {
+                handleUnassign(btn, action, cal, store, container, ctx);
+            } else if (action==='edit-entry' && !isLocked) {
+                cal.editModal = { date: btn.dataset.date, personId: btn.dataset.personId, shiftId: btn.dataset.shiftId, groupId: btn.dataset.groupId };
+                renderCalendar(container, ctx);
+            } else if (action==='save-edit' && !isLocked) {
+                handleSaveEdit(cal, store, container, ctx);
+            } else if (action==='delete-entry' && !isLocked) {
+                handleDeleteEntry(btn, cal, store, container, ctx);
+            } else if (action==='lock-week') {
+                handleLockWeek(store, ctx, container);
+            } else if (action==='unlock-week') {
+                handleUnlockWeek(store, ctx, container);
+            } else if (action==='generate' && !isLocked && linkedTemplate) {
+                handleGenerate(store, linkedTemplate, cal, container, ctx);
+            } else if (action==='apply-generate' && !isLocked) {
+                handleApplyGenerate(cal, store, container, ctx);
+            } else if (action==='cancel-generate') {
+                cal.generatePreview = null;
+                renderCalendar(container, ctx);
+            } else if (action==='fill-vacancy' && !isLocked) {
+                handleFillVacancy(btn, cal, store, container, ctx);
+            }
+        } catch(err) { console.error('❌ Calendar error:', err); showWarning('❌ Ett fel uppstod'); }
+    }, { signal });
 }
 
-/* ══════════════════════════════════════════════════════════
- * handleAssign — FIX v2.2: skapar months/days + läser tid
- * ══════════════════════════════════════════════════════════ */
-function handleAssign(btn, cal, store, container, ctx) {
-    const pid = btn.dataset.personId;
-    const m = cal.assignModal;
-    if (!pid || !m) return;
+/* ── HELPER: säkerställ month/day finns ── */
+function ensureDay(schedule, monthIdx, dayIdx) {
+    if (!Array.isArray(schedule.months)) schedule.months = [];
+    while (schedule.months.length <= monthIdx) schedule.months.push({ days: [] });
+    const month = schedule.months[monthIdx];
+    if (!Array.isArray(month.days)) month.days = [];
+    while (month.days.length <= dayIdx) month.days.push({ entries: [] });
+    const day = month.days[dayIdx];
+    if (!Array.isArray(day.entries)) day.entries = [];
+    return day;
+}
 
+/* ── ACTION HANDLERS ── */
+function handleAssign(btn, cal, store, container, ctx) {
+    const pid = btn.dataset.personId, m = cal.assignModal;
+    if (!pid || !m) return;
     const { date, groupId, shiftId } = m;
     const s = store.getState();
-    const allShifts = { ...(s.shifts||{}), ...(s.shiftTemplates||{}) };
-    const shift = allShifts[shiftId];
-
-    /* Läs tid från modal-inputs (om användaren redigerat) */
+    const shift = { ...(s.shifts||{}), ...(s.shiftTemplates||{}) }[shiftId];
     const customStart = document.getElementById('cal-assign-start')?.value || shift?.startTime || null;
-    const customEnd   = document.getElementById('cal-assign-end')?.value   || shift?.endTime   || null;
-
-    const monthIdx = getMonthIndex(date);
-    const dayIdx   = getDayIndex(date);
+    const customEnd = document.getElementById('cal-assign-end')?.value || shift?.endTime || null;
 
     store.update(st => {
-        /* Säkerställ att months-arrayen finns */
-        if (!Array.isArray(st.schedule.months)) st.schedule.months = [];
-        while (st.schedule.months.length <= monthIdx) {
-            st.schedule.months.push({ days: [] });
-        }
-        const month = st.schedule.months[monthIdx];
-
-        /* Säkerställ att days-arrayen finns */
-        if (!Array.isArray(month.days)) month.days = [];
-        while (month.days.length <= dayIdx) {
-            month.days.push({ entries: [] });
-        }
-        const day = month.days[dayIdx];
-
-        /* Säkerställ entries */
-        if (!Array.isArray(day.entries)) day.entries = [];
-
-        /* Dubblettcheck */
-        if (day.entries.some(e => e.personId === pid && e.shiftId === shiftId && e.groupId === groupId)) return;
-
-        day.entries.push({
-            personId: pid,
-            shiftId,
-            groupId,
-            status: 'A',
-            startTime: customStart,
-            endTime: customEnd,
-            breakStart: shift?.breakStart || null,
-            breakEnd: shift?.breakEnd || null,
-        });
+        const day = ensureDay(st.schedule, getMonthIndex(date), getDayIndex(date));
+        if (day.entries.some(e => e.personId===pid && e.shiftId===shiftId && e.groupId===groupId)) return;
+        day.entries.push({ personId:pid, shiftId, groupId, status:'A', startTime:customStart, endTime:customEnd, breakStart:shift?.breakStart||null, breakEnd:shift?.breakEnd||null });
     });
-
-    showSuccess('✓ Person tilldelad');
-    cal.assignModal = null;
-    renderCalendar(container, ctx);
+    showSuccess('✓ Person tilldelad'); cal.assignModal = null; renderCalendar(container, ctx);
 }
 
-function handleUnassign(btn,action,cal,store,container,ctx) {
+function handleUnassign(btn, action, cal, store, container, ctx) {
     const pid=btn.dataset.personId, date=btn.dataset.date||cal.assignModal?.date, sid=btn.dataset.shiftId||cal.assignModal?.shiftId;
-    if(!pid||!date) return;
-    store.update(s=>{const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d?.entries) return;
-        d.entries=d.entries.filter(e=>{if(e.personId!==pid)return true;if(sid&&e.shiftId!==sid)return true;return false;});});
-    showWarning('🗑️ Borttagen'); if(action==='unassign-modal') cal.assignModal=null; renderCalendar(container,ctx);
+    if (!pid || !date) return;
+    store.update(s => { const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d?.entries) return;
+        d.entries = d.entries.filter(e => { if(e.personId!==pid) return true; if(sid&&e.shiftId!==sid) return true; return false; }); });
+    showWarning('🗑️ Borttagen'); if(action==='unassign-modal') cal.assignModal=null; renderCalendar(container, ctx);
 }
-function handleSaveEdit(cal,store,container,ctx) {
-    if(!cal.editModal) return; const{date,personId,shiftId,groupId}=cal.editModal;
-    store.update(s=>{const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d?.entries) return;
+
+function handleSaveEdit(cal, store, container, ctx) {
+    if (!cal.editModal) return;
+    const { date, personId, shiftId, groupId } = cal.editModal;
+    store.update(s => { const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d?.entries) return;
         const e=d.entries.find(e=>e.personId===personId&&e.shiftId===shiftId&&e.groupId===groupId); if(!e) return;
         e.startTime=document.getElementById('cal-edit-start')?.value||null; e.endTime=document.getElementById('cal-edit-end')?.value||null;
         e.breakStart=document.getElementById('cal-edit-break-start')?.value||null; e.breakEnd=document.getElementById('cal-edit-break-end')?.value||null;
-        e.status=document.getElementById('cal-edit-status')?.value||'A';});
-    showSuccess('✓ Uppdaterat'); cal.editModal=null; renderCalendar(container,ctx);
-}
-function handleDeleteEntry(btn,cal,store,container,ctx) {
-    const{personId,date,shiftId}=btn.dataset; if(!personId||!date) return;
-    store.update(s=>{const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d?.entries) return;
-        d.entries=d.entries.filter(e=>!(e.personId===personId&&e.shiftId===shiftId));});
-    showWarning('🗑️ Borttaget'); cal.editModal=null; renderCalendar(container,ctx);
-}
-function handleLockWeek(store,weekDates,container,ctx,lock) {
-    const s=store.getState(), yr=s.schedule.year, wn=getISOWeekNumber(weekDates[0]), wk=`${yr}-W${String(wn).padStart(2,'0')}`;
-    store.update(s=>{if(!Array.isArray(s.schedule.lockedWeeks))s.schedule.lockedWeeks=[];
-        if(lock){if(!s.schedule.lockedWeeks.includes(wk))s.schedule.lockedWeeks.push(wk);}else{s.schedule.lockedWeeks=s.schedule.lockedWeeks.filter(w=>w!==wk);}});
-    lock?showSuccess(`🔒 Vecka ${wn} låst`):showWarning(`🔓 Vecka ${wn} upplåst`); renderCalendar(container,ctx);
-}
-function handleGenerate(store,weekDates,linkedTemplate,cal,container,ctx) {
-    const s=store.getState();
-    cal.generatePreview=generateWeekSchedule({weekDates,weekTemplate:linkedTemplate,groups:s.groups,shifts:s.shifts,shiftTemplates:s.shiftTemplates,
-        groupShifts:s.groupShifts,people:(s.people||[]).filter(p=>p.isActive),absences:s.absences||[],existingEntries:{},demand:s.demand});
-    renderCalendar(container,ctx);
-}
-function handleApplyGenerate(cal,store,container,ctx) {
-    if(!cal.generatePreview) return; const{suggestions}=cal.generatePreview;
-    store.update(s=>{suggestions.forEach(sug=>{
-        const mi=getMonthIndex(sug.date), di=getDayIndex(sug.date);
-        if(!Array.isArray(s.schedule.months)) s.schedule.months=[];
-        while(s.schedule.months.length<=mi) s.schedule.months.push({days:[]});
-        if(!Array.isArray(s.schedule.months[mi].days)) s.schedule.months[mi].days=[];
-        while(s.schedule.months[mi].days.length<=di) s.schedule.months[mi].days.push({entries:[]});
-        const d=s.schedule.months[mi].days[di];
-        if(!Array.isArray(d.entries))d.entries=[];
-        if(d.entries.some(e=>e.personId===sug.personId&&e.shiftId===sug.shiftId&&e.groupId===sug.groupId)) return;
-        d.entries.push({personId:sug.personId,shiftId:sug.shiftId,groupId:sug.groupId,status:sug.status||'A',startTime:sug.startTime,endTime:sug.endTime,breakStart:sug.breakStart,breakEnd:sug.breakEnd});});});
-    showSuccess(`✓ ${suggestions.length} tillämpade`); cal.generatePreview=null; renderCalendar(container,ctx);
-}
-function handleFillVacancy(btn,cal,store,container,ctx) {
-    const v=(store.getState().vacancies||[]).find(v=>v.id===btn.dataset.vacancyId); if(!v) return;
-    cal.assignModal={date:v.date,groupId:v.groupId,shiftId:v.shiftTemplateId}; renderCalendar(container,ctx);
+        e.status=document.getElementById('cal-edit-status')?.value||'A'; });
+    showSuccess('✓ Uppdaterat'); cal.editModal=null; renderCalendar(container, ctx);
 }
 
-/* ── DRAG & DROP ── */
+function handleDeleteEntry(btn, cal, store, container, ctx) {
+    const { personId, date, shiftId } = btn.dataset; if(!personId||!date) return;
+    store.update(s => { const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d?.entries) return;
+        d.entries = d.entries.filter(e => !(e.personId===personId && e.shiftId===shiftId)); });
+    showWarning('🗑️ Borttaget'); cal.editModal=null; renderCalendar(container, ctx);
+}
+
+function handleLockWeek(store, ctx, container) {
+    const cal = ctx._cal;
+    const s = store.getState(), yr = s.schedule.year;
+    const weekDates = getWeekDates(yr, cal.weekOffset);
+    const wn = getISOWeekNumber(weekDates[0]), wk = `${yr}-W${String(wn).padStart(2,'0')}`;
+    store.update(s => { if(!Array.isArray(s.schedule.lockedWeeks)) s.schedule.lockedWeeks=[];
+        if(!s.schedule.lockedWeeks.includes(wk)) s.schedule.lockedWeeks.push(wk); });
+    showSuccess(`🔒 Vecka ${wn} låst`); renderCalendar(container, ctx);
+}
+
+function handleUnlockWeek(store, ctx, container) {
+    const cal = ctx._cal;
+    const s = store.getState(), yr = s.schedule.year;
+    const weekDates = getWeekDates(yr, cal.weekOffset);
+    const wn = getISOWeekNumber(weekDates[0]), wk = `${yr}-W${String(wn).padStart(2,'0')}`;
+    store.update(s => { if(!Array.isArray(s.schedule.lockedWeeks)) return;
+        s.schedule.lockedWeeks = s.schedule.lockedWeeks.filter(w => w !== wk); });
+    showWarning(`🔓 Vecka ${wn} upplåst`); renderCalendar(container, ctx);
+}
+
+function handleGenerate(store, linkedTemplate, cal, container, ctx) {
+    const s = store.getState();
+    const weekDates = getWeekDates(s.schedule.year, cal.weekOffset);
+    cal.generatePreview = generateWeekSchedule({ weekDates, weekTemplate:linkedTemplate, groups:s.groups, shifts:s.shifts, shiftTemplates:s.shiftTemplates,
+        groupShifts:s.groupShifts, people:(s.people||[]).filter(p=>p.isActive), absences:s.absences||[], existingEntries:{}, demand:s.demand });
+    renderCalendar(container, ctx);
+}
+
+function handleApplyGenerate(cal, store, container, ctx) {
+    if (!cal.generatePreview) return;
+    const { suggestions } = cal.generatePreview;
+    store.update(s => { suggestions.forEach(sug => {
+        const day = ensureDay(s.schedule, getMonthIndex(sug.date), getDayIndex(sug.date));
+        if(day.entries.some(e=>e.personId===sug.personId&&e.shiftId===sug.shiftId&&e.groupId===sug.groupId)) return;
+        day.entries.push({ personId:sug.personId, shiftId:sug.shiftId, groupId:sug.groupId, status:sug.status||'A', startTime:sug.startTime, endTime:sug.endTime, breakStart:sug.breakStart, breakEnd:sug.breakEnd }); }); });
+    showSuccess(`✓ ${suggestions.length} tillämpade`); cal.generatePreview=null; renderCalendar(container, ctx);
+}
+
+function handleFillVacancy(btn, cal, store, container, ctx) {
+    const v=(store.getState().vacancies||[]).find(v=>v.id===btn.dataset.vacancyId); if(!v) return;
+    cal.assignModal = { date:v.date, groupId:v.groupId, shiftId:v.shiftTemplateId }; renderCalendar(container, ctx);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * DRAG & DROP — FIX v2.3: AbortController deduplicerar
+ * ══════════════════════════════════════════════════════════ */
 function setupDragAndDrop(container, store, ctx, isLocked) {
     if (isLocked) return;
+
+    /* FIX v2.3: Avbryt tidigare drag-listeners */
+    if (ctx._calDragAbort) ctx._calDragAbort.abort();
+    ctx._calDragAbort = new AbortController();
+    const signal = ctx._calDragAbort.signal;
+
     let dragData = null;
+
     container.addEventListener('dragstart', (e) => {
-        const c=e.target.closest('[data-drag-person]'); if(!c) return;
-        dragData={personId:c.dataset.dragPerson,shiftId:c.dataset.dragShift,groupId:c.dataset.dragGroup,fromDate:c.dataset.dragDate};
+        const c = e.target.closest('[data-drag-person]'); if(!c) return;
+        dragData = { personId:c.dataset.dragPerson, shiftId:c.dataset.dragShift, groupId:c.dataset.dragGroup, fromDate:c.dataset.dragDate };
         e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain','drag');
         c.classList.add('cal-dragging'); setTimeout(()=>{c.style.opacity='0.4';},0);
-    });
+    }, { signal });
+
     container.addEventListener('dragend', (e) => {
-        const c=e.target.closest('[data-drag-person]'); if(c){c.classList.remove('cal-dragging');c.style.opacity='';}
+        const c = e.target.closest('[data-drag-person]'); if(c){c.classList.remove('cal-dragging');c.style.opacity='';}
         container.querySelectorAll('.cal-drop-target').forEach(el=>el.classList.remove('cal-drop-target')); dragData=null;
-    });
+    }, { signal });
+
     container.addEventListener('dragover', (e) => {
-        const dz=e.target.closest('[data-drop-zone]'); if(!dz||!dragData) return;
+        const dz = e.target.closest('[data-drop-zone]'); if(!dz||!dragData) return;
         e.preventDefault(); e.dataTransfer.dropEffect='move'; dz.classList.add('cal-drop-target');
-    });
-    container.addEventListener('dragleave', (e) => { const dz=e.target.closest('[data-drop-zone]'); if(dz) dz.classList.remove('cal-drop-target'); });
+    }, { signal });
+
+    container.addEventListener('dragleave', (e) => {
+        const dz = e.target.closest('[data-drop-zone]'); if(dz) dz.classList.remove('cal-drop-target');
+    }, { signal });
+
     container.addEventListener('drop', (e) => {
-        e.preventDefault(); const dz=e.target.closest('[data-drop-zone]'); if(!dz||!dragData) return;
+        e.preventDefault(); const dz = e.target.closest('[data-drop-zone]'); if(!dz||!dragData) return;
         dz.classList.remove('cal-drop-target');
-        const {personId,shiftId:fromShift,groupId:fromGroup,fromDate}=dragData;
+        const { personId, shiftId:fromShift, groupId:fromGroup, fromDate } = dragData;
         const toDate=dz.dataset.dropDate, toGroup=dz.dataset.dropGroup, toShift=dz.dataset.dropShift;
-        if(toDate===fromDate&&toGroup===fromGroup&&toShift===fromShift){dragData=null;return;}
+        if(toDate===fromDate && toGroup===fromGroup && toShift===fromShift){ dragData=null; return; }
         try {
-            const allShifts={...(store.getState().shifts||{}),...(store.getState().shiftTemplates||{})}; const ts=allShifts[toShift];
-            store.update(s=>{
-                const fd=s.schedule.months?.[getMonthIndex(fromDate)]?.days?.[getDayIndex(fromDate)];
-                if(fd?.entries){fd.entries=fd.entries.filter(e=>!(e.personId===personId&&e.shiftId===fromShift&&e.groupId===fromGroup));}
-                const mi=getMonthIndex(toDate), di=getDayIndex(toDate);
-                if(!Array.isArray(s.schedule.months)) s.schedule.months=[];
-                while(s.schedule.months.length<=mi) s.schedule.months.push({days:[]});
-                if(!Array.isArray(s.schedule.months[mi].days)) s.schedule.months[mi].days=[];
-                while(s.schedule.months[mi].days.length<=di) s.schedule.months[mi].days.push({entries:[]});
-                const td=s.schedule.months[mi].days[di];
-                if(!Array.isArray(td.entries))td.entries=[];
+            const ts = { ...(store.getState().shifts||{}), ...(store.getState().shiftTemplates||{}) }[toShift];
+            store.update(s => {
+                const fd = s.schedule.months?.[getMonthIndex(fromDate)]?.days?.[getDayIndex(fromDate)];
+                if(fd?.entries){ fd.entries = fd.entries.filter(e=>!(e.personId===personId&&e.shiftId===fromShift&&e.groupId===fromGroup)); }
+                const td = ensureDay(s.schedule, getMonthIndex(toDate), getDayIndex(toDate));
                 if(!td.entries.some(e=>e.personId===personId&&e.shiftId===toShift&&e.groupId===toGroup)){
-                    td.entries.push({personId,shiftId:toShift,groupId:toGroup,status:'A',startTime:ts?.startTime||null,endTime:ts?.endTime||null,breakStart:ts?.breakStart||null,breakEnd:ts?.breakEnd||null});}
+                    td.entries.push({ personId, shiftId:toShift, groupId:toGroup, status:'A', startTime:ts?.startTime||null, endTime:ts?.endTime||null, breakStart:ts?.breakStart||null, breakEnd:ts?.breakEnd||null }); }
             });
-            showSuccess('✓ Pass flyttat'); renderCalendar(container,ctx);
-        } catch(err){console.error('❌ D&D error:',err);showWarning('❌ Kunde inte flytta');}
+            showSuccess('✓ Pass flyttat'); renderCalendar(container, ctx);
+        } catch(err){ console.error('❌ D&D error:',err); showWarning('❌ Kunde inte flytta'); }
         dragData=null;
-    });
+    }, { signal });
 }
 
 /* ── DATE HELPERS ── */
