@@ -1,10 +1,11 @@
 /* ============================================================
- * FIL: src/router.js  (HEL FIL) — AUTOPATCH v6 + AO-08
+ * FIL: src/router.js  (HEL FIL) — AUTOPATCH v7 + AO-09
  * NAMN: ROUTER — Route Management & Navigation
  *
  * AO-06: Route 'week-templates' → renderWeekTemplates
  * AO-07: Route 'calendar' → renderCalendar (från views/calendar.js)
  * AO-08: Route 'control' → renderControl (från views/control.js)
+ * AO-09: Route 'summary' → renderSummary (från views/summary.js)
  * ============================================================ */
 
 /* ============================================================
@@ -17,6 +18,7 @@ import { renderShifts } from './views/shifts.js';
 import { renderWeekTemplates } from './views/week-templates.js';    // AO-06
 import { renderCalendar } from './views/calendar.js';               // AO-07
 import { renderControl } from './views/control.js';                 // AO-08
+import { renderSummary } from './views/summary.js';                 // AO-09
 import { renderLogin } from './views/login-pin.js';
 import { renderError, renderNavbar } from './ui.js';
 import { reportError } from './diagnostics.js';
@@ -62,11 +64,7 @@ function renderPlaceholder(title, note) {
 }
 
 /* ============================================================
- * BLOCK 4 — Route-map (ENDA källan för vilka views som finns)
- * OBS: Måste matcha href i navbar (ui.js) + home-snabbnav
- *
- * AO-07: calendar pekar på renderCalendar från views/calendar.js
- * AO-08: control pekar på renderControl från views/control.js
+ * BLOCK 4 — Route-map
  * ============================================================ */
 const routes = {
     // Public
@@ -80,7 +78,7 @@ const routes = {
     personal: renderPersonal,
     calendar: renderCalendar,                                                      // AO-07
     control: renderControl,                                                        // AO-08
-    summary: renderPlaceholder('Sammanställning', '📊 Sammanställningsvyn är under utveckling.'),
+    summary: renderSummary,                                                        // AO-09
     rules: renderPlaceholder('Regler', '⚖️ Regelvyn är under utveckling.'),
     export: renderPlaceholder('Export', '💾 Export/Import är under utveckling.'),
 };
@@ -100,7 +98,6 @@ function debugLog(message) {
 
 /* ============================================================
  * BLOCK 6 — Auth (SINGLE SOURCE OF TRUTH)
- * - Fail-closed: om oklart -> false
  * ============================================================ */
 function isLoggedIn() {
     try {
@@ -125,8 +122,7 @@ function getDefaultRoute() {
 }
 
 /* ============================================================
- * BLOCK 7 — Parse route (hash) — robust normalisering
- * - Fail-closed: okänd route -> default
+ * BLOCK 7 — Parse route (hash)
  * ============================================================ */
 function normalizeRouteName(name) {
     let route = String(name ?? '');
@@ -146,7 +142,6 @@ function parseRoute() {
 
 /* ============================================================
  * BLOCK 8 — Navbar (topbar)
- * - Login ska vara "ren" sida utan navbar
  * ============================================================ */
 function setTopbarVisible(isVisible) {
     const navbar = document.getElementById('navbar');
