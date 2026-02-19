@@ -1,6 +1,11 @@
 /*
- * AO-07 — Schedule View (Calendar) — v2.1 STANDALONE
+ * AO-07 — Schedule View (Calendar) — v2.2 STANDALONE (AUTOPATCH)
  * FIL: src/views/calendar.js
+ *
+ * Fixar v2.2:
+ *   - Modal-stängning (overlay-klick + ×-knapp)
+ *   - Assign skapar months/days om de saknas i schedule
+ *   - Tidsredigering i assign-modalen
  */
 
 import { showSuccess, showWarning } from '../ui.js';
@@ -218,35 +223,69 @@ function renderGroupBody(gid, groupData, weekDates, shifts, shiftTemplates, link
             }).join('')}</div></div>`;
     }).join('')}</div>`;
 }
-/* ── ASSIGN MODAL ── */
+
+/* ══════════════════════════════════════════════════════════
+ * ASSIGN MODAL — FIX v2.2: tidsredigering + overlay-stängning
+ * ══════════════════════════════════════════════════════════ */
 function renderAssignModal(modal, groups, shifts, shiftTemplates, groupShifts, people, absences, state) {
     const { date, groupId, shiftId } = modal;
     const allShifts = { ...shifts, ...shiftTemplates };
     const group = groups[groupId], shift = allShifts[shiftId];
     if (!group || !shift) return '';
-    const timeStr = shift.startTime && shift.endTime ? `${shift.startTime} – ${shift.endTime}` : 'Flex';
+    const startTime = shift.startTime || '07:00';
+    const endTime = shift.endTime || '16:00';
+    const timeStr = `${startTime} – ${endTime}`;
     const dayData = state.schedule?.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)];
     const eligible = getEligiblePersons({ date, groupId, shiftId, groups, shifts, groupShifts, people, dayData, absences, scheduleMonths: state.schedule?.months });
 
-    return `<div class="cal-modal-overlay" data-cal="close-modal"><div class="cal-modal" onclick="event.stopPropagation()">
-        <div class="cal-modal-header"><h3>📌 Tilldela pass</h3><button class="cal-modal-close" data-cal="close-modal">×</button></div>
-        <div class="cal-modal-info">
-            <span class="cal-modal-badge" style="background:${sanitizeColor(group.color)};color:${sanitizeColor(group.textColor||'#fff')}">${escapeHtml(group.name)}</span>
-            <span class="cal-modal-badge" style="background:${sanitizeColor(shift.color||'#777')};color:#fff">${escapeHtml(shift.name)} (${escapeHtml(timeStr)})</span>
-            <span class="cal-modal-date">${escapeHtml(date)}</span></div>
-        <div class="cal-modal-body">${!eligible.length ? '<p class="cal-empty">Inga personer.</p>' : `
-            <table class="cal-assign-table"><thead><tr><th>Namn</th><th>%</th><th>Typ</th><th>Dagar</th><th>Status</th><th></th></tr></thead><tbody>
-            ${eligible.map(item => { const p=item.person; const nm=p.firstName&&p.lastName?`${p.lastName}, ${p.firstName}`:(p.name||p.id);
-                return `<tr class="${!item.eligible?'row-disabled':''} ${item.isPreferred?'row-preferred':''} ${item.isAvoided?'row-avoided':''}">
-                    <td><strong>${escapeHtml(nm)}</strong></td><td>${p.employmentPct||0}%</td>
-                    <td>${p.employmentType==='substitute'?'Vikarie':'Ordinarie'}</td><td>${item.workedDays??'—'}</td>
-                    <td>${item.eligible?(item.isPreferred?'⭐':'✅ Tillgänglig'):`❌ ${escapeHtml(item.reason||'')}`}${item.isAvoided?' ⚠️':''}</td>
-                    <td>${item.eligible?`<button class="btn btn-sm btn-primary" data-cal="assign-person" data-person-id="${escapeHtml(p.id)}">📌</button>`
-                        :(item.reason?.startsWith('Redan')?`<button class="btn btn-sm btn-danger" data-cal="unassign-modal" data-person-id="${escapeHtml(p.id)}">🗑️</button>`:'')}</td></tr>`;
-            }).join('')}</tbody></table>`}</div></div></div>`;
+    return `<div class="cal-modal-overlay" data-cal-overlay="assign">
+        <div class="cal-modal" data-cal-modal-inner>
+            <div class="cal-modal-header">
+                <h3>📌 Tilldela pass</h3>
+                <button class="cal-modal-close" data-cal="close-modal" type="button">×</button>
+            </div>
+            <div class="cal-modal-info">
+                <span class="cal-modal-badge" style="background:${sanitizeColor(group.color)};color:${sanitizeColor(group.textColor||'#fff')}">${escapeHtml(group.name)}</span>
+                <span class="cal-modal-badge" style="background:${sanitizeColor(shift.color||'#777')};color:#fff">${escapeHtml(shift.name)} (${escapeHtml(timeStr)})</span>
+                <span class="cal-modal-date">${escapeHtml(date)}</span>
+            </div>
+            <div class="cal-modal-body">
+                <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;padding:0.5rem 0.75rem;background:#f5f7fa;border-radius:8px;border:1px solid #e0e0e0;">
+                    <label style="font-size:0.85rem;font-weight:600;color:#555;">⏰ Tid:</label>
+                    <input type="time" id="cal-assign-start" value="${escapeHtml(startTime)}" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;" />
+                    <span style="color:#888;">–</span>
+                    <input type="time" id="cal-assign-end" value="${escapeHtml(endTime)}" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;" />
+                </div>
+                ${!eligible.length ? '<p class="cal-empty">Inga personer i denna grupp.</p>' : `
+                <table class="cal-assign-table"><thead><tr>
+                    <th>Namn</th><th>%</th><th>Typ</th><th>Dagar</th><th>Status</th><th></th>
+                </tr></thead><tbody>
+                ${eligible.map(item => {
+                    const p = item.person;
+                    const nm = p.firstName && p.lastName ? `${p.lastName}, ${p.firstName}` : (p.name || p.id);
+                    return `<tr class="${!item.eligible?'row-disabled':''} ${item.isPreferred?'row-preferred':''} ${item.isAvoided?'row-avoided':''}">
+                        <td><strong>${escapeHtml(nm)}</strong></td>
+                        <td>${p.employmentPct||0}%</td>
+                        <td>${p.employmentType==='substitute'?'Vikarie':'Ordinarie'}</td>
+                        <td>${item.workedDays??'—'}</td>
+                        <td>${item.eligible
+                            ? (item.isPreferred ? '⭐ Föredrar' : '✅ Tillgänglig')
+                            : `❌ ${escapeHtml(item.reason||'')}`}${item.isAvoided?' ⚠️':''}</td>
+                        <td>${item.eligible
+                            ? `<button class="btn btn-sm btn-primary" data-cal="assign-person" data-person-id="${escapeHtml(p.id)}">📌 Tilldela</button>`
+                            : (item.reason?.startsWith('Redan')
+                                ? `<button class="btn btn-sm btn-danger" data-cal="unassign-modal" data-person-id="${escapeHtml(p.id)}">🗑️</button>`
+                                : '')}</td></tr>`;
+                }).join('')}
+                </tbody></table>`}
+            </div>
+        </div>
+    </div>`;
 }
 
-/* ── EDIT MODAL ── */
+/* ══════════════════════════════════════════════════════════
+ * EDIT MODAL — FIX v2.2: overlay-stängning
+ * ══════════════════════════════════════════════════════════ */
 function renderEditModal(modal, groups, shifts, shiftTemplates, people, state) {
     const { date, personId, shiftId, groupId } = modal;
     const allShifts = { ...shifts, ...shiftTemplates };
@@ -259,23 +298,31 @@ function renderEditModal(modal, groups, shifts, shiftTemplates, people, state) {
     const bs=entry.breakStart||shift.breakStart||'', be=entry.breakEnd||shift.breakEnd||'', status=entry.status||'A';
     const opts=[['A','Arbetar'],['L','Ledig'],['X','Övrigt'],['SEM','Semester'],['SJ','Sjuk'],['VAB','VAB'],['FÖR','Föräldraledig'],['TJL','Tjänstledig'],['PERM','Permission'],['UTB','Utbildning'],['EXTRA','Extrapass']];
 
-    return `<div class="cal-modal-overlay" data-cal="close-edit"><div class="cal-modal cal-modal-sm" onclick="event.stopPropagation()">
-        <div class="cal-modal-header"><h3>✏️ Redigera pass</h3><button class="cal-modal-close" data-cal="close-edit">×</button></div>
-        <div class="cal-modal-info">
-            <span class="cal-modal-badge" style="background:${sanitizeColor(group.color)};color:${sanitizeColor(group.textColor||'#fff')}">${escapeHtml(group.name)}</span>
-            <strong>${escapeHtml(nm)}</strong><span class="cal-modal-date">${escapeHtml(date)}</span></div>
-        <div class="cal-modal-body"><div class="cal-edit-form">
-            <div class="cal-edit-row"><label>Start</label><input type="time" id="cal-edit-start" value="${escapeHtml(st)}"/></div>
-            <div class="cal-edit-row"><label>Slut</label><input type="time" id="cal-edit-end" value="${escapeHtml(en)}"/></div>
-            <div class="cal-edit-row"><label>Rast start</label><input type="time" id="cal-edit-break-start" value="${escapeHtml(bs)}"/></div>
-            <div class="cal-edit-row"><label>Rast slut</label><input type="time" id="cal-edit-break-end" value="${escapeHtml(be)}"/></div>
-            <div class="cal-edit-row"><label>Status</label><select id="cal-edit-status">
-                ${opts.map(([v,l])=>`<option value="${v}" ${status===v?'selected':''}>${v} — ${escapeHtml(l)}</option>`).join('')}</select></div>
-            <div class="cal-edit-actions">
-                <button class="btn btn-primary" data-cal="save-edit">💾 Spara</button>
-                <button class="btn btn-secondary" data-cal="close-edit">Avbryt</button>
-                <button class="btn btn-danger" data-cal="delete-entry" data-date="${escapeHtml(date)}" data-person-id="${escapeHtml(personId)}" data-shift-id="${escapeHtml(shiftId)}">🗑️</button>
-            </div></div></div></div></div>`;
+    return `<div class="cal-modal-overlay" data-cal-overlay="edit">
+        <div class="cal-modal cal-modal-sm" data-cal-modal-inner>
+            <div class="cal-modal-header">
+                <h3>✏️ Redigera pass</h3>
+                <button class="cal-modal-close" data-cal="close-edit" type="button">×</button>
+            </div>
+            <div class="cal-modal-info">
+                <span class="cal-modal-badge" style="background:${sanitizeColor(group.color)};color:${sanitizeColor(group.textColor||'#fff')}">${escapeHtml(group.name)}</span>
+                <strong>${escapeHtml(nm)}</strong><span class="cal-modal-date">${escapeHtml(date)}</span>
+            </div>
+            <div class="cal-modal-body"><div class="cal-edit-form">
+                <div class="cal-edit-row"><label>Start</label><input type="time" id="cal-edit-start" value="${escapeHtml(st)}"/></div>
+                <div class="cal-edit-row"><label>Slut</label><input type="time" id="cal-edit-end" value="${escapeHtml(en)}"/></div>
+                <div class="cal-edit-row"><label>Rast start</label><input type="time" id="cal-edit-break-start" value="${escapeHtml(bs)}"/></div>
+                <div class="cal-edit-row"><label>Rast slut</label><input type="time" id="cal-edit-break-end" value="${escapeHtml(be)}"/></div>
+                <div class="cal-edit-row"><label>Status</label><select id="cal-edit-status">
+                    ${opts.map(([v,l])=>`<option value="${v}" ${status===v?'selected':''}>${v} — ${escapeHtml(l)}</option>`).join('')}</select></div>
+                <div class="cal-edit-actions">
+                    <button class="btn btn-primary" data-cal="save-edit">💾 Spara</button>
+                    <button class="btn btn-secondary" data-cal="close-edit">Avbryt</button>
+                    <button class="btn btn-danger" data-cal="delete-entry" data-date="${escapeHtml(date)}" data-person-id="${escapeHtml(personId)}" data-shift-id="${escapeHtml(shiftId)}">🗑️</button>
+                </div>
+            </div></div>
+        </div>
+    </div>`;
 }
 
 /* ── BUILD WEEK DATA ── */
@@ -296,11 +343,25 @@ function buildWeekSchedule(weekDates, state, groups, shifts, shiftTemplates, peo
     return result;
 }
 
-/* ── EVENT LISTENERS ── */
+/* ══════════════════════════════════════════════════════════
+ * EVENT LISTENERS — FIX v2.2: overlay-klick stänger modal
+ * ══════════════════════════════════════════════════════════ */
 function setupListeners(container, store, ctx, weekDates, isLocked, linkedTemplate) {
     container.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-cal]'); if (!btn) return;
-        const action = btn.dataset.cal, cal = ctx._cal;
+        const cal = ctx._cal;
+
+        /* ── Overlay-klick: stäng modal om man klickar UTANFÖR modal-rutan ── */
+        const overlay = e.target.closest('[data-cal-overlay]');
+        if (overlay && !e.target.closest('[data-cal-modal-inner]') && !e.target.closest('[data-cal]')) {
+            if (overlay.dataset.calOverlay === 'assign') { cal.assignModal = null; renderCalendar(container, ctx); return; }
+            if (overlay.dataset.calOverlay === 'edit')   { cal.editModal = null;   renderCalendar(container, ctx); return; }
+        }
+
+        /* ── Button-actions ── */
+        const btn = e.target.closest('[data-cal]');
+        if (!btn) return;
+        const action = btn.dataset.cal;
+
         try {
             if (action==='prev-week') { cal.weekOffset=Math.max(0,cal.weekOffset-1); cal.generatePreview=null; renderCalendar(container,ctx); }
             else if (action==='next-week') { cal.weekOffset=Math.min(52,cal.weekOffset+1); cal.generatePreview=null; renderCalendar(container,ctx); }
@@ -324,15 +385,64 @@ function setupListeners(container, store, ctx, weekDates, isLocked, linkedTempla
     });
 }
 
-/* ── ACTION HANDLERS ── */
-function handleAssign(btn,cal,store,container,ctx) {
-    const pid=btn.dataset.personId, m=cal.assignModal; if(!pid||!m) return;
-    const {date,groupId,shiftId}=m, s=store.getState(), sh={...(s.shifts||{}),...(s.shiftTemplates||{})}[shiftId];
-    store.update(st=>{const d=st.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d) return; if(!Array.isArray(d.entries)) d.entries=[];
-        if(d.entries.some(e=>e.personId===pid&&e.shiftId===shiftId&&e.groupId===groupId)) return;
-        d.entries.push({personId:pid,shiftId,groupId,status:'A',startTime:sh?.startTime||null,endTime:sh?.endTime||null,breakStart:sh?.breakStart||null,breakEnd:sh?.breakEnd||null});});
-    showSuccess('✓ Person tilldelad'); cal.assignModal=null; renderCalendar(container,ctx);
+/* ══════════════════════════════════════════════════════════
+ * handleAssign — FIX v2.2: skapar months/days + läser tid
+ * ══════════════════════════════════════════════════════════ */
+function handleAssign(btn, cal, store, container, ctx) {
+    const pid = btn.dataset.personId;
+    const m = cal.assignModal;
+    if (!pid || !m) return;
+
+    const { date, groupId, shiftId } = m;
+    const s = store.getState();
+    const allShifts = { ...(s.shifts||{}), ...(s.shiftTemplates||{}) };
+    const shift = allShifts[shiftId];
+
+    /* Läs tid från modal-inputs (om användaren redigerat) */
+    const customStart = document.getElementById('cal-assign-start')?.value || shift?.startTime || null;
+    const customEnd   = document.getElementById('cal-assign-end')?.value   || shift?.endTime   || null;
+
+    const monthIdx = getMonthIndex(date);
+    const dayIdx   = getDayIndex(date);
+
+    store.update(st => {
+        /* Säkerställ att months-arrayen finns */
+        if (!Array.isArray(st.schedule.months)) st.schedule.months = [];
+        while (st.schedule.months.length <= monthIdx) {
+            st.schedule.months.push({ days: [] });
+        }
+        const month = st.schedule.months[monthIdx];
+
+        /* Säkerställ att days-arrayen finns */
+        if (!Array.isArray(month.days)) month.days = [];
+        while (month.days.length <= dayIdx) {
+            month.days.push({ entries: [] });
+        }
+        const day = month.days[dayIdx];
+
+        /* Säkerställ entries */
+        if (!Array.isArray(day.entries)) day.entries = [];
+
+        /* Dubblettcheck */
+        if (day.entries.some(e => e.personId === pid && e.shiftId === shiftId && e.groupId === groupId)) return;
+
+        day.entries.push({
+            personId: pid,
+            shiftId,
+            groupId,
+            status: 'A',
+            startTime: customStart,
+            endTime: customEnd,
+            breakStart: shift?.breakStart || null,
+            breakEnd: shift?.breakEnd || null,
+        });
+    });
+
+    showSuccess('✓ Person tilldelad');
+    cal.assignModal = null;
+    renderCalendar(container, ctx);
 }
+
 function handleUnassign(btn,action,cal,store,container,ctx) {
     const pid=btn.dataset.personId, date=btn.dataset.date||cal.assignModal?.date, sid=btn.dataset.shiftId||cal.assignModal?.shiftId;
     if(!pid||!date) return;
@@ -369,8 +479,15 @@ function handleGenerate(store,weekDates,linkedTemplate,cal,container,ctx) {
 }
 function handleApplyGenerate(cal,store,container,ctx) {
     if(!cal.generatePreview) return; const{suggestions}=cal.generatePreview;
-    store.update(s=>{suggestions.forEach(sug=>{const d=s.schedule.months?.[getMonthIndex(sug.date)]?.days?.[getDayIndex(sug.date)]; if(!d) return;
-        if(!Array.isArray(d.entries))d.entries=[]; if(d.entries.some(e=>e.personId===sug.personId&&e.shiftId===sug.shiftId&&e.groupId===sug.groupId)) return;
+    store.update(s=>{suggestions.forEach(sug=>{
+        const mi=getMonthIndex(sug.date), di=getDayIndex(sug.date);
+        if(!Array.isArray(s.schedule.months)) s.schedule.months=[];
+        while(s.schedule.months.length<=mi) s.schedule.months.push({days:[]});
+        if(!Array.isArray(s.schedule.months[mi].days)) s.schedule.months[mi].days=[];
+        while(s.schedule.months[mi].days.length<=di) s.schedule.months[mi].days.push({entries:[]});
+        const d=s.schedule.months[mi].days[di];
+        if(!Array.isArray(d.entries))d.entries=[];
+        if(d.entries.some(e=>e.personId===sug.personId&&e.shiftId===sug.shiftId&&e.groupId===sug.groupId)) return;
         d.entries.push({personId:sug.personId,shiftId:sug.shiftId,groupId:sug.groupId,status:sug.status||'A',startTime:sug.startTime,endTime:sug.endTime,breakStart:sug.breakStart,breakEnd:sug.breakEnd});});});
     showSuccess(`✓ ${suggestions.length} tillämpade`); cal.generatePreview=null; renderCalendar(container,ctx);
 }
@@ -409,10 +526,15 @@ function setupDragAndDrop(container, store, ctx, isLocked) {
             store.update(s=>{
                 const fd=s.schedule.months?.[getMonthIndex(fromDate)]?.days?.[getDayIndex(fromDate)];
                 if(fd?.entries){fd.entries=fd.entries.filter(e=>!(e.personId===personId&&e.shiftId===fromShift&&e.groupId===fromGroup));}
-                const td=s.schedule.months?.[getMonthIndex(toDate)]?.days?.[getDayIndex(toDate)];
-                if(td){if(!Array.isArray(td.entries))td.entries=[];
-                    if(!td.entries.some(e=>e.personId===personId&&e.shiftId===toShift&&e.groupId===toGroup)){
-                        td.entries.push({personId,shiftId:toShift,groupId:toGroup,status:'A',startTime:ts?.startTime||null,endTime:ts?.endTime||null,breakStart:ts?.breakStart||null,breakEnd:ts?.breakEnd||null});}}
+                const mi=getMonthIndex(toDate), di=getDayIndex(toDate);
+                if(!Array.isArray(s.schedule.months)) s.schedule.months=[];
+                while(s.schedule.months.length<=mi) s.schedule.months.push({days:[]});
+                if(!Array.isArray(s.schedule.months[mi].days)) s.schedule.months[mi].days=[];
+                while(s.schedule.months[mi].days.length<=di) s.schedule.months[mi].days.push({entries:[]});
+                const td=s.schedule.months[mi].days[di];
+                if(!Array.isArray(td.entries))td.entries=[];
+                if(!td.entries.some(e=>e.personId===personId&&e.shiftId===toShift&&e.groupId===toGroup)){
+                    td.entries.push({personId,shiftId:toShift,groupId:toGroup,status:'A',startTime:ts?.startTime||null,endTime:ts?.endTime||null,breakStart:ts?.breakStart||null,breakEnd:ts?.breakEnd||null});}
             });
             showSuccess('✓ Pass flyttat'); renderCalendar(container,ctx);
         } catch(err){console.error('❌ D&D error:',err);showWarning('❌ Kunde inte flytta');}
