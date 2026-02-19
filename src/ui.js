@@ -1,40 +1,28 @@
 /*
- * UI.JS — Shared UI Utilities (UPPDATERAD AO-05)
+ * UI.JS — Shared UI Utilities (UPPDATERAD AO-06)
  *
- * Nytt i denna version:
- * - P0: EN källa för nav-länkar: NAV_ITEMS (används av navbar + quicklinks)
- * - P0: renderQuickLinks(container, opts) -> rutor/snabbnavigation för alla topbar routes
- * - AO-05: "Skift" → "Grundpass" i navbar + quicklinks
- *
- * Funktioner:
- * - renderNavbar: Visa navigeringsfältet
- * - renderQuickLinks: Visa snabbnavigation (rutor)
- * - renderError: Visa felmeddelanden säkert (med modul-healthcheck)
- * - showSuccess/showWarning/showInfo: Toast-meddelanden
- * - showConfirm: Confirm-dialog
+ * AO-06: Ny nav-länk "Veckomallar" tillagd i NAV_ITEMS
  */
 
 import { diagnostics } from './diagnostics.js';
 
 /* ============================================================
  * BLOCK 1 — NAV_ITEMS (Single source of truth)
- * - Måste matcha router.js routes-map
- * - Används av navbar + quicklinks
  * ============================================================ */
 const NAV_ITEMS = [
-  { route: 'home',    label: 'Hem',            icon: '🏠', desc: 'Startsida' },
-  { route: 'shifts',  label: 'Grundpass',      icon: '📋', desc: 'Hantera passmallar' },    // AO-05
-  { route: 'groups',  label: 'Grupper',        icon: '👥', desc: 'Hantera grupper' },
-  { route: 'personal',label: 'Personal',       icon: '👤', desc: 'Hantera personaldata' },
-  { route: 'calendar',label: 'Kalender',       icon: '📅', desc: 'Redigera schema' },
-  { route: 'control', label: 'Kontroll',       icon: '✓',  desc: 'Regelöversikt' },
-  { route: 'summary', label: 'Sammanfattning', icon: '📊', desc: 'Timsummering' },
-  { route: 'rules',   label: 'Regler',         icon: '⚖️', desc: 'HRF-avtalsregler' },
-  { route: 'export',  label: 'Export/Import',  icon: '💾', desc: 'Säkerhetskopiering' }
+  { route: 'home',            label: 'Hem',            icon: '🏠', desc: 'Startsida' },
+  { route: 'shifts',          label: 'Grundpass',      icon: '📋', desc: 'Hantera passmallar' },
+  { route: 'groups',          label: 'Grupper',        icon: '👥', desc: 'Hantera grupper' },
+  { route: 'week-templates',  label: 'Veckomallar',    icon: '🗓️', desc: 'Bemanningsbehov per vecka' },  // AO-06
+  { route: 'personal',        label: 'Personal',       icon: '👤', desc: 'Hantera personaldata' },
+  { route: 'calendar',        label: 'Kalender',       icon: '📅', desc: 'Redigera schema' },
+  { route: 'control',         label: 'Kontroll',       icon: '✓',  desc: 'Regelöversikt' },
+  { route: 'summary',         label: 'Sammanfattning', icon: '📊', desc: 'Timsummering' },
+  { route: 'rules',           label: 'Regler',         icon: '⚖️', desc: 'HRF-avtalsregler' },
+  { route: 'export',          label: 'Export/Import',  icon: '💾', desc: 'Säkerhetskopiering' }
 ];
 
 function escapeHtml(str) {
-  // Fail-closed XSS-skydd (även om vi i praktiken bara använder statiska strängar här)
   return String(str ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
