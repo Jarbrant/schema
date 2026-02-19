@@ -1,301 +1,226 @@
-/* ============================================================
- * AO-09 — Summary View CSS
- * Månadssammanställning: timmar, kostnader, per person/grupp
- * ============================================================ */
+/*
+ * AO-09 — Summary View (Sammanställning) — v1.0
+ * FIL: src/views/summary.js
+ *
+ * Månadssammanställning: timmar, kostnader, per person/grupp.
+ */
 
-/* ── Container ── */
-.sum-container {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    min-height: 100vh;
-    padding: 1rem 1.5rem 2rem;
-}
+import { calcShiftHours } from '../modules/schedule-engine.js';
 
-.sum-error {
-    padding: 2rem;
-    text-align: center;
-    color: #721c24;
-    background: #ffe8e8;
-    border-radius: 12px;
-    margin: 2rem;
+/* ── CONSTANTS ── */
+const MONTH_NAMES = ['Januari','Februari','Mars','April','Maj','Juni','Juli','Augusti','September','Oktober','November','December'];
+
+/* ── MAIN RENDER ── */
+export function renderSummary(container, ctx) {
+    if (!container) return;
+    const store = ctx?.store;
+    if (!store) { container.innerHTML = `<div class="sum-error"><h2>❌ Fel</h2><p>Store saknas.</p></div>`; return; }
+
+    try {
+        const state = store.getState();
+        if (!state.schedule || typeof state.schedule.year !== 'number') {
+            container.innerHTML = `<div class="sum-error"><h2>❌ Fel</h2><p>Schedule saknas.</p></div>`; return;
+        }
+
+        const year = state.schedule.year;
+        const groups = (typeof state.groups === 'object' && state.groups) || {};
+        const shifts = (typeof state.shifts === 'object' && state.shifts) || {};
+        const shiftTemplates = (typeof state.shiftTemplates === 'object' && state.shiftTemplates) || {};
+        const allShifts = { ...shifts, ...shiftTemplates };
+        const people = Array.isArray(state.people) ? state.people : [];
+        const activePeople = people.filter(p => p.isActive);
+        const months = Array.isArray(state.schedule.months) ? state.schedule.months : [];
+
+        if (!ctx._sum) {
+            const now = new Date();
+            ctx._sum = { monthIndex: now.getFullYear() === year ? now.getMonth() : 0 };
+        }
+        const sum = ctx._sum;
+
+        /* Beräkna data för vald månad */
+        const monthData = months[sum.monthIndex] || { days: [] };
+        const days = Array.isArray(monthData.days) ? monthData.days : [];
+
+        let totalHours = 0, totalCost = 0, totalEntries = 0;
+        const personStats = {};
+        const groupStats = {};
+
+        days.forEach(day => {
+            if (!Array.isArray(day.entries)) return;
+            day.entries.forEach(entry => {
+                if (entry.status !== 'A') return;
+                const shift = allShifts[entry.shiftId];
+                if (!shift) return;
+
+                const h = calcShiftHours(shift, entry);
+                totalHours += h;
+                totalEntries++;
+
+                const person = people.find(p => p.id === entry.personId);
+                const wage = person?.hourlyWage || 0;
+                const cost = h * wage;
+                totalCost += cost;
+
+                /* Per person */
+                if (entry.personId) {
+                    if (!personStats[entry.personId]) {
+                        personStats[entry.personId] = { hours: 0, cost: 0, shifts: 0, person };
+                    }
+                    personStats[entry.personId].hours += h;
+                    personStats[entry.personId].cost += cost;
+                    personStats[entry.personId].shifts++;
+                }
+
+                /* Per grupp */
+                if (entry.groupId) {
+                    if (!groupStats[entry.groupId]) {
+                        groupStats[entry.groupId] = { hours: 0, cost: 0, shifts: 0, group: groups[entry.groupId] };
+                    }
+                    groupStats[entry.groupId].hours += h;
+                    groupStats[entry.groupId].cost += cost;
+                    groupStats[entry.groupId].shifts++;
+                }
+            });
+        });
+
+        const personList = Object.values(personStats).sort((a, b) => b.hours - a.hours);
+        const groupList = Object.values(groupStats).sort((a, b) => b.hours - a.hours);
+        const daysInMonth = new Date(year, sum.monthIndex + 1, 0).getDate();
+
+        container.innerHTML = `
+            <div class="sum-container">
+                ${renderTopBar(sum, year)}
+                ${renderCards(totalHours, totalCost, totalEntries, activePeople.length, daysInMonth)}
+                <div class="sum-sections">
+                    ${renderPersonSection(personList)}
+                    ${renderGroupSection(groupList, groups)}
+                </div>
+            </div>`;
+
+        setupListeners(container, store, ctx);
+    } catch (err) {
+        console.error('❌ renderSummary kraschade:', err);
+        container.innerHTML = `<div class="sum-error"><h2>❌ Fel</h2><p>${escapeHtml(String(err.message))}</p></div>`;
+    }
 }
 
 /* ── TOP BAR ── */
-.sum-topbar {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    padding: 0.75rem 1.5rem;
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
-}
-
-.sum-topbar-center {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.sum-month-display {
-    text-align: center;
-    min-width: 180px;
-}
-
-.sum-month-display strong {
-    display: block;
-    font-size: 1.3rem;
-    color: #333;
-}
-
-.sum-month-sub {
-    font-size: 0.85rem;
-    color: #666;
+function renderTopBar(sum, year) {
+    return `<div class="sum-topbar">
+        <div></div>
+        <div class="sum-topbar-center">
+            <button class="btn btn-secondary" data-sum="prev-month">◀</button>
+            <div class="sum-month-display">
+                <strong>${MONTH_NAMES[sum.monthIndex]} ${year}</strong>
+                <span class="sum-month-sub">Månad ${sum.monthIndex + 1} av 12</span>
+            </div>
+            <button class="btn btn-secondary" data-sum="next-month">▶</button>
+        </div>
+        <div></div>
+    </div>`;
 }
 
 /* ── SUMMARY CARDS ── */
-.sum-cards-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+function renderCards(totalHours, totalCost, totalEntries, activeCount, daysInMonth) {
+    return `<div class="sum-cards-row">
+        <div class="sum-card c-blue">
+            <span class="sum-card-label">Totala timmar</span>
+            <span class="sum-card-value">${totalHours.toFixed(1)}</span>
+            <span class="sum-card-sub">tim denna månad</span>
+        </div>
+        <div class="sum-card c-green">
+            <span class="sum-card-label">Total kostnad</span>
+            <span class="sum-card-value">${formatCurrency(totalCost)}</span>
+            <span class="sum-card-sub">lönekostnad</span>
+        </div>
+        <div class="sum-card c-orange">
+            <span class="sum-card-label">Tilldelningar</span>
+            <span class="sum-card-value">${totalEntries}</span>
+            <span class="sum-card-sub">pass denna månad</span>
+        </div>
+        <div class="sum-card c-purple">
+            <span class="sum-card-label">Aktiv personal</span>
+            <span class="sum-card-value">${activeCount}</span>
+            <span class="sum-card-sub">${daysInMonth} dagar i månaden</span>
+        </div>
+    </div>`;
 }
 
-.sum-card {
-    background: #fff;
-    border-radius: 10px;
-    padding: 1rem 1.25rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
+/* ── PERSON SECTION ── */
+function renderPersonSection(personList) {
+    return `<div class="sum-section">
+        <div class="sum-section-header"><h3>👤 Per person</h3></div>
+        <div class="sum-section-body">
+            ${!personList.length ? '<p class="sum-empty">Inga tilldelningar denna månad.</p>' : `
+            <table class="sum-table">
+                <thead><tr><th>Namn</th><th>Timmar</th><th>Pass</th><th>Kostnad</th></tr></thead>
+                <tbody>${personList.map(ps => {
+                    const p = ps.person;
+                    const nm = p ? (p.firstName && p.lastName ? `${p.firstName} ${p.lastName}` : (p.name || p.id)) : '—';
+                    return `<tr>
+                        <td><strong>${escapeHtml(nm)}</strong></td>
+                        <td>${ps.hours.toFixed(1)}</td>
+                        <td>${ps.shifts}</td>
+                        <td>${formatCurrency(ps.cost)}</td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>`}
+        </div>
+    </div>`;
 }
 
-.sum-card-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #888;
-    font-weight: 600;
+/* ── GROUP SECTION ── */
+function renderGroupSection(groupList, groups) {
+    return `<div class="sum-section">
+        <div class="sum-section-header"><h3>👥 Per grupp</h3></div>
+        <div class="sum-section-body">
+            ${!groupList.length ? '<p class="sum-empty">Inga tilldelningar denna månad.</p>' : `
+            <table class="sum-table">
+                <thead><tr><th>Grupp</th><th>Timmar</th><th>Pass</th><th>Kostnad</th></tr></thead>
+                <tbody>${groupList.map(gs => {
+                    const g = gs.group;
+                    const nm = g ? g.name : '—';
+                    const color = g?.color || '#777';
+                    return `<tr>
+                        <td><span class="sum-group-dot" style="background:${sanitizeColor(color)}"></span> <strong>${escapeHtml(nm)}</strong></td>
+                        <td>${gs.hours.toFixed(1)}</td>
+                        <td>${gs.shifts}</td>
+                        <td>${formatCurrency(gs.cost)}</td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>`}
+        </div>
+    </div>`;
 }
 
-.sum-card-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #333;
+/* ── EVENT LISTENERS ── */
+function setupListeners(container, store, ctx) {
+    if (ctx._sumAbort) ctx._sumAbort.abort();
+    ctx._sumAbort = new AbortController();
+    const signal = ctx._sumAbort.signal;
+
+    container.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-sum]');
+        if (!btn) return;
+        const action = btn.dataset.sum;
+        const sum = ctx._sum;
+
+        if (action === 'prev-month') {
+            sum.monthIndex = Math.max(0, sum.monthIndex - 1);
+            renderSummary(container, ctx);
+        } else if (action === 'next-month') {
+            sum.monthIndex = Math.min(11, sum.monthIndex + 1);
+            renderSummary(container, ctx);
+        }
+    }, { signal });
 }
 
-.sum-card-sub {
-    font-size: 0.78rem;
-    color: #999;
+/* ── HELPERS ── */
+function formatCurrency(a) {
+    if (!a || !Number.isFinite(a)) return '0 kr';
+    return Math.round(a).toLocaleString('sv-SE') + ' kr';
 }
 
-.sum-card.c-blue { border-left: 4px solid #2196f3; }
-.sum-card.c-green { border-left: 4px solid #4caf50; }
-.sum-card.c-orange { border-left: 4px solid #ff9800; }
-.sum-card.c-purple { border-left: 4px solid #9c27b0; }
-.sum-card.c-red { border-left: 4px solid #f44336; }
-
-/* ── SECTIONS ── */
-.sum-sections {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-}
-
-.sum-section {
-    background: #fff;
-    border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    overflow: hidden;
-}
-
-.sum-section.full-width {
-    grid-column: 1 / -1;
-}
-
-.sum-section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem 1.25rem;
-    background: #f9fafb;
-    border-bottom: 1px solid #e8e8e8;
-    cursor: pointer;
-    user-select: none;
-}
-
-.sum-section-header:hover {
-    background: #f0f2f5;
-}
-
-.sum-section-header h3 {
-    margin: 0;
-    font-size: 0.95rem;
-    color: #333;
-}
-
-.sum-section-toggle {
-    font-size: 0.75rem;
-    color: #999;
-}
-
-.sum-section-body {
-    padding: 0.75rem 1.25rem;
-    max-height: 500px;
-    overflow-y: auto;
-}
-
-.sum-empty {
-    color: #999;
-    font-style: italic;
-    font-size: 0.85rem;
-    padding: 0.5rem 0;
-}
-
-/* ── PERSON TABLE ── */
-.sum-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.8rem;
-}
-
-.sum-table th {
-    text-align: left;
-    padding: 0.4rem 0.5rem;
-    border-bottom: 2px solid #e0e0e0;
-    color: #555;
-    font-weight: 600;
-    font-size: 0.75rem;
-    white-space: nowrap;
-}
-
-.sum-table th.right {
-    text-align: right;
-}
-
-.sum-table td {
-    padding: 0.4rem 0.5rem;
-    border-bottom: 1px solid #f0f0f0;
-    vertical-align: middle;
-}
-
-.sum-table td.right {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-}
-
-.sum-table tr:hover {
-    background: #f9fafb;
-}
-
-.sum-table tr.sum-total-row {
-    font-weight: 700;
-    border-top: 2px solid #e0e0e0;
-    background: #fafbfc;
-}
-
-.sum-table tr.sum-total-row td {
-    border-bottom: none;
-    padding-top: 0.6rem;
-}
-
-/* ── BARS ── */
-.sum-bar-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-.sum-bar-track {
-    flex: 1;
-    height: 6px;
-    background: #eee;
-    border-radius: 3px;
-    overflow: hidden;
-    min-width: 50px;
-}
-
-.sum-bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.3s;
-}
-
-.sum-bar-pct {
-    font-size: 0.7rem;
-    color: #888;
-    min-width: 32px;
-    text-align: right;
-}
-
-/* ── DAY DISTRIBUTION ── */
-.sum-day-dist {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.sum-day-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.15rem;
-    min-width: 55px;
-}
-
-.sum-day-label {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #888;
-    text-transform: uppercase;
-}
-
-.sum-day-bar-v {
-    width: 32px;
-    background: #eee;
-    border-radius: 4px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column-reverse;
-    position: relative;
-}
-
-.sum-day-fill-v {
-    width: 100%;
-    border-radius: 0 0 4px 4px;
-    transition: height 0.3s;
-}
-
-.sum-day-val {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #555;
-}
-
-/* ── EXPORT BUTTON ── */
-.sum-export-btn {
-    margin-left: auto;
-}
-
-/* ── RESPONSIVE ── */
-@media (max-width: 900px) {
-    .sum-sections {
-        grid-template-columns: 1fr;
-    }
-}
-
-@media (max-width: 600px) {
-    .sum-container {
-        padding: 0.5rem;
-    }
-    .sum-topbar {
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .sum-cards-row {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
+const SAFE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*[\d.]+\s*\)|hsl\(\s*\d{1,3}\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*\)|hsla\(\s*\d{1,3}\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+\s*\)|[a-zA-Z]{1,20})$/;
+function sanitizeColor(i) { if (typeof i !== 'string') return '#777'; const t = i.trim(); return SAFE_COLOR_RE.test(t) ? t : '#777'; }
+function escapeHtml(s) { if (typeof s !== 'string') return ''; return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
