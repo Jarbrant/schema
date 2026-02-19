@@ -5,12 +5,16 @@
  * AUTOPATCH (utan att ta bort funktioner):
  * - Behåller sessionStorage (schema_user) som extra info.
  * - MEN: Router-kontrakt gäller: auth = store.getState().isLoggedIn
- * - Därför: exporterar inte längre isLoggedIn() som “sanning” för routing.
+ * - Därför: exporterar inte längre isLoggedIn() som "sanning" för routing.
  *   (Funktionen finns kvar internt som hjälp om du vill visa status, men
  *    routern ska inte importera den.)
  *
  * OBS: Den här filen ritar UI direkt i container och fungerar utan store,
  * men om ctx.store finns så uppdateras store för att routern ska släppa in.
+ *
+ * BUGFIX: Keyboard-lyssnaren har nu en DOM-guard som kollar att PIN-padden
+ * fortfarande finns i DOM. Utan detta blockerade lyssnaren siffertangenter
+ * och backspace på ALLA vyer (t.ex. lönefältet på Personal-sidan).
  * ============================================================ */
 
 import { showSuccess, showWarning } from '../ui.js';
@@ -20,7 +24,7 @@ import { reportError } from '../diagnostics.js';
  * BLOCK 1 — Intern hjälp: läsa session (extra info, ej routing-sanning)
  * ============================================================ */
 // NOTE: Behålls för kompatibilitet/debug, men ska inte styra routing.
-// INLINE: Om JSON är trasig -> fail-closed = “ej inloggad”.
+// INLINE: Om JSON är trasig -> fail-closed = "ej inloggad".
 function readSessionUser() {
     try {
         if (typeof window === 'undefined') return null;
@@ -179,6 +183,10 @@ export function renderLogin(container, ctx) {
 
 /* ============================================================
  * BLOCK 3 — PIN listeners (UI events)
+ *
+ * BUGFIX: Keyboard-lyssnaren kollar nu att .pin-pad finns i DOM
+ * innan den kör preventDefault(). Utan detta fångades siffror,
+ * backspace och enter globalt — även på andra vyer (t.ex. Personal).
  * ============================================================ */
 function setupPinListeners(pinInput, pinDisplay, pinPad, submitBtn, statusDiv, ctx) {
     try {
@@ -232,8 +240,8 @@ function setupPinListeners(pinInput, pinDisplay, pinPad, submitBtn, statusDiv, c
         });
 
         // Clear
-        const clearBtn = pinPad.querySelector('.pin-button-clear');
-        if (clearBtn) clearBtn.addEventListener('click', clearDigit);
+        const clearBtnEl = pinPad.querySelector('.pin-button-clear');
+        if (clearBtnEl) clearBtnEl.addEventListener('click', clearDigit);
 
         // Submit
         submitBtn.addEventListener('click', () => {
@@ -241,7 +249,12 @@ function setupPinListeners(pinInput, pinDisplay, pinPad, submitBtn, statusDiv, c
         });
 
         // Keyboard input
+        // BUGFIX: Guard — bara aktiv om PIN-padden fortfarande finns i DOM.
+        // Utan denna guard fångades tangenter globalt även på andra vyer
+        // (t.ex. lönefältet på Personal-sidan kunde inte ta emot siffror).
         document.addEventListener('keydown', (e) => {
+            if (!document.querySelector('.pin-pad')) return;
+
             if (e.key >= '0' && e.key <= '9') {
                 e.preventDefault();
                 addDigit(e.key);
@@ -271,7 +284,7 @@ function setupPinListeners(pinInput, pinDisplay, pinPad, submitBtn, statusDiv, c
 }
 
 /* ============================================================
- * BLOCK 4 — PIN submit (validation + “login”)
+ * BLOCK 4 — PIN submit (validation + "login")
  * ============================================================ */
 function handlePinSubmit(pin, statusDiv, ctx) {
     try {
@@ -293,7 +306,7 @@ function handlePinSubmit(pin, statusDiv, ctx) {
                 if (isValid) {
                     console.log('✓ PIN login successful');
 
-                    // FEATURE KEPT: sessionStorage “schema_user” (extra info)
+                    // FEATURE KEPT: sessionStorage "schema_user" (extra info)
                     try {
                         const loginData = {
                             isLoggedIn: true,
