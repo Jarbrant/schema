@@ -1,45 +1,55 @@
-/*
- * PERSONAL.JS — Personal Management with HR System (COMPLETE v4 + AUTOPATCH v11)
+/* ============================================================
+ * FIL: src/views/personal.js
+ * PERSONAL.JS — Personal Management with HR System
+ * VERSION: COMPLETE v4 + AUTOPATCH v11 (STRUKTUR + INLINE KOMMENTARER)
  *
- * Patch i denna version:
- * 1) P0: Cost display finns i formuläret och uppdateras live (salary/degree).
- * 2) P0: vacationDaysPerYear beräknas deterministiskt vid add/edit (startDate + sector + degree).
- * 3) P1: Rensar unused imports.
- * 4) P2: Init-sektor-styling triggas direkt (så default “Privat” markeras utan klick).
+ * OBS:
+ * - Ingen funktionalitet borttagen eller ändrad.
+ * - Endast struktur/kommentarer för läsbarhet/underhåll.
  *
- * Features:
- * - Add/Edit/Delete person
- * - Sector selection (Private/Municipal)
- * - Start date → Auto vacation calc
- * - Employment record with dates
- * - Salary, saved vacation days, saved leave days
- * - Employment degree (%), workdays per week
- * - Multi-group assignment
- * - Availability calendar (Mon-Sun)
- * - Cost display (FAS 3.3)
- */
+ * HUVUD-FLÖDE:
+ * renderPersonal() bygger hela vyn (DOM) → binder events → renderSearchResults()
+ * → add/save/delete uppdaterar store → rerenderPersonal()
+ * ============================================================ */
 
 import { showSuccess, showWarning } from '../ui.js';
 import { reportError } from '../diagnostics.js';
 import { getVacationDaysPerYear, calculateYearsEmployed } from '../hr-rules.js';
 import { calculatePersonMonthlyCost, formatCurrency, formatCurrencyDetailed } from '../lib/cost-utils.js';
 
+/* ============================================================
+ * BLOCK 0 — Konstanter & in-memory UI-state
+ * STATE:
+ * - __personalUI ligger i minne (ingen storage-key) och styr sök + edit-läge.
+ * ============================================================ */
 const DAYS_OF_WEEK = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 
-/* ============================================================
-   P0: UI-state (sök + vald person) (in-memory, ingen storage-key)
-   ============================================================ */
+/** P0: UI-state (sök + vald person) (in-memory, ingen storage-key) */
 const __personalUI = {
   query: '',
   selectedPersonId: null,
 };
 
+/* ============================================================
+ * BLOCK 1 — PUBLIC VIEW ENTRYPOINT
+ * renderPersonal(container, ctx)
+ *
+ * IO:
+ * - Input: container (DOM), ctx.store (state/store)
+ * - Output: Renderad DOM för Personal-vyn
+ *
+ * GUARD:
+ * - Fail-closed om container/store saknas → error + diagnostics
+ * ============================================================ */
 export function renderPersonal(container, ctx) {
   try {
     if (!container || !ctx?.store) {
       throw new Error('Container eller store missing');
     }
 
+    /* ----------------------------
+     * BLOCK 1.1 — Läs state
+     * ---------------------------- */
     const store = ctx.store;
     const state = store.getState();
     const people = state.people || [];
@@ -48,16 +58,23 @@ export function renderPersonal(container, ctx) {
     const groupsRaw = state.groups;
     const groups = Array.isArray(groupsRaw) ? groupsRaw : Object.values(groupsRaw || {});
 
-    // Clear container
+    /* ----------------------------
+     * BLOCK 1.2 — Clear container (render från scratch)
+     * WHY: undviker stale listeners/DOM
+     * ---------------------------- */
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
 
-    // Create page structure
+    /* ----------------------------
+     * BLOCK 1.3 — Root wrapper
+     * ---------------------------- */
     const viewContainer = document.createElement('div');
     viewContainer.className = 'view-container';
 
-    // === HEADER ===
+    /* ============================================================
+     * BLOCK 2 — HEADER (titel + subtitle)
+     * ============================================================ */
     const header = document.createElement('div');
     header.className = 'section-header';
 
@@ -70,7 +87,9 @@ export function renderPersonal(container, ctx) {
     header.appendChild(title);
     header.appendChild(subtitle);
 
-    // === STATUS ROW ===
+    /* ============================================================
+     * BLOCK 3 — STATUS ROW (totalt personal)
+     * ============================================================ */
     const statusRow = document.createElement('div');
     statusRow.className = 'control-status';
 
@@ -90,8 +109,10 @@ export function renderPersonal(container, ctx) {
     statusRow.appendChild(statusItem);
 
     /* ============================================================
-       P0: SEARCH ROW (Sök personal + klick -> ladda i formulär)
-       ============================================================ */
+     * BLOCK 4 — SEARCH ROW (query + actions + results)
+     * STATE:
+     * - __personalUI.query och __personalUI.selectedPersonId styr vad som visas.
+     * ============================================================ */
     const searchRow = document.createElement('div');
     searchRow.style.marginTop = '1rem';
     searchRow.style.display = 'flex';
@@ -114,7 +135,7 @@ export function renderPersonal(container, ctx) {
     searchInput.className = 'form-control';
     searchInput.placeholder = 'Sök på namn eller e-post...';
     searchInput.value = __personalUI.query || '';
-    ensureEditableInput(searchInput);
+    ensureEditableInput(searchInput); // GUARD: tvinga skrivbarhet
 
     const searchHint = document.createElement('div');
     searchHint.style.fontSize = '0.85rem';
@@ -137,6 +158,7 @@ export function renderPersonal(container, ctx) {
     clearSearchBtn.textContent = 'Rensa sök';
     clearSearchBtn.onclick = (e) => {
       e.preventDefault();
+      // STATE RESET: query + edit-läge
       __personalUI.query = '';
       __personalUI.selectedPersonId = null;
       rerenderPersonal(ctx, container);
@@ -148,11 +170,12 @@ export function renderPersonal(container, ctx) {
     cancelEditBtn.textContent = 'Avbryt redigering';
     cancelEditBtn.onclick = (e) => {
       e.preventDefault();
+      // STATE RESET: lämna edit-läge men behåll ev query via input event
       __personalUI.selectedPersonId = null;
       rerenderPersonal(ctx, container);
     };
 
-    // Visa "Avbryt redigering" bara om vi faktiskt redigerar någon
+    // UI: visa “Avbryt redigering” bara om vi faktiskt redigerar någon
     if (!__personalUI.selectedPersonId) {
       cancelEditBtn.style.display = 'none';
     }
@@ -172,7 +195,9 @@ export function renderPersonal(container, ctx) {
     resultsWrap.style.padding = '0.75rem';
     resultsWrap.style.display = 'none'; // visas när query finns eller om edit är aktiv
 
-    // === FORM SECTION ===
+    /* ============================================================
+     * BLOCK 5 — FORM SECTION (title + form root)
+     * ============================================================ */
     const formSection = document.createElement('div');
     formSection.className = 'section-header';
     formSection.style.marginTop = '2rem';
@@ -181,14 +206,16 @@ export function renderPersonal(container, ctx) {
     formTitle.textContent = __personalUI.selectedPersonId ? '✏️ Redigera personal' : '➕ Lägg till ny personal';
     formSection.appendChild(formTitle);
 
-    // Form
+    // Form root
     const form = document.createElement('form');
     form.id = 'personal-form';
     form.style.background = '#f9f9f9';
     form.style.padding = '1.5rem';
     form.style.borderRadius = '8px';
 
-    // === BASIC INFO ===
+    /* ============================================================
+     * BLOCK 6 — BASIC INFO (name/email/phone)
+     * ============================================================ */
     const basicInfo = document.createElement('fieldset');
     basicInfo.style.border = 'none';
     basicInfo.style.marginBottom = '1.5rem';
@@ -216,7 +243,9 @@ export function renderPersonal(container, ctx) {
 
     form.appendChild(basicInfo);
 
-    // === EMPLOYMENT INFO ===
+    /* ============================================================
+     * BLOCK 7 — EMPLOYMENT INFO (startDate, degree, workdays)
+     * ============================================================ */
     const employmentInfo = document.createElement('fieldset');
     employmentInfo.style.border = 'none';
     employmentInfo.style.marginBottom = '1.5rem';
@@ -254,7 +283,13 @@ export function renderPersonal(container, ctx) {
 
     form.appendChild(employmentInfo);
 
-    // === SECTOR SELECTION ===
+    /* ============================================================
+     * BLOCK 8 — SECTOR SELECTION (private/municipal)
+     * STATE:
+     * - radio[name="sector"] styr vacation calc + cost calc
+     * GUARD:
+     * - init-styling triggas direkt (dispatch change)
+     * ============================================================ */
     const sectorInfo = document.createElement('fieldset');
     sectorInfo.style.border = 'none';
     sectorInfo.style.marginBottom = '1.5rem';
@@ -273,7 +308,7 @@ export function renderPersonal(container, ctx) {
     sectorContainer.style.gridTemplateColumns = 'repeat(auto-fit, minmax(200px, 1fr))';
     sectorContainer.style.gap = '1rem';
 
-    // Private sector
+    // --- Private sector card ---
     const privateLabel = document.createElement('label');
     privateLabel.style.display = 'flex';
     privateLabel.style.alignItems = 'center';
@@ -288,12 +323,12 @@ export function renderPersonal(container, ctx) {
     privateRadio.type = 'radio';
     privateRadio.name = 'sector';
     privateRadio.value = 'private';
-    privateRadio.checked = true;
+    privateRadio.checked = true; // DEFAULT
     privateRadio.id = 'sector-private';
     privateRadio.style.cursor = 'pointer';
 
     const privateSpan = document.createElement('span');
-    // statisk text ok som innerHTML (ingen användardata)
+    // SCOPE: statisk text ok som innerHTML (ingen användardata)
     privateSpan.innerHTML = '<strong>Privat sektor</strong><br><small>25/28/31 dagar</small>';
 
     privateLabel.appendChild(privateRadio);
@@ -310,7 +345,7 @@ export function renderPersonal(container, ctx) {
 
     sectorContainer.appendChild(privateLabel);
 
-    // Municipal sector
+    // --- Municipal sector card ---
     const municipalLabel = document.createElement('label');
     municipalLabel.style.display = 'flex';
     municipalLabel.style.alignItems = 'center';
@@ -329,7 +364,7 @@ export function renderPersonal(container, ctx) {
     municipalRadio.style.cursor = 'pointer';
 
     const municipalSpan = document.createElement('span');
-    // statisk text ok som innerHTML (ingen användardata)
+    // SCOPE: statisk text ok som innerHTML (ingen användardata)
     municipalSpan.innerHTML = '<strong>Kommunal sektor</strong><br><small>28/30/32 dagar</small>';
 
     municipalLabel.appendChild(municipalRadio);
@@ -346,7 +381,7 @@ export function renderPersonal(container, ctx) {
 
     sectorContainer.appendChild(municipalLabel);
 
-    // Radio change behavior (måste sättas efter båda finns)
+    // EVENTS: radio change behavior (måste sättas efter båda finns)
     privateRadio.onchange = () => {
       privateLabel.style.borderColor = '#667eea';
       privateLabel.style.background = '#f0f4ff';
@@ -372,7 +407,11 @@ export function renderPersonal(container, ctx) {
     sectorInfo.appendChild(sectorContainer);
     form.appendChild(sectorInfo);
 
-    // === SALARY & VACATION ===
+    /* ============================================================
+     * BLOCK 9 — SALARY & VACATION INPUTS (salary + saved days)
+     * EVENTS:
+     * - salary input → updateCostDisplay(form)
+     * ============================================================ */
     const salaryInfo = document.createElement('fieldset');
     salaryInfo.style.border = 'none';
     salaryInfo.style.marginBottom = '1.5rem';
@@ -407,7 +446,11 @@ export function renderPersonal(container, ctx) {
 
     form.appendChild(salaryInfo);
 
-    // === KOSTNAD-DISPLAY (P0) ===
+    /* ============================================================
+     * BLOCK 10 — COST DISPLAY (P0 live view)
+     * XSS:
+     * - updateCostDisplay använder textContent/DOM-noder
+     * ============================================================ */
     const costDisplay = document.createElement('div');
     costDisplay.id = 'personal-cost-display';
     costDisplay.style.marginTop = '1.5rem';
@@ -418,7 +461,12 @@ export function renderPersonal(container, ctx) {
     costDisplay.textContent = '💰 Månadskostnad: (Fyll i lön för att beräkna)';
     form.appendChild(costDisplay);
 
-    // === GROUPS ===
+    /* ============================================================
+     * BLOCK 11 — GROUPS (checkboxes + create inline)
+     * IO:
+     * - Läser state.groups (array/map) och bygger checkboxar
+     * - Skapar grupp via createGroupFromPersonal()
+     * ============================================================ */
     const groupsInfo = document.createElement('fieldset');
     groupsInfo.style.border = 'none';
     groupsInfo.style.marginBottom = '1.5rem';
@@ -491,6 +539,7 @@ export function renderPersonal(container, ctx) {
         input.style.cursor = 'pointer';
 
         const span = document.createElement('span');
+        // XSS-safe: textContent
         span.textContent = group.name;
 
         checkbox.appendChild(input);
@@ -510,7 +559,11 @@ export function renderPersonal(container, ctx) {
     groupsInfo.appendChild(groupsContainer);
     form.appendChild(groupsInfo);
 
-    // === AVAILABILITY ===
+    /* ============================================================
+     * BLOCK 12 — AVAILABILITY (week checkboxes Mon-Sun)
+     * DEFAULT:
+     * - Mån–Fre = checked
+     * ============================================================ */
     const availabilityInfo = document.createElement('fieldset');
     availabilityInfo.style.border = 'none';
     availabilityInfo.style.marginBottom = '1.5rem';
@@ -570,7 +623,15 @@ export function renderPersonal(container, ctx) {
 
     availabilityInfo.appendChild(availabilityContainer);
     form.appendChild(availabilityInfo);
-        // === CALCULATION PERIOD (AO-12) ===
+
+    /* ============================================================
+     * BLOCK 13 — CALCULATION PERIOD (AO-12)
+     * NOTE:
+     * - Denna sektion var inklistrad senare i filen; ingen logik ändras här.
+     * - För närvarande skapas select + default Q1.
+     * - (Om du vill att detta ska sparas/läsas in i add/edit behöver vi koppla det i addPerson/saveEditedPerson/loadPersonIntoForm — men DET vore funktionell ändring, inte gjort här.)
+     * ============================================================ */
+    // === CALCULATION PERIOD (AO-12) ===
     const calcPeriodInfo = document.createElement('fieldset');
     calcPeriodInfo.style.border = 'none';
     calcPeriodInfo.style.marginBottom = '1.5rem';
@@ -588,7 +649,8 @@ export function renderPersonal(container, ctx) {
     calcPeriodDesc.style.fontSize = '0.85rem';
     calcPeriodDesc.style.color = '#666';
     calcPeriodDesc.style.marginBottom = '1rem';
-    calcPeriodDesc.textContent = 'Välj vilken kvartal personen börjar sin beräkningsperiod. Timmar balanseras inom varje kvartal enligt HRF (40h/vecka heltid).';
+    calcPeriodDesc.textContent =
+      'Välj vilken kvartal personen börjar sin beräkningsperiod. Timmar balanseras inom varje kvartal enligt HRF (40h/vecka heltid).';
     calcPeriodInfo.appendChild(calcPeriodDesc);
 
     const calcPeriodSelect = document.createElement('select');
@@ -597,23 +659,30 @@ export function renderPersonal(container, ctx) {
     calcPeriodSelect.style.maxWidth = '300px';
 
     const periodOptions = [
-        { value: 'q1', label: 'Q1 — Januari–Mars (standard)' },
-        { value: 'q2', label: 'Q2 — April–Juni' },
-        { value: 'q3', label: 'Q3 — Juli–September' },
-        { value: 'q4', label: 'Q4 — Oktober–December' },
+      { value: 'q1', label: 'Q1 — Januari–Mars (standard)' },
+      { value: 'q2', label: 'Q2 — April–Juni' },
+      { value: 'q3', label: 'Q3 — Juli–September' },
+      { value: 'q4', label: 'Q4 — Oktober–December' },
     ];
-    periodOptions.forEach(opt => {
-        const option = document.createElement('option');
-        option.value = opt.value;
-        option.textContent = opt.label;
-        if (opt.value === 'q1') option.selected = true;
-        calcPeriodSelect.appendChild(option);
+    periodOptions.forEach((opt) => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      if (opt.value === 'q1') option.selected = true; // DEFAULT
+      calcPeriodSelect.appendChild(option);
     });
+
     ensureEditableInput(calcPeriodSelect);
     calcPeriodInfo.appendChild(calcPeriodSelect);
 
-    form.appendChild(calcPeriodInfo);  
-    // === BUTTONS ===
+    form.appendChild(calcPeriodInfo);
+
+    /* ============================================================
+     * BLOCK 14 — BUTTONS + ERROR AREA + FORM EVENTS
+     * EVENTS:
+     * - submit: addPerson() eller saveEditedPerson()
+     * - reset: robust edit-mode reload
+     * ============================================================ */
     const buttonGroup = document.createElement('div');
     buttonGroup.style.display = 'flex';
     buttonGroup.style.gap = '1rem';
@@ -633,13 +702,13 @@ export function renderPersonal(container, ctx) {
     buttonGroup.appendChild(resetBtn);
     form.appendChild(buttonGroup);
 
-    // Error message
+    // Error message container (renderas via displayError)
     const errorDiv = document.createElement('div');
     errorDiv.id = 'personal-error';
     errorDiv.style.marginTop = '1rem';
     form.appendChild(errorDiv);
 
-    // Setup form listener
+    // submit handler
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       if (__personalUI.selectedPersonId) {
@@ -653,7 +722,7 @@ export function renderPersonal(container, ctx) {
     form.addEventListener('reset', () => {
       try {
         if (!__personalUI.selectedPersonId) {
-          // i add-läge: uppdatera cost display direkt (tomt)
+          // add-läge: uppdatera cost display direkt (tomt)
           setTimeout(() => updateCostDisplay(form), 0);
           return;
         }
@@ -669,7 +738,9 @@ export function renderPersonal(container, ctx) {
       }
     });
 
-    // === PEOPLE LIST ===
+    /* ============================================================
+     * BLOCK 15 — PEOPLE LIST (cards)
+     * ============================================================ */
     const listSection = document.createElement('div');
     listSection.className = 'section-header';
     listSection.style.marginTop = '2rem';
@@ -678,7 +749,6 @@ export function renderPersonal(container, ctx) {
     listTitle.textContent = `👥 Personal (${people.length})`;
     listSection.appendChild(listTitle);
 
-    // People list
     const list = document.createElement('div');
     list.id = 'personal-list';
     list.style.marginTop = '1rem';
@@ -696,7 +766,9 @@ export function renderPersonal(container, ctx) {
       });
     }
 
-    // Assemble page
+    /* ============================================================
+     * BLOCK 16 — Assemble page + bind search + live updates + init
+     * ============================================================ */
     viewContainer.appendChild(header);
     viewContainer.appendChild(statusRow);
     viewContainer.appendChild(searchRow);
@@ -708,7 +780,7 @@ export function renderPersonal(container, ctx) {
 
     container.appendChild(viewContainer);
 
-    // --- Bind sök ---
+    // Bind search input → uppdatera __personalUI.query och rendera resultat
     searchInput.addEventListener('input', () => {
       __personalUI.query = (searchInput.value || '').trim();
       renderSearchResults(resultsWrap, people, store, ctx, container);
@@ -723,13 +795,13 @@ export function renderPersonal(container, ctx) {
     // Init cost display (P0)
     updateCostDisplay(form);
 
-    // P0: Om vald person finns -> ladda i formulär efter DOM finns
+    // Om vald person finns -> ladda i formulär efter DOM finns
     if (__personalUI.selectedPersonId) {
       const selected = people.find((p) => p?.id === __personalUI.selectedPersonId);
       if (selected) {
         loadPersonIntoForm(selected);
       } else {
-        // om personen inte finns längre, fail-closed tillbaka till add-läge
+        // fail-closed: personen finns inte längre
         __personalUI.selectedPersonId = null;
       }
     }
@@ -742,8 +814,9 @@ export function renderPersonal(container, ctx) {
 }
 
 /* ============================================================
-   P0: Search helpers
-   ============================================================ */
+ * BLOCK 17 — Search helpers
+ * renderSearchResults(resultsWrap, people, ...)
+ * ============================================================ */
 function renderSearchResults(resultsWrap, people, store, ctx, container) {
   try {
     if (!resultsWrap) return;
@@ -826,7 +899,7 @@ function renderSearchResults(resultsWrap, people, store, ctx, container) {
       row.onclick = (e) => {
         e.preventDefault();
         __personalUI.selectedPersonId = p.id;
-        // Behåll query (så man kan byta person snabbt)
+        // STATE: behåll query så man kan byta person snabbt
         rerenderPersonal(ctx, container);
       };
 
@@ -839,6 +912,10 @@ function renderSearchResults(resultsWrap, people, store, ctx, container) {
   }
 }
 
+/* ============================================================
+ * BLOCK 18 — Load selected person into form (edit-mode)
+ * loadPersonIntoForm(person)
+ * ============================================================ */
 function loadPersonIntoForm(person) {
   try {
     // Basic
@@ -912,9 +989,11 @@ function loadPersonIntoForm(person) {
   }
 }
 
-/**
- * P0: tvinga inputs att vara skrivbara även om global CSS/JS råkat göra dem readOnly/disabled
- */
+/* ============================================================
+ * BLOCK 19 — UI Guard: ensureEditableInput
+ * WHY:
+ * - Fail-closed mot global CSS/JS som råkat göra inputs readOnly/disabled
+ * ============================================================ */
 function ensureEditableInput(input) {
   if (!input) return;
   try {
@@ -932,9 +1011,11 @@ function ensureEditableInput(input) {
   }
 }
 
-/**
- * P0: Uppdatera kostnad-display (XSS-safe, ingen innerHTML)
- */
+/* ============================================================
+ * BLOCK 20 — Cost display updater (P0)
+ * XSS:
+ * - endast textContent / createElement (ingen innerHTML)
+ * ============================================================ */
 function updateCostDisplay(form) {
   try {
     const costEl = document.getElementById('personal-cost-display');
@@ -951,6 +1032,7 @@ function updateCostDisplay(form) {
       return;
     }
 
+    // NOTE: calculatePersonMonthlyCost förväntar salary + employmentPct-ish
     const personForCalc = { salary, employmentPct: degree };
     const costs = calculatePersonMonthlyCost(personForCalc);
 
@@ -974,9 +1056,12 @@ function updateCostDisplay(form) {
   }
 }
 
-/**
- * Skapa grupp direkt från Personal
- */
+/* ============================================================
+ * BLOCK 21 — Create group inline from Personal
+ * IO:
+ * - Input: nameRaw, store/state
+ * - Output: store.setState() uppdaterar groups (array eller map)
+ * ============================================================ */
 function createGroupFromPersonal(nameRaw, store, ctx, container) {
   try {
     const name = (nameRaw || '').trim();
@@ -1016,9 +1101,9 @@ function createGroupFromPersonal(nameRaw, store, ctx, container) {
   }
 }
 
-/**
- * Create a form group helper
- */
+/* ============================================================
+ * BLOCK 22 — Form helpers (pure DOM factories)
+ * ============================================================ */
 function createFormGroup(id, label, type, placeholder) {
   const group = document.createElement('div');
   group.className = 'form-group';
@@ -1072,9 +1157,11 @@ function createDivider() {
   return div;
 }
 
-/**
- * Create person card with all info including sector (XSS-safe)
- */
+/* ============================================================
+ * BLOCK 23 — Person card renderer (list view)
+ * XSS:
+ * - all user data via textContent / createInfoLine
+ * ============================================================ */
 function createPersonCard(person, store, ctx, container, groups) {
   const card = document.createElement('div');
   card.style.background = '#fff';
@@ -1107,7 +1194,7 @@ function createPersonCard(person, store, ctx, container, groups) {
   editBtn.style.fontSize = '0.85rem';
   editBtn.onclick = (e) => {
     e.preventDefault();
-    // P0: redigera i formuläret istället för prompt()
+    // STATE: redigera i formuläret istället för prompt()
     __personalUI.selectedPersonId = person.id;
     rerenderPersonal(ctx, container);
   };
@@ -1137,14 +1224,14 @@ function createPersonCard(person, store, ctx, container, groups) {
   content.style.gridTemplateColumns = 'repeat(auto-fit, minmax(250px, 1fr))';
   content.style.gap = '1.5rem';
 
-  // Basic info
+  // Kontakt
   const basicSection = document.createElement('div');
   basicSection.appendChild(createSectionTitle('Kontakt'));
   basicSection.appendChild(createInfoLine('E-post:', person?.email || '-', { margin: '0 0 0.5rem 0' }));
   basicSection.appendChild(createInfoLine('Telefon:', person?.phone || '-', { margin: '0', fontSize: '0.9rem' }));
   content.appendChild(basicSection);
 
-  // Employment info
+  // Anställning
   const employmentSection = document.createElement('div');
   const sector = person?.sector === 'municipal' ? 'municipal' : 'private';
   const yearsEmployed = calculateYearsEmployed(person.startDate, sector);
@@ -1157,7 +1244,7 @@ function createPersonCard(person, store, ctx, container, groups) {
   employmentSection.appendChild(createInfoLine('Arbetsdagar/vecka:', String(person.workdaysPerWeek || 5), { margin: '0' }));
   content.appendChild(employmentSection);
 
-  // Salary & Costs
+  // Löner & kostnader
   const salarySection = document.createElement('div');
   const sectorName = sector === 'municipal' ? 'Kommunal' : 'Privat';
 
@@ -1209,12 +1296,13 @@ function createPersonCard(person, store, ctx, container, groups) {
 
   content.appendChild(salarySection);
 
-  // Groups
+  // Grupper
   const groupsSection = document.createElement('div');
-  const personGroups = (person.groupIds || [])
-    .map((gid) => groups.find((g) => g.id === gid)?.name)
-    .filter(Boolean)
-    .join(', ') || '-';
+  const personGroups =
+    (person.groupIds || [])
+      .map((gid) => groups.find((g) => g.id === gid)?.name)
+      .filter(Boolean)
+      .join(', ') || '-';
 
   groupsSection.appendChild(createSectionTitle('Arbetgrupper'));
   const groupsP = document.createElement('p');
@@ -1226,12 +1314,13 @@ function createPersonCard(person, store, ctx, container, groups) {
   groupsSection.appendChild(groupsP);
   content.appendChild(groupsSection);
 
-  // Availability
+  // Tillgänglighet
   const availabilitySection = document.createElement('div');
-  const availableDays = (person.availability || [])
-    .map((available, i) => (available ? DAYS_OF_WEEK[i] : null))
-    .filter(Boolean)
-    .join(', ') || '-';
+  const availableDays =
+    (person.availability || [])
+      .map((available, i) => (available ? DAYS_OF_WEEK[i] : null))
+      .filter(Boolean)
+      .join(', ') || '-';
 
   availabilitySection.appendChild(createSectionTitle('Tillgänglig'));
   const availP = document.createElement('p');
@@ -1247,9 +1336,9 @@ function createPersonCard(person, store, ctx, container, groups) {
   return card;
 }
 
-/**
- * Format date to Swedish format
- */
+/* ============================================================
+ * BLOCK 24 — Date helper
+ * ============================================================ */
 function formatDate(dateStr) {
   if (!dateStr) return '-';
   try {
@@ -1259,8 +1348,12 @@ function formatDate(dateStr) {
   }
 }
 
+/* ============================================================
+ * BLOCK 25 — Re-render helper (fail-closed)
+ * WHY:
+ * - används av submit/delete/search/edit flows
+ * ============================================================ */
 function rerenderPersonal(ctx, container) {
-  // Fail-closed: använd render-container om möjligt, annars fallback till #app.
   try {
     const target = container || document.getElementById('app') || document.querySelector('#app');
     if (target && ctx) renderPersonal(target, ctx);
@@ -1269,16 +1362,18 @@ function rerenderPersonal(ctx, container) {
   }
 }
 
-/**
- * Add new person
- */
+/* ============================================================
+ * BLOCK 26 — CRUD: Add person
+ * IO:
+ * - form → read values → validate → compute derived fields → store.setState()
+ * ============================================================ */
 function addPerson(form, errorDiv, store, ctx, container) {
   try {
     while (errorDiv.firstChild) {
       errorDiv.removeChild(errorDiv.firstChild);
     }
 
-    // Get values
+    // Read values (IO: DOM → JS)
     const name = (form.querySelector('#personal-name')?.value || '').trim();
     const email = (form.querySelector('#personal-email')?.value || '').trim();
     const phone = (form.querySelector('#personal-phone')?.value || '').trim();
@@ -1290,18 +1385,18 @@ function addPerson(form, errorDiv, store, ctx, container) {
     const savedLeave = parseInt(form.querySelector('#personal-saved-leave')?.value || 0);
     const sector = document.querySelector('input[name="sector"]:checked')?.value || 'private';
 
-    // Get selected groups
+    // Selected groups
     const groupIds = Array.from(document.querySelectorAll('.group-checkbox:checked')).map((cb) => cb.value);
 
-    // Get availability
+    // Availability
     const availability = Array.from(document.querySelectorAll('.availability-checkbox')).map((cb) => cb.checked);
 
-    // Validate
+    // Validate (fail-closed)
     if (!name || name.length < 2) throw new Error('Namn krävs (min 2 tecken)');
     if (!email || !email.includes('@')) throw new Error('Giltigt e-postadress krävs');
     if (!startDate) throw new Error('Startdatum krävs');
 
-    // Split name into firstName and lastName
+    // Split name → first/last (compat)
     const nameParts = name.split(' ').filter(Boolean);
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || nameParts[0] || '';
@@ -1309,21 +1404,23 @@ function addPerson(form, errorDiv, store, ctx, container) {
     const state = store.getState();
     const people = state.people || [];
 
-    // Check duplicate email
+    // Duplicate email guard
     if (people.some((p) => (p.email || '').toLowerCase() === email.toLowerCase())) {
       throw new Error('E-postadressen finns redan');
     }
 
-    // Calculate hourlyWage from salary (167 hours per month standard)
+    // Derived: hourlyWage from salary (167 hours per month standard)
     const hourlyWage = salary > 0 ? salary / 167 : 0;
 
-    // P0: beräkna semesterdagar deterministiskt
+    // P0: deterministisk semester-beräkning
     const yearsEmployed = calculateYearsEmployed(startDate, sector);
     const vacationDaysPerYear = getVacationDaysPerYear(yearsEmployed, degree, sector);
 
-    // Create person with correct schema
+    // Create person (schema)
     const newPerson = {
       id: `person_${Date.now()}`,
+
+      // Compat fields (äldre flöden)
       firstName,
       lastName,
       hourlyWage,
@@ -1333,7 +1430,7 @@ function addPerson(form, errorDiv, store, ctx, container) {
       extraDaysStartBalance: savedVacation,
       groups: groupIds,
 
-      // Additional fields for HR system
+      // HR fields
       name,
       email,
       phone: phone || null,
@@ -1351,6 +1448,7 @@ function addPerson(form, errorDiv, store, ctx, container) {
       updatedAt: new Date().toISOString(),
     };
 
+    // Persist to store
     store.setState({
       ...state,
       people: [...people, newPerson],
@@ -1360,7 +1458,6 @@ function addPerson(form, errorDiv, store, ctx, container) {
     showSuccess('✓ Personal tillagd');
     form.reset();
 
-    // Re-render the personal view (stabilt)
     rerenderPersonal(ctx, container);
   } catch (err) {
     console.error('❌ Error adding person:', err);
@@ -1369,9 +1466,9 @@ function addPerson(form, errorDiv, store, ctx, container) {
   }
 }
 
-/**
- * P0: Save edited person (i formuläret)
- */
+/* ============================================================
+ * BLOCK 27 — CRUD: Save edited person
+ * ============================================================ */
 function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
   try {
     while (errorDiv.firstChild) {
@@ -1401,6 +1498,7 @@ function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
     const existing = people.find((p) => p?.id === personId);
     if (!existing) throw new Error('Personen hittades inte längre (kanske borttagen).');
 
+    // Duplicate email guard (exclude current)
     if (people.some((p) => (p.email || '').toLowerCase() === email.toLowerCase() && p.id !== personId)) {
       throw new Error('E-postadressen finns redan');
     }
@@ -1411,7 +1509,7 @@ function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
 
     const hourlyWage = salary > 0 ? salary / 167 : 0;
 
-    // P0: beräkna semesterdagar deterministiskt
+    // P0: deterministisk semester-beräkning
     const yearsEmployed = calculateYearsEmployed(startDate, sector);
     const vacationDaysPerYear = getVacationDaysPerYear(yearsEmployed, degree, sector);
 
@@ -1419,6 +1517,8 @@ function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
       if (p.id !== personId) return p;
       return {
         ...p,
+
+        // Compat
         firstName,
         lastName,
         hourlyWage,
@@ -1446,7 +1546,7 @@ function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
     store.setState({ ...state, people: updatedPeople });
     showSuccess('✓ Ändringar sparade');
 
-    // tillbaka till add-läge (men behåll ev query)
+    // STATE: tillbaka till add-läge
     __personalUI.selectedPersonId = null;
     rerenderPersonal(ctx, container);
   } catch (err) {
@@ -1456,9 +1556,9 @@ function saveEditedPerson(form, errorDiv, store, ctx, container, personId) {
   }
 }
 
-/**
- * Delete person
- */
+/* ============================================================
+ * BLOCK 28 — CRUD: Delete person
+ * ============================================================ */
 function deletePerson(personId, store, ctx, container) {
   try {
     if (!confirm('Är du säker på att du vill ta bort denna person?')) return;
@@ -1469,7 +1569,7 @@ function deletePerson(personId, store, ctx, container) {
       people: (state.people || []).filter((p) => p.id !== personId),
     });
 
-    // om vi råkar redigera samma person -> lämna edit-läge
+    // STATE: om vi råkar redigera samma person -> lämna edit-läge
     if (__personalUI.selectedPersonId === personId) {
       __personalUI.selectedPersonId = null;
     }
@@ -1477,7 +1577,6 @@ function deletePerson(personId, store, ctx, container) {
     console.log('✓ Person borttagen');
     showSuccess('✓ Personal borttagen');
 
-    // Re-render the personal view (stabilt)
     rerenderPersonal(ctx, container);
   } catch (err) {
     console.error('❌ Error deleting person:', err);
@@ -1485,9 +1584,11 @@ function deletePerson(personId, store, ctx, container) {
   }
 }
 
-/**
- * Display error
- */
+/* ============================================================
+ * BLOCK 29 — Error renderer (UI)
+ * XSS:
+ * - message sätts med textContent
+ * ============================================================ */
 function displayError(container, message) {
   if (!container) return;
 
@@ -1507,9 +1608,10 @@ function displayError(container, message) {
 }
 
 /* ============================================================
-   Legacy: editPerson(prompt) finns kvar men används inte längre
-   (behålls för kompatibilitet om andra anropar den)
-   ============================================================ */
+ * BLOCK 30 — Legacy compat: editPerson(prompt) (behålls)
+ * NOTE:
+ * - Används inte längre i UI-flödet, men kvar för externa anrop.
+ * ============================================================ */
 function editPerson(person, store, ctx, container) {
   try {
     __personalUI.selectedPersonId = person?.id || null;
