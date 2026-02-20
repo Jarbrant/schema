@@ -522,7 +522,7 @@ function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
                 cal.generatePreview = null;
                 renderCalendar(container, ctx);
 
-            /* v2.5: Toggle link panel (var saknad -> badge gjorde inget) */
+            /* v2.5: Toggle link panel */
             } else if (action==='toggle-link-panel') {
                 cal.showLinkPanel = !cal.showLinkPanel;
                 renderCalendar(container, ctx);
@@ -538,6 +538,10 @@ function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
             /* v2.5: Avkoppla (tar bort koppling för aktuell vecka) */
             } else if (action==='remove-link') {
                 handleRemoveLink(store, ctx, container);
+
+            /* v2.5: Radera alla entries i vald period */
+            } else if (action==='clear-period') {
+                handleClearPeriod(store, ctx, container);
 
             } else if (action==='toggle-group') {
                 const gid = btn.dataset.groupId;
@@ -602,7 +606,6 @@ function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
         }
     }, { signal });
 }
-
 /* ============================================================
  * BLOCK 11 — ensureDay (fail-safe)
  * ============================================================ */
