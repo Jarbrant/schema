@@ -228,6 +228,7 @@ function renderLinkPanel(weekKey, weekNum, linkedTemplateId, weekTemplates, cale
             <div class="cal-link-actions">
                 <button class="btn btn-primary" data-cal="apply-link">✓ Koppla period</button>
                 <button class="btn btn-primary" data-cal="apply-link-generate" style="background:#27ae60;">🤖 Koppla + Generera allt</button>
+                <button class="btn btn-danger btn-sm" data-cal="clear-period">🗑️ Radera schema i period</button>
                 ${linkedTemplateId ? `<button class="btn btn-danger btn-sm" data-cal="remove-link">🗑️ Ta bort koppling</button>` : ''}
                 <button class="btn btn-secondary" data-cal="toggle-link-panel">Stäng</button>
             </div>
