@@ -621,14 +621,13 @@ function ensureDay(schedule, monthIdx, dayIdx) {
 }
 
 /* ============================================================
- * BLOCK 12 — LINK HANDLERS (v2.5)
+ * BLOCK 12 — LINK HANDLERS (v2.6 — med beräkningsperiod)
  * ============================================================ */
 function handleApplyLink(store, ctx, container, alsoGenerate) {
     const cal = ctx._cal;
     const s = store.getState();
     const year = s.schedule.year;
 
-    // NOTE: Hämtar via document.getElementById -> kräver att det bara finns en kalender i DOM samtidigt.
     const selectEl = document.getElementById('cal-link-template');
     const fromEl = document.getElementById('cal-link-from');
     const toEl = document.getElementById('cal-link-to');
@@ -659,7 +658,6 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
         d.setDate(d.getDate() + i);
         const dayOfWeek = d.getDay();
 
-        /* Hitta måndagen för denna dag */
         const mon = new Date(d);
         mon.setDate(d.getDate() - ((dayOfWeek + 6) % 7));
 
@@ -681,6 +679,7 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
 
     const weekKeysArr = [...weekKeys];
 
+    /* Koppla veckor till mall */
     store.update(st => {
         if (!st.calendarWeeks || typeof st.calendarWeeks !== 'object') st.calendarWeeks = {};
         weekKeysArr.forEach(wk => {
@@ -693,8 +692,10 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
     const templateName = templateId ? (s.weekTemplates?.[templateId]?.name || templateId) : '';
     showSuccess(`✓ ${weekKeysArr.length} vecka(or) ${action}${templateName ? ': ' + templateName : ''}`);
 
-    /* Kontrollera om veckorna redan har entries — varna användaren */
+    /* ── Generera med beräkningsperiod ── */
     if (alsoGenerate && templateId) {
+
+        /* Kontrollera om det redan finns entries */
         const checkState = store.getState();
         let existingCount = 0;
         weekOffsets.forEach(wo => {
@@ -705,8 +706,13 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
                 if (dayData?.entries?.length) existingCount += dayData.entries.filter(e => e.status === 'A').length;
             });
         });
+
         if (existingCount > 0) {
-            const ok = confirm(`⚠️ Det finns redan ${existingCount} tilldelningar i vald period.\n\nVill du generera ändå? (Kan ge dubbletter)\n\nTryck "Avbryt" för att koppla utan att generera.`);
+            const ok = confirm(
+                `⚠️ Det finns redan ${existingCount} tilldelningar i vald period.\n\n` +
+                `Vill du generera ändå? (Kan ge dubbletter)\n\n` +
+                `Tryck "Avbryt" för att koppla utan att generera.`
+            );
             if (!ok) {
                 cal.showLinkPanel = false;
                 renderCalendar(container, ctx);
@@ -714,35 +720,34 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
             }
         }
 
-        /* Generera schema för alla veckor */
+        /* Kör period-generering via engine */
         const state = store.getState();
         const wt = state.weekTemplates?.[templateId];
-        if (wt) {
-            let totalApplied = 0;
-            const shifts = state.shifts || {};
-            const groupShifts = state.groupShifts || {};
-            const shiftTemplates = state.shiftTemplates || {};
 
-            weekOffsets.forEach(wo => {
-                const weekDates = getWeekDates(year, wo);
-                const preview = generateWeekSchedule({
-                    weekDates,
+        if (wt) {
+            try {
+                const result = generatePeriodSchedule({
+                    weekOffsets,
+                    year,
                     weekTemplate: wt,
-                    groups: state.groups,
-                    shifts: state.shifts,
-                    shiftTemplates: state.shiftTemplates,
-                    groupShifts: state.groupShifts,
-                    people: (state.people || []).filter(p => p.isActive),
-                    absences: state.absences || [],
-                    existingEntries: {},
-                    demand: state.demand
+                    state,
+                    getWeekDates,
                 });
 
-                if (preview?.suggestions?.length) {
+                /* Applicera alla suggestions till store */
+                const shifts = state.shifts || {};
+                const groupShifts = state.groupShifts || {};
+                const shiftTemplates = state.shiftTemplates || {};
+                let totalApplied = 0;
+
+                result.allSuggestions.forEach(weekSuggestions => {
+                    if (!weekSuggestions?.length) return;
+
                     store.update(s => {
-                        preview.suggestions.forEach(sug => {
+                        weekSuggestions.forEach(sug => {
                             let resolvedShiftId = sug.shiftId || sug.shiftTemplateId;
 
+                            /* Resolve templateId → verkligt shiftId */
                             if (resolvedShiftId && !shifts[resolvedShiftId]) {
                                 const gsArr = Array.isArray(groupShifts[sug.groupId]) ? groupShifts[sug.groupId] : [];
                                 const st = shiftTemplates[resolvedShiftId];
@@ -757,7 +762,13 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
                             }
 
                             const day = ensureDay(s.schedule, getMonthIndex(sug.date), getDayIndex(sug.date));
-                            if (day.entries.some(e => e.personId === sug.personId && e.shiftId === resolvedShiftId && e.groupId === sug.groupId)) return;
+
+                            /* Undvik exakt dubbletter */
+                            if (day.entries.some(e =>
+                                e.personId === sug.personId &&
+                                e.shiftId === resolvedShiftId &&
+                                e.groupId === sug.groupId
+                            )) return;
 
                             day.entries.push({
                                 personId: sug.personId,
@@ -767,15 +778,35 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
                                 startTime: sug.startTime,
                                 endTime: sug.endTime,
                                 breakStart: sug.breakStart,
-                                breakEnd: sug.breakEnd
+                                breakEnd: sug.breakEnd,
                             });
                             totalApplied++;
                         });
                     });
-                }
-            });
+                });
 
-            showSuccess(`✓ ${totalApplied} tilldelningar genererade för ${weekOffsets.length} veckor`);
+                /* Visa sammanfattning */
+                const stats = result.totalStats;
+                let summaryMsg = `✓ ${totalApplied} tilldelningar genererade för ${stats.weeks} veckor`;
+                summaryMsg += `\n${stats.totalHours.toFixed(0)} timmar totalt`;
+
+                if (stats.totalVacancies > 0) {
+                    summaryMsg += `\n⚠️ ${stats.totalVacancies} vakanser`;
+                }
+
+                /* Visa per-person info i konsolen */
+                console.log('📊 Per person:');
+                Object.values(stats.perPerson).forEach(p => {
+                    const bar = '█'.repeat(Math.round(p.pctUsed / 5)) + '░'.repeat(Math.max(0, 20 - Math.round(p.pctUsed / 5)));
+                    console.log(`  ${p.name} (${p.employmentPct}%, ${p.periodWeeks}v): ${p.hours}h / ${p.periodTarget}h [${bar}] ${p.pctUsed}%`);
+                });
+
+                showSuccess(summaryMsg);
+
+            } catch (err) {
+                console.error('❌ Period-generering misslyckades:', err);
+                showWarning(`❌ Generering misslyckades: ${err.message}`);
+            }
         }
     }
 
@@ -816,7 +847,11 @@ function handleClearPeriod(store, ctx, container) {
         return;
     }
 
-    const ok = confirm(`⚠️ Radera ${totalEntries} tilldelningar?\n\nPeriod: ${fromEl.value} → ${toEl.value}\n\nDetta kan inte ångras!`);
+    const ok = confirm(
+        `⚠️ Radera ${totalEntries} tilldelningar?\n\n` +
+        `Period: ${fromEl.value} → ${toEl.value}\n\n` +
+        `Detta kan inte ångras!`
+    );
     if (!ok) return;
 
     let removed = 0;
