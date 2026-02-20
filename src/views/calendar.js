@@ -1,7 +1,11 @@
 /*
- * AO-07 — Schedule View (Calendar) — v2.4 STANDALONE (AUTOPATCH)
+ * AO-07 — Schedule View (Calendar) — v2.5 STANDALONE (AUTOPATCH)
  * FIL: src/views/calendar.js
  *
+ * Fixar v2.5:
+ *   - Koppla veckomall per vecka (dropdown i topbar)
+ *   - Bulk-koppla: applicera mall på flera veckor framåt
+ *   - Avkoppla veckomall (ta bort koppling)
  * Fixar v2.4:
  *   - Enskilda pass-rader kan fällas ihop/döljas (toggle per shift)
  * Fixar v2.3:
@@ -67,12 +71,12 @@ export function renderCalendar(container, ctx) {
             ctx._cal = {
                 weekOffset: calcCurrentWeekOffset(year),
                 collapsedGroups: {},
-                collapsedShifts: {},  /* FIX v2.4: per-shift toggle */
+                collapsedShifts: {},
                 assignModal: null, editModal: null, generatePreview: null,
+                showLinkPanel: false,  /* v2.5: visa kopplingspanel */
             };
         }
         const cal = ctx._cal;
-        /* FIX v2.4: säkerställ att collapsedShifts finns (äldre ctx) */
         if (!cal.collapsedShifts) cal.collapsedShifts = {};
 
         const weekDates = getWeekDates(year, cal.weekOffset);
@@ -87,7 +91,8 @@ export function renderCalendar(container, ctx) {
 
         container.innerHTML = `
             <div class="cal-container">
-                ${renderTopBar(cal, weekNum, weekDates, isLocked, linkedTemplate)}
+                ${renderTopBar(cal, weekNum, weekDates, isLocked, linkedTemplate, weekTemplates, weekKey)}
+                ${cal.showLinkPanel ? renderLinkPanel(weekKey, weekNum, linkedTemplateId, weekTemplates, calendarWeeks, year) : ''}
                 ${weekWarnings.length > 0 ? renderWarnings(weekWarnings) : ''}
                 ${cal.generatePreview ? renderGeneratePreview(cal.generatePreview, people, groups, shifts, shiftTemplates) : ''}
                 <div class="cal-week-header">
@@ -119,12 +124,19 @@ function calcCurrentWeekOffset(year) {
     return Math.max(0, Math.min(MAX_WEEK_OFFSET, Math.floor(diffDays / 7)));
 }
 
-/* ── TOP BAR ── */
-function renderTopBar(cal, weekNum, weekDates, isLocked, linkedTemplate) {
+/* ══════════════════════════════════════════════════════════
+ * TOP BAR — v2.5: klickbar mall-badge + kopplingsknapp
+ * ══════════════════════════════════════════════════════════ */
+function renderTopBar(cal, weekNum, weekDates, isLocked, linkedTemplate, weekTemplates, weekKey) {
+    const hasTemplates = Object.keys(weekTemplates).length > 0;
+    const templateBadge = linkedTemplate
+        ? `<span class="cal-template-badge" data-cal="toggle-link-panel" style="cursor:pointer;" title="Klicka för att ändra koppling">📋 ${escapeHtml(linkedTemplate.name)}</span>`
+        : hasTemplates
+            ? `<span class="cal-template-badge cal-no-template" data-cal="toggle-link-panel" style="cursor:pointer;" title="Klicka för att koppla veckomall">⚡ Koppla veckomall</span>`
+            : `<span class="cal-template-badge cal-no-template" title="Skapa veckomallar först under Veckomallar">Inga veckomallar</span>`;
+
     return `<div class="cal-topbar">
-        <div class="cal-topbar-left">${linkedTemplate
-            ? `<span class="cal-template-badge">📋 ${escapeHtml(linkedTemplate.name)}</span>`
-            : `<span class="cal-template-badge cal-no-template">Ingen veckomall</span>`}</div>
+        <div class="cal-topbar-left">${templateBadge}</div>
         <div class="cal-topbar-center">
             <button class="btn btn-secondary" data-cal="prev-week">◀</button>
             <div class="cal-week-display"><strong>Vecka ${weekNum}</strong>
@@ -138,6 +150,66 @@ function renderTopBar(cal, weekNum, weekDates, isLocked, linkedTemplate) {
                 ? `<button class="btn btn-sm cal-locked-badge" data-cal="unlock-week">🔒 Låst</button>`
                 : `<button class="btn btn-secondary btn-sm" data-cal="lock-week">🔓 Lås vecka</button>`}
         </div></div>`;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * LINK PANEL — v2.5: Koppla veckomall till kalendervecka
+ * ══════════════════════════════════════════════════════════ */
+function renderLinkPanel(weekKey, weekNum, linkedTemplateId, weekTemplates, calendarWeeks, year) {
+    const templateList = Object.values(weekTemplates);
+    if (!templateList.length) {
+        return `<div class="cal-link-panel">
+            <div class="cal-link-header"><h3>📋 Koppla veckomall</h3>
+                <button class="cal-modal-close" data-cal="toggle-link-panel" type="button">×</button></div>
+            <p class="cal-empty">Inga veckomallar skapade. Gå till <a href="#/week-templates">📅 Veckomallar</a> och skapa en först.</p>
+        </div>`;
+    }
+
+    /* Räkna hur många veckor som redan är kopplade */
+    const linkedCount = Object.keys(calendarWeeks).length;
+
+    return `<div class="cal-link-panel">
+        <div class="cal-link-header">
+            <h3>📋 Koppla veckomall → Vecka ${weekNum}</h3>
+            <button class="cal-modal-close" data-cal="toggle-link-panel" type="button">×</button>
+        </div>
+        <div class="cal-link-body">
+            <div class="cal-link-current">
+                <span class="cal-link-label">Nuvarande koppling:</span>
+                <strong>${linkedTemplateId ? escapeHtml(weekTemplates[linkedTemplateId]?.name || linkedTemplateId) : 'Ingen'}</strong>
+            </div>
+
+            <div class="cal-link-select-row">
+                <label for="cal-link-template">Välj veckomall:</label>
+                <select id="cal-link-template" class="cal-link-select">
+                    <option value="">— Ingen (ta bort koppling) —</option>
+                    ${templateList.map(t => `<option value="${escapeHtml(t.id)}" ${t.id === linkedTemplateId ? 'selected' : ''}>${escapeHtml(t.name)} (${t.slots ? t.slots.length : 0} slots)</option>`).join('')}
+                </select>
+            </div>
+
+            <div class="cal-link-bulk-row">
+                <label for="cal-link-weeks">Applicera på antal veckor framåt:</label>
+                <select id="cal-link-weeks" class="cal-link-select">
+                    <option value="1" selected>1 vecka (bara denna)</option>
+                    <option value="4">4 veckor</option>
+                    <option value="8">8 veckor</option>
+                    <option value="13">13 veckor (kvartalsvis)</option>
+                    <option value="26">26 veckor (halvår)</option>
+                    <option value="52">52 veckor (helår)</option>
+                </select>
+            </div>
+
+            <div class="cal-link-info">
+                <span>ℹ️ ${linkedCount} veckor har kopplingar totalt</span>
+            </div>
+
+            <div class="cal-link-actions">
+                <button class="btn btn-primary" data-cal="apply-link">✓ Koppla</button>
+                ${linkedTemplateId ? `<button class="btn btn-danger btn-sm" data-cal="remove-link">🗑️ Ta bort koppling</button>` : ''}
+                <button class="btn btn-secondary" data-cal="toggle-link-panel">Stäng</button>
+            </div>
+        </div>
+    </div>`;
 }
 
 /* ── WARNINGS ── */
@@ -197,9 +269,7 @@ function renderGroupSections(weekSchedule, weekDates, groups, shifts, shiftTempl
     }).join('');
 }
 
-/* ══════════════════════════════════════════════════════════
- * GROUP BODY — FIX v2.4: per-shift toggle (dölja pass-rad)
- * ══════════════════════════════════════════════════════════ */
+/* ── GROUP BODY — v2.4: per-shift toggle ── */
 function renderGroupBody(gid, groupData, weekDates, shifts, shiftTemplates, linkedShiftIds, people, absences, vacancies, isLocked, cal) {
     if (!linkedShiftIds.length) return `<div class="cal-group-body"><p class="cal-empty-small">Inga grundpass kopplade.</p></div>`;
     const allShifts = { ...shifts, ...shiftTemplates };
@@ -210,7 +280,6 @@ function renderGroupBody(gid, groupData, weekDates, shifts, shiftTemplates, link
         const shiftKey = `${gid}::${sid}`;
         const isShiftCollapsed = !!cal.collapsedShifts[shiftKey];
 
-        /* FIX v2.4: Räkna tilldelade denna vecka för sammanfattning */
         let shiftWeekPersons = 0;
         if (isShiftCollapsed) {
             weekDates.forEach(date => {
@@ -377,7 +446,7 @@ function buildWeekSchedule(weekDates, state, groups, shifts, shiftTemplates, peo
 }
 
 /* ══════════════════════════════════════════════════════════
- * EVENT LISTENERS — v2.4: toggle-shift action tillagd
+ * EVENT LISTENERS — v2.5: link-panel actions tillagda
  * ══════════════════════════════════════════════════════════ */
 function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
     if (ctx._calAbort) ctx._calAbort.abort();
@@ -411,11 +480,24 @@ function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
                 cal.weekOffset = calcCurrentWeekOffset(store.getState().schedule.year);
                 cal.generatePreview = null;
                 renderCalendar(container, ctx);
+
+            /* ── v2.5: Toggle link panel ── */
+            } else if (action==='toggle-link-panel') {
+                cal.showLinkPanel = !cal.showLinkPanel;
+                renderCalendar(container, ctx);
+
+            /* ── v2.5: Apply link (koppla veckomall) ── */
+            } else if (action==='apply-link') {
+                handleApplyLink(store, ctx, container);
+
+            /* ── v2.5: Remove link (avkoppla) ── */
+            } else if (action==='remove-link') {
+                handleRemoveLink(store, ctx, container);
+
             } else if (action==='toggle-group') {
                 const gid = btn.dataset.groupId;
                 if (gid) cal.collapsedGroups[gid] = !cal.collapsedGroups[gid];
                 renderCalendar(container, ctx);
-            /* FIX v2.4: toggle-shift */
             } else if (action==='toggle-shift') {
                 const key = btn.dataset.shiftKey;
                 if (key) cal.collapsedShifts[key] = !cal.collapsedShifts[key];
@@ -470,7 +552,72 @@ function ensureDay(schedule, monthIdx, dayIdx) {
     return day;
 }
 
-/* ── ACTION HANDLERS ── */
+/* ══════════════════════════════════════════════════════════
+ * v2.5: LINK HANDLERS — Koppla/avkoppla veckomall
+ * ══════════════════════════════════════════════════════════ */
+function handleApplyLink(store, ctx, container) {
+    const cal = ctx._cal;
+    const s = store.getState();
+    const year = s.schedule.year;
+
+    const selectEl = document.getElementById('cal-link-template');
+    const weeksEl = document.getElementById('cal-link-weeks');
+    if (!selectEl || !weeksEl) return;
+
+    const templateId = selectEl.value; /* tom sträng = ta bort */
+    const weekCount = parseInt(weeksEl.value, 10) || 1;
+
+    /* Beräkna vecko-nycklar */
+    const weekKeys = [];
+    for (let i = 0; i < weekCount; i++) {
+        const offset = cal.weekOffset + i;
+        if (offset > MAX_WEEK_OFFSET) break;
+        const dates = getWeekDates(year, offset);
+        const wn = getISOWeekNumber(dates[0]);
+        weekKeys.push(`${year}-W${String(wn).padStart(2,'0')}`);
+    }
+
+    store.update(st => {
+        if (!st.calendarWeeks || typeof st.calendarWeeks !== 'object') {
+            st.calendarWeeks = {};
+        }
+        weekKeys.forEach(wk => {
+            if (templateId) {
+                st.calendarWeeks[wk] = templateId;
+            } else {
+                delete st.calendarWeeks[wk];
+            }
+        });
+    });
+
+    const action = templateId ? 'kopplad' : 'avkopplad';
+    const templateName = templateId ? (s.weekTemplates?.[templateId]?.name || templateId) : '';
+    showSuccess(`✓ ${weekKeys.length} vecka(or) ${action}${templateName ? ': ' + templateName : ''}`);
+
+    cal.showLinkPanel = false;
+    renderCalendar(container, ctx);
+}
+
+function handleRemoveLink(store, ctx, container) {
+    const cal = ctx._cal;
+    const s = store.getState();
+    const year = s.schedule.year;
+    const weekDates = getWeekDates(year, cal.weekOffset);
+    const wn = getISOWeekNumber(weekDates[0]);
+    const weekKey = `${year}-W${String(wn).padStart(2,'0')}`;
+
+    store.update(st => {
+        if (st.calendarWeeks && typeof st.calendarWeeks === 'object') {
+            delete st.calendarWeeks[weekKey];
+        }
+    });
+
+    showWarning(`🗑️ Vecka ${wn} avkopplad`);
+    cal.showLinkPanel = false;
+    renderCalendar(container, ctx);
+}
+
+/* ── ACTION HANDLERS (existing) ── */
 function handleAssign(btn, cal, store, container, ctx) {
     const pid = btn.dataset.personId, m = cal.assignModal;
     if (!pid || !m) return;
@@ -622,11 +769,4 @@ function isDateToday(date){const n=new Date();return date.getFullYear()===n.getF
 function getMonthIndex(ds){return parseInt(ds.split('-')[1],10)-1;}
 function getDayIndex(ds){return parseInt(ds.split('-')[2],10)-1;}
 function isAbsenceOnDate(a,ds){if(!a||!ds)return false;if(a.pattern==='single')return a.date===ds;if(a.pattern==='range')return ds>=(a.startDate||'')&&ds<=(a.endDate||'9999-12-31');
-    if(a.pattern==='recurring'){if(ds<(a.startDate||'')||ds>(a.endDate||'9999-12-31'))return false;return Array.isArray(a.days)&&a.days.includes(new Date(ds).getDay());}return false;}
-function formatCurrency(a){if(!a||!Number.isFinite(a))return '0 kr';return Math.round(a).toLocaleString('sv-SE')+' kr';}
-function getStatusStyle(s){return ABSENCE_COLORS[s]||STATUS_COLORS[s]||STATUS_COLORS.A;}
-
-/* ── XSS ── */
-const SAFE_COLOR_RE=/^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*[\d.]+\s*\)|hsl\(\s*\d{1,3}\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*\)|hsla\(\s*\d{1,3}\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+\s*\)|[a-zA-Z]{1,20})$/;
-function sanitizeColor(i){if(typeof i!=='string')return '#777';const t=i.trim();return SAFE_COLOR_RE.test(t)?t:'#777';}
-function escapeHtml(s){if(typeof s!=='string')return '';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+    
