@@ -34,10 +34,13 @@
     margin: 0;
 }
 
-/* ── TOP BAR ── */
+/* ── TOP BAR (sticky) ── */
 .cal-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
     background: #fff;
-    border-radius: 12px;
+    border-radius: 12px 12px 0 0;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     padding: 0.75rem 1.5rem;
     margin-bottom: 0;
@@ -86,8 +89,93 @@
     font-size: 0.85rem;
 }
 
-/* ── WEEK HEADER (day columns) ── */
+/* ── TEMPLATE BADGE ── */
+.cal-template-badge {
+    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    background: #e8eaf6;
+    color: #3949ab;
+}
+
+.cal-template-badge.cal-no-template {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+/* ── LINK PANEL (sticky under topbar) ── */
+.cal-link-panel {
+    position: sticky;
+    top: 52px;
+    z-index: 98;
+    background: #f0f0ff;
+    padding: 1rem 1.5rem;
+    border-bottom: 2px solid #c5cae9;
+}
+
+.cal-link-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.cal-link-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: #333;
+}
+
+.cal-link-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.cal-link-current {
+    font-size: 0.9rem;
+}
+
+.cal-link-label {
+    color: #666;
+    margin-right: 0.5rem;
+}
+
+.cal-link-select-row label,
+.cal-link-bulk-row label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 0.25rem;
+}
+
+.cal-link-select {
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.cal-link-info {
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.cal-link-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* ── WEEK HEADER (sticky under topbar) ── */
 .cal-week-header {
+    position: sticky;
+    top: 52px;
+    z-index: 99;
     display: grid;
     grid-template-columns: 180px repeat(7, 1fr);
     background: #2c3e6d;
@@ -130,6 +218,105 @@
     display: block;
     font-size: 0.8rem;
     opacity: 0.8;
+}
+
+/* ── WARNINGS ── */
+.cal-warnings {
+    padding: 0.5rem 1rem;
+    background: #fff;
+}
+
+.cal-warning-section {
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 0.3rem;
+    font-size: 0.8rem;
+}
+
+.cal-warning-error {
+    background: #ffebee;
+    color: #b71c1c;
+}
+
+.cal-warning-warn {
+    background: #fff8e1;
+    color: #e65100;
+}
+
+.cal-warning-item {
+    display: inline-block;
+    margin-left: 0.5rem;
+}
+
+/* ── GENERATE PREVIEW ── */
+.cal-generate-preview {
+    background: #f0fff0;
+    border: 2px solid #66bb6a;
+    border-radius: 8px;
+    margin: 0.5rem 0;
+    padding: 0.75rem 1rem;
+}
+
+.cal-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.cal-preview-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.cal-preview-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.cal-preview-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.cal-preview-stat {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.cal-preview-ok {
+    color: #1b5e20;
+}
+
+.cal-preview-vacancy {
+    color: #e65100;
+}
+
+.cal-preview-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.cal-preview-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.25rem 0;
+    font-size: 0.8rem;
+    border-bottom: 1px solid #e8f5e9;
+}
+
+.cal-preview-date {
+    color: #666;
+    min-width: 80px;
+}
+
+.cal-preview-badge {
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
 }
 
 /* ── GROUP SECTION ── */
@@ -231,6 +418,10 @@
     border-bottom: none;
 }
 
+.cal-shift-collapsed {
+    min-height: auto;
+}
+
 .cal-shift-label {
     display: flex;
     align-items: flex-start;
@@ -239,6 +430,10 @@
     background: #fafbfc;
     border-left-width: 4px;
     border-left-style: solid;
+}
+
+.cal-shift-toggle {
+    flex-shrink: 0;
 }
 
 .cal-shift-dot {
@@ -262,6 +457,11 @@
 .cal-shift-time {
     font-size: 0.75rem;
     color: #888;
+}
+
+.cal-shift-hours {
+    font-size: 0.7rem;
+    color: #aaa;
 }
 
 /* ── SHIFT DAYS GRID ── */
@@ -330,27 +530,36 @@
     letter-spacing: 0.02em;
 }
 
-.cal-card-remove {
+.cal-card-actions {
     position: absolute;
     top: 0;
     right: 0;
-    background: none;
-    border: none;
-    font-size: 1rem;
-    cursor: pointer;
-    color: inherit;
+    display: flex;
+    gap: 0.1rem;
     opacity: 0;
-    padding: 0 0.3rem;
-    line-height: 1;
     transition: opacity 0.15s;
 }
 
-.cal-person-card:hover .cal-card-remove {
-    opacity: 0.7;
+.cal-person-card:hover .cal-card-actions {
+    opacity: 1;
+}
+
+.cal-card-edit,
+.cal-card-remove {
+    background: none;
+    border: none;
+    font-size: 0.8rem;
+    cursor: pointer;
+    color: inherit;
+    padding: 0 0.2rem;
+    line-height: 1;
+}
+
+.cal-card-edit:hover {
+    color: #1976d2;
 }
 
 .cal-card-remove:hover {
-    opacity: 1 !important;
     color: #d32f2f;
 }
 
@@ -396,6 +605,17 @@
     background: #f0f4ff;
 }
 
+/* ── DRAG & DROP ── */
+.cal-dragging {
+    opacity: 0.4;
+}
+
+.cal-drop-target {
+    background: #e8f5e9 !important;
+    outline: 2px dashed #66bb6a;
+    outline-offset: -2px;
+}
+
 /* ── MODAL ── */
 .cal-modal-overlay {
     position: fixed;
@@ -416,6 +636,10 @@
     max-height: 80vh;
     overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.cal-modal-sm {
+    max-width: 450px;
 }
 
 .cal-modal-header {
@@ -471,6 +695,41 @@
 
 .cal-modal-body {
     padding: 1rem 1.5rem 1.5rem;
+}
+
+/* ── EDIT FORM ── */
+.cal-edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.cal-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.cal-edit-row label {
+    min-width: 80px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #555;
+}
+
+.cal-edit-row input,
+.cal-edit-row select {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.cal-edit-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
 }
 
 /* ── ASSIGN TABLE ── */
@@ -602,4 +861,16 @@
         grid-template-columns: 60px 1fr;
     }
 
-    .cal-shift-
+    .cal-shift-section {
+        grid-template-columns: 60px 1fr;
+    }
+
+    .cal-group-color {
+        font-size: 0.65rem;
+        padding: 0.2rem 0.4rem;
+    }
+
+    .cal-person-card {
+        font-size: 0.6rem;
+    }
+}
