@@ -1,11 +1,18 @@
 /*
- * AO-09 — Summary View (Sammanställning) — v1.0
+ * AO-09 — Summary View (Sammanställning) — v2.0
  * FIL: src/views/summary.js
  *
- * Månadssammanställning: timmar, kostnader, per person/grupp.
+ * v1.0: Månadssammanställning: timmar, kostnader, per person/grupp.
+ * v2.0: + Beräkningsperioder (AO-12) — timbalans per person/kvartal.
  */
 
 import { calcShiftHours } from '../modules/schedule-engine.js';
+import {
+    getDefaultPeriods,
+    getActivePeriod,
+    calcAllPersonBalances,
+    PERIOD_NAMES,
+} from '../modules/calculation-periods.js';
 
 /* ── CONSTANTS ── */
 const MONTH_NAMES = ['Januari','Februari','Mars','April','Maj','Juni','Juli','Augusti','September','Oktober','November','December'];
@@ -30,10 +37,11 @@ export function renderSummary(container, ctx) {
         const people = Array.isArray(state.people) ? state.people : [];
         const activePeople = people.filter(p => p.isActive);
         const months = Array.isArray(state.schedule.months) ? state.schedule.months : [];
+        const settings = state.settings || {};
 
         if (!ctx._sum) {
             const now = new Date();
-            ctx._sum = { monthIndex: now.getFullYear() === year ? now.getMonth() : 0 };
+            ctx._sum = { monthIndex: now.getFullYear() === year ? now.getMonth() : 0, showBalances: true };
         }
         const sum = ctx._sum;
 
@@ -87,6 +95,14 @@ export function renderSummary(container, ctx) {
         const groupList = Object.values(groupStats).sort((a, b) => b.hours - a.hours);
         const daysInMonth = new Date(year, sum.monthIndex + 1, 0).getDate();
 
+        /* AO-12: Beräkna timbalanser per person/period */
+        const balances = calcAllPersonBalances(people, settings, months, shifts, shiftTemplates, year);
+
+        /* Hitta aktiv period för vald månad */
+        const midMonthDate = `${year}-${String(sum.monthIndex + 1).padStart(2, '0')}-15`;
+        const periods = getDefaultPeriods(year);
+        const activePeriod = getActivePeriod(midMonthDate, periods);
+
         container.innerHTML = `
             <div class="sum-container">
                 ${renderTopBar(sum, year)}
@@ -94,6 +110,7 @@ export function renderSummary(container, ctx) {
                 <div class="sum-sections">
                     ${renderPersonSection(personList)}
                     ${renderGroupSection(groupList, groups)}
+                    ${renderBalanceSection(balances, activePeriod, sum.showBalances)}
                 </div>
             </div>`;
 
@@ -116,7 +133,11 @@ function renderTopBar(sum, year) {
             </div>
             <button class="btn btn-secondary" data-sum="next-month">▶</button>
         </div>
-        <div></div>
+        <div>
+            <button class="btn btn-secondary" data-sum="toggle-balances" style="font-size:0.85rem">
+                ${sum.showBalances ? '📊 Dölj timbalans' : '📊 Visa timbalans'}
+            </button>
+        </div>
     </div>`;
 }
 
@@ -193,6 +214,87 @@ function renderGroupSection(groupList, groups) {
     </div>`;
 }
 
+/* ── AO-12: BALANCE SECTION (timbalans per person/period) ── */
+function renderBalanceSection(balances, activePeriod, showBalances) {
+    if (!showBalances) return '';
+
+    const balanceList = [];
+    balances.forEach((data, personId) => balanceList.push(data));
+
+    /* Sortera: störst avvikelse först */
+    balanceList.sort((a, b) => Math.abs(b.totalBalance) - Math.abs(a.totalBalance));
+
+    /* Summering */
+    const totalOver = balanceList.filter(b => b.totalBalance > 2).length;
+    const totalUnder = balanceList.filter(b => b.totalBalance < -2).length;
+    const totalOk = balanceList.length - totalOver - totalUnder;
+
+    return `<div class="sum-section" style="grid-column: 1 / -1">
+        <div class="sum-section-header">
+            <h3>📊 Timbalans per beräkningsperiod (HRF)</h3>
+            ${activePeriod ? `<span style="font-size:0.85rem;color:#666;margin-left:0.5rem">Aktiv period: <strong>${escapeHtml(activePeriod.name)}</strong></span>` : ''}
+        </div>
+
+        <div style="display:flex;gap:1rem;margin:0.75rem 0;flex-wrap:wrap">
+            <span style="padding:0.3rem 0.75rem;border-radius:4px;font-size:0.85rem;background:#d4edda;color:#155724">✅ OK: ${totalOk}</span>
+            <span style="padding:0.3rem 0.75rem;border-radius:4px;font-size:0.85rem;background:#fff3cd;color:#856404">⚠️ Övertid: ${totalOver}</span>
+            <span style="padding:0.3rem 0.75rem;border-radius:4px;font-size:0.85rem;background:#f8d7da;color:#721c24">📉 Undertid: ${totalUnder}</span>
+        </div>
+
+        <div class="sum-section-body">
+            ${!balanceList.length ? '<p class="sum-empty">Ingen aktiv personal.</p>' : `
+            <table class="sum-table">
+                <thead><tr>
+                    <th>Namn</th>
+                    <th>Tjänstg.</th>
+                    <th>Mål (tim)</th>
+                    <th>Schemalagt</th>
+                    <th>Saldo</th>
+                    <th>Snitt/v</th>
+                    <th>Status</th>
+                </tr></thead>
+                <tbody>${balanceList.map(data => {
+                    const p = data.person;
+                    const nm = p ? (p.firstName && p.lastName ? `${p.firstName} ${p.lastName}` : (p.name || p.id)) : '—';
+                    const pct = p?.employmentPct || p?.degree || 100;
+
+                    /* Visa aktiv period om den finns, annars totalt */
+                    const periodData = activePeriod
+                        ? data.periods.find(pb => pb.periodId === activePeriod.id)
+                        : null;
+
+                    const target = periodData ? periodData.targetHours : data.totalTarget;
+                    const scheduled = periodData ? periodData.scheduledHours : data.totalScheduled;
+                    const balance = periodData ? periodData.balanceHours : data.totalBalance;
+                    const avg = periodData ? periodData.avgHoursPerWeek : 0;
+                    const isOver = balance > 2;
+                    const isUnder = balance < -2;
+
+                    const balanceColor = isOver ? '#dc3545' : isUnder ? '#fd7e14' : '#28a745';
+                    const balanceSign = balance > 0 ? '+' : '';
+                    const statusIcon = isOver ? '⚠️ Övertid' : isUnder ? '📉 Under' : '✅ OK';
+
+                    return `<tr>
+                        <td><strong>${escapeHtml(nm)}</strong></td>
+                        <td>${pct}%</td>
+                        <td>${target.toFixed(1)}</td>
+                        <td>${scheduled.toFixed(1)}</td>
+                        <td style="color:${balanceColor};font-weight:700">${balanceSign}${balance.toFixed(1)}</td>
+                        <td>${avg.toFixed(1)} h/v</td>
+                        <td>${statusIcon}</td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>
+
+            <div style="margin-top:0.75rem;padding:0.5rem;background:#f8f9fa;border-radius:4px;font-size:0.8rem;color:#666">
+                <strong>HRF:</strong> Heltid = 40 tim/vecka. Saldo = schemalagt − mål.
+                Positiv = övertid, negativ = undertid. Tolerans: ±2 tim.
+                ${activePeriod ? `Visar period: ${escapeHtml(activePeriod.name)} (${escapeHtml(activePeriod.startDate)} – ${escapeHtml(activePeriod.endDate)})` : 'Visar helår.'}
+            </div>`}
+        </div>
+    </div>`;
+}
+
 /* ── EVENT LISTENERS ── */
 function setupListeners(container, store, ctx) {
     if (ctx._sumAbort) ctx._sumAbort.abort();
@@ -210,6 +312,9 @@ function setupListeners(container, store, ctx) {
             renderSummary(container, ctx);
         } else if (action === 'next-month') {
             sum.monthIndex = Math.min(11, sum.monthIndex + 1);
+            renderSummary(container, ctx);
+        } else if (action === 'toggle-balances') {
+            sum.showBalances = !sum.showBalances;
             renderSummary(container, ctx);
         }
     }, { signal });
