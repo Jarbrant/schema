@@ -651,9 +651,6 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
     const weekKeys = new Set();
     const weekOffsets = [];
 
-    // NOTE: Här finns ett edge-case om intervallet går över årsskifte.
-    // weekKey använder wy (måndagens år) -> korrekt för ISO-vecka, men "wo" beräknas mot 'year' (kalenderns år).
-    // Vi begränsar wo med [0..MAX] -> veckor utanför year ignoreras för generering.
     for (let i = 0; i < diffDays; i++) {
         const d = new Date(fromDate);
         d.setDate(d.getDate() + i);
@@ -670,7 +667,6 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
         if (!weekKeys.has(wk)) {
             weekKeys.add(wk);
 
-            /* Beräkna weekOffset för denna vecka (endast för samma 'year' som kalendern) */
             const jan1 = new Date(year, 0, 1);
             const d1 = jan1.getDay(), dtm = d1 === 0 ? -6 : 1 - d1;
             const firstMonday = new Date(year, 0, 1 + dtm);
@@ -744,7 +740,6 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
                         preview.suggestions.forEach(sug => {
                             let resolvedShiftId = sug.shiftId || sug.shiftTemplateId;
 
-                            // NOTE: resolve templateId -> verkligt shiftId (som UI/kalendern förstår)
                             if (resolvedShiftId && !shifts[resolvedShiftId]) {
                                 const gsArr = Array.isArray(groupShifts[sug.groupId]) ? groupShifts[sug.groupId] : [];
                                 const st = shiftTemplates[resolvedShiftId];
@@ -781,6 +776,62 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
         }
     }
 
+    cal.showLinkPanel = false;
+    renderCalendar(container, ctx);
+}
+
+/* ── Radera alla entries i vald period ── */
+function handleClearPeriod(store, ctx, container) {
+    const cal = ctx._cal;
+    const s = store.getState();
+
+    const fromEl = document.getElementById('cal-link-from');
+    const toEl = document.getElementById('cal-link-to');
+    if (!fromEl || !toEl) return;
+
+    const fromDate = new Date(fromEl.value);
+    const toDate = new Date(toEl.value);
+
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+        showWarning('⚠️ Ogiltiga datum'); return;
+    }
+
+    const diffDays = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;
+
+    /* Räkna befintliga entries */
+    let totalEntries = 0;
+    for (let i = 0; i < diffDays; i++) {
+        const d = new Date(fromDate);
+        d.setDate(d.getDate() + i);
+        const ds = formatISO(d);
+        const dayData = s.schedule?.months?.[getMonthIndex(ds)]?.days?.[getDayIndex(ds)];
+        if (dayData?.entries?.length) totalEntries += dayData.entries.length;
+    }
+
+    if (totalEntries === 0) {
+        showWarning('ℹ️ Inga tilldelningar att radera i vald period.');
+        return;
+    }
+
+    const ok = confirm(`⚠️ Radera ${totalEntries} tilldelningar?\n\nPeriod: ${fromEl.value} → ${toEl.value}\n\nDetta kan inte ångras!`);
+    if (!ok) return;
+
+    let removed = 0;
+    store.update(st => {
+        for (let i = 0; i < diffDays; i++) {
+            const d = new Date(fromDate);
+            d.setDate(d.getDate() + i);
+            const ds = formatISO(d);
+            const mi = getMonthIndex(ds), di = getDayIndex(ds);
+            const day = st.schedule?.months?.[mi]?.days?.[di];
+            if (day?.entries?.length) {
+                removed += day.entries.length;
+                day.entries = [];
+            }
+        }
+    });
+
+    showWarning(`🗑️ ${removed} tilldelningar raderade`);
     cal.showLinkPanel = false;
     renderCalendar(container, ctx);
 }
