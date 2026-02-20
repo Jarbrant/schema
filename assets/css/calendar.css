@@ -1,9 +1,15 @@
 /* ============================================================
  * AO-07 — Calendar View CSS (Personalkollen-inspired)
  * Veckovy med grupp-sektioner, pass-rader och personkort
+ *
+ * QA-notes:
+ * - P1: Sticky "top:52px" kan krocka om topbarens höjd varierar (mobil).
+ * - P1: @media 1024px har redundant grid-regel för .cal-shift-section (ok men förvirrar).
  * ============================================================ */
 
-/* ── Container ── */
+/* ============================================================
+ * BLOCK 1 — Container & tomtillstånd
+ * ============================================================ */
 .cal-container {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
@@ -34,7 +40,10 @@
     margin: 0;
 }
 
-/* ── TOP BAR (sticky) ── */
+/* ============================================================
+ * BLOCK 2 — Topbar (sticky)
+ * NOTE: Sticky höjd kan variera beroende på button-rader.
+ * ============================================================ */
 .cal-topbar {
     position: sticky;
     top: 0;
@@ -89,7 +98,9 @@
     font-size: 0.85rem;
 }
 
-/* ── TEMPLATE BADGE ── */
+/* ============================================================
+ * BLOCK 3 — Template badge (v2.5)
+ * ============================================================ */
 .cal-template-badge {
     padding: 0.3rem 0.75rem;
     border-radius: 6px;
@@ -104,10 +115,13 @@
     color: #e65100;
 }
 
-/* ── LINK PANEL (sticky under topbar) ── */
+/* ============================================================
+ * BLOCK 4 — Link panel (sticky under topbar)
+ * P1: top:52px är ett "magiskt tal" -> kan krocka om topbar höjden ändras.
+ * ============================================================ */
 .cal-link-panel {
     position: sticky;
-    top: 52px;
+    top: 52px; /* P1: magic number; kan behöva breakpoint-justeras */
     z-index: 98;
     background: #f0f0ff;
     padding: 1rem 1.5rem;
@@ -171,10 +185,14 @@
     align-items: center;
 }
 
-/* ── WEEK HEADER (sticky under topbar) ── */
+/* ============================================================
+ * BLOCK 5 — Week header (sticky under topbar / above groups)
+ * P1: top:52px delar värde med link-panel → kan bli visuella krockar om topbar varierar.
+ * z-index 99 gör att header ligger över link-panel (98).
+ * ============================================================ */
 .cal-week-header {
     position: sticky;
-    top: 52px;
+    top: 52px; /* P1: magic number; justera om topbar/linkpanel förändras */
     z-index: 99;
     display: grid;
     grid-template-columns: 180px repeat(7, 1fr);
@@ -196,17 +214,9 @@
     border-left: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-.cal-day-col-header.today {
-    background: rgba(255, 255, 255, 0.15);
-}
-
-.cal-day-col-header.sunday {
-    background: rgba(220, 53, 69, 0.3);
-}
-
-.cal-day-col-header.saturday {
-    background: rgba(255, 193, 7, 0.15);
-}
+.cal-day-col-header.today { background: rgba(255, 255, 255, 0.15); }
+.cal-day-col-header.sunday { background: rgba(220, 53, 69, 0.3); }
+.cal-day-col-header.saturday { background: rgba(255, 193, 7, 0.15); }
 
 .cal-day-name {
     display: block;
@@ -220,7 +230,9 @@
     opacity: 0.8;
 }
 
-/* ── WARNINGS ── */
+/* ============================================================
+ * BLOCK 6 — Warnings
+ * ============================================================ */
 .cal-warnings {
     padding: 0.5rem 1rem;
     background: #fff;
@@ -233,22 +245,17 @@
     font-size: 0.8rem;
 }
 
-.cal-warning-error {
-    background: #ffebee;
-    color: #b71c1c;
-}
-
-.cal-warning-warn {
-    background: #fff8e1;
-    color: #e65100;
-}
+.cal-warning-error { background: #ffebee; color: #b71c1c; }
+.cal-warning-warn  { background: #fff8e1; color: #e65100; }
 
 .cal-warning-item {
     display: inline-block;
     margin-left: 0.5rem;
 }
 
-/* ── GENERATE PREVIEW ── */
+/* ============================================================
+ * BLOCK 7 — Generate preview
+ * ============================================================ */
 .cal-generate-preview {
     background: #f0fff0;
     border: 2px solid #66bb6a;
@@ -269,29 +276,16 @@
     font-size: 1rem;
 }
 
-.cal-preview-actions {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.cal-preview-stats {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 0.5rem;
-}
+.cal-preview-actions { display: flex; gap: 0.5rem; }
+.cal-preview-stats   { display: flex; gap: 1rem; margin-bottom: 0.5rem; }
 
 .cal-preview-stat {
     font-size: 0.85rem;
     font-weight: 600;
 }
 
-.cal-preview-ok {
-    color: #1b5e20;
-}
-
-.cal-preview-vacancy {
-    color: #e65100;
-}
+.cal-preview-ok { color: #1b5e20; }
+.cal-preview-vacancy { color: #e65100; }
 
 .cal-preview-list {
     max-height: 200px;
@@ -319,7 +313,9 @@
     font-weight: 600;
 }
 
-/* ── GROUP SECTION ── */
+/* ============================================================
+ * BLOCK 8 — Group section (header + summary)
+ * ============================================================ */
 .cal-group-section {
     background: #fff;
     margin-bottom: 0;
@@ -344,9 +340,7 @@
     border-left-style: solid;
 }
 
-.cal-group-header:hover {
-    background: #f8f9ff;
-}
+.cal-group-header:hover { background: #f8f9ff; }
 
 .cal-group-toggle {
     grid-column: 1;
@@ -357,6 +351,7 @@
     display: inline;
 }
 
+/* NOTE: margin-left:2rem används för att undvika överlapp med toggle-symbolen */
 .cal-group-color {
     grid-column: 1;
     grid-row: 1;
@@ -392,35 +387,26 @@
     font-size: 0.75rem;
 }
 
-.cal-summary-hours {
-    color: #333;
-    font-weight: 600;
-}
+.cal-summary-hours { color: #333; font-weight: 600; }
+.cal-summary-cost  { color: #999; }
 
-.cal-summary-cost {
-    color: #999;
-}
+/* ============================================================
+ * BLOCK 9 — Group body
+ * ============================================================ */
+.cal-group-body { border-top: 1px solid #e8e8e8; }
 
-/* ── GROUP BODY ── */
-.cal-group-body {
-    border-top: 1px solid #e8e8e8;
-}
-
-/* ── SHIFT SECTION ── */
+/* ============================================================
+ * BLOCK 10 — Shift rows
+ * ============================================================ */
 .cal-shift-section {
     display: grid;
-    grid-template-columns: 180px 1fr;
+    grid-template-columns: 180px 1fr; /* label + 7-col day grid */
     min-height: 60px;
     border-bottom: 1px solid #f0f0f0;
 }
+.cal-shift-section:last-child { border-bottom: none; }
 
-.cal-shift-section:last-child {
-    border-bottom: none;
-}
-
-.cal-shift-collapsed {
-    min-height: auto;
-}
+.cal-shift-collapsed { min-height: auto; }
 
 .cal-shift-label {
     display: flex;
@@ -432,9 +418,7 @@
     border-left-style: solid;
 }
 
-.cal-shift-toggle {
-    flex-shrink: 0;
-}
+.cal-shift-toggle { flex-shrink: 0; }
 
 .cal-shift-dot {
     width: 12px;
@@ -444,27 +428,14 @@
     margin-top: 2px;
 }
 
-.cal-shift-info {
-    display: flex;
-    flex-direction: column;
-}
+.cal-shift-info { display: flex; flex-direction: column; }
+.cal-shift-info strong { font-size: 0.85rem; color: #333; }
+.cal-shift-time { font-size: 0.75rem; color: #888; }
+.cal-shift-hours { font-size: 0.7rem; color: #aaa; }
 
-.cal-shift-info strong {
-    font-size: 0.85rem;
-    color: #333;
-}
-
-.cal-shift-time {
-    font-size: 0.75rem;
-    color: #888;
-}
-
-.cal-shift-hours {
-    font-size: 0.7rem;
-    color: #aaa;
-}
-
-/* ── SHIFT DAYS GRID ── */
+/* ============================================================
+ * BLOCK 11 — Day cells (7-col grid)
+ * ============================================================ */
 .cal-shift-days {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -480,19 +451,13 @@
     position: relative;
 }
 
-.cal-day-cell.today {
-    background: #f0f4ff;
-}
+.cal-day-cell.today { background: #f0f4ff; }
+.cal-day-cell.saturday { background: #fffbf0; }
+.cal-day-cell.sunday { background: #fff5f5; }
 
-.cal-day-cell.saturday {
-    background: #fffbf0;
-}
-
-.cal-day-cell.sunday {
-    background: #fff5f5;
-}
-
-/* ── PERSON CARD ── */
+/* ============================================================
+ * BLOCK 12 — Person cards + actions
+ * ============================================================ */
 .cal-person-card {
     border-radius: 5px;
     padding: 0.3rem 0.4rem;
@@ -507,14 +472,9 @@
     border-left-style: solid;
 }
 
-.cal-person-card:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-}
+.cal-person-card:hover { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
 
-.cal-card-time {
-    font-size: 0.7rem;
-    font-weight: 600;
-}
+.cal-card-time { font-size: 0.7rem; font-weight: 600; }
 
 .cal-card-name {
     font-weight: 500;
@@ -540,9 +500,7 @@
     transition: opacity 0.15s;
 }
 
-.cal-person-card:hover .cal-card-actions {
-    opacity: 1;
-}
+.cal-person-card:hover .cal-card-actions { opacity: 1; }
 
 .cal-card-edit,
 .cal-card-remove {
@@ -555,20 +513,14 @@
     line-height: 1;
 }
 
-.cal-card-edit:hover {
-    color: #1976d2;
-}
+.cal-card-edit:hover { color: #1976d2; }
+.cal-card-remove:hover { color: #d32f2f; }
 
-.cal-card-remove:hover {
-    color: #d32f2f;
-}
+/* ============================================================
+ * BLOCK 13 — Absence / vacancy
+ * ============================================================ */
+.cal-absence-card { opacity: 0.85; }
 
-/* ── ABSENCE CARD ── */
-.cal-absence-card {
-    opacity: 0.85;
-}
-
-/* ── VACANCY CARD ── */
 .cal-vacancy-card {
     background: #fff3e0 !important;
     border-left-color: #ff9800 !important;
@@ -585,7 +537,9 @@
     margin-top: 0.2rem;
 }
 
-/* ── ADD BUTTON ── */
+/* ============================================================
+ * BLOCK 14 — Add button + drag/drop affordances
+ * ============================================================ */
 .cal-add-btn {
     width: 100%;
     border: 2px dashed #ddd;
@@ -605,10 +559,7 @@
     background: #f0f4ff;
 }
 
-/* ── DRAG & DROP ── */
-.cal-dragging {
-    opacity: 0.4;
-}
+.cal-dragging { opacity: 0.4; }
 
 .cal-drop-target {
     background: #e8f5e9 !important;
@@ -616,7 +567,9 @@
     outline-offset: -2px;
 }
 
-/* ── MODAL ── */
+/* ============================================================
+ * BLOCK 15 — Modal + edit form
+ * ============================================================ */
 .cal-modal-overlay {
     position: fixed;
     inset: 0;
@@ -638,9 +591,7 @@
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
-.cal-modal-sm {
-    max-width: 450px;
-}
+.cal-modal-sm { max-width: 450px; }
 
 .cal-modal-header {
     display: flex;
@@ -650,10 +601,7 @@
     border-bottom: 1px solid #e0e0e0;
 }
 
-.cal-modal-header h3 {
-    margin: 0;
-    font-size: 1.2rem;
-}
+.cal-modal-header h3 { margin: 0; font-size: 1.2rem; }
 
 .cal-modal-close {
     background: none;
@@ -665,9 +613,7 @@
     line-height: 1;
 }
 
-.cal-modal-close:hover {
-    color: #333;
-}
+.cal-modal-close:hover { color: #333; }
 
 .cal-modal-info {
     padding: 0.75rem 1.5rem;
@@ -693,11 +639,8 @@
     margin-left: auto;
 }
 
-.cal-modal-body {
-    padding: 1rem 1.5rem 1.5rem;
-}
+.cal-modal-body { padding: 1rem 1.5rem 1.5rem; }
 
-/* ── EDIT FORM ── */
 .cal-edit-form {
     display: flex;
     flex-direction: column;
@@ -732,7 +675,9 @@
     margin-top: 0.5rem;
 }
 
-/* ── ASSIGN TABLE ── */
+/* ============================================================
+ * BLOCK 16 — Assign table
+ * ============================================================ */
 .cal-assign-table {
     width: 100%;
     border-collapse: collapse;
@@ -754,123 +699,57 @@
     vertical-align: middle;
 }
 
-.cal-assign-table tr.row-disabled {
-    opacity: 0.5;
-}
+.cal-assign-table tr.row-disabled { opacity: 0.5; }
+.cal-assign-table tr.row-preferred { background: #f0fff0; }
+.cal-assign-table tr.row-avoided { background: #fff8f0; }
 
-.cal-assign-table tr.row-preferred {
-    background: #f0fff0;
-}
+.cal-assign-table tr:hover:not(.row-disabled) { background: #f5f7ff; }
 
-.cal-assign-table tr.row-avoided {
-    background: #fff8f0;
-}
-
-.cal-assign-table tr:hover:not(.row-disabled) {
-    background: #f5f7ff;
-}
-
-/* ── RESPONSIVE ── */
+/* ============================================================
+ * BLOCK 17 — Responsive
+ * ============================================================ */
 @media (max-width: 1024px) {
-    .cal-container {
-        padding: 0.5rem;
-    }
+    .cal-container { padding: 0.5rem; }
+    .cal-topbar { flex-direction: column; gap: 0.5rem; }
 
-    .cal-topbar {
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
+    /* P1 NOTE: .cal-shift-section får först 8 kolumner här,
+       men skrivs direkt över till 2 kolumner nedan. Funktionsmässigt OK, men onödigt. */
     .cal-week-header,
     .cal-group-header,
     .cal-shift-section {
         grid-template-columns: 120px repeat(7, 1fr);
     }
 
-    .cal-shift-section {
-        grid-template-columns: 120px 1fr;
-    }
+    .cal-shift-section { grid-template-columns: 120px 1fr; }
+    .cal-group-header { grid-template-columns: 120px 1fr; }
 
-    .cal-group-header {
-        grid-template-columns: 120px 1fr;
-    }
-
-    .cal-shift-label {
-        padding: 0.5rem;
-    }
-
-    .cal-shift-info strong {
-        font-size: 0.8rem;
-    }
+    .cal-shift-label { padding: 0.5rem; }
+    .cal-shift-info strong { font-size: 0.8rem; }
 }
 
 @media (max-width: 768px) {
-    .cal-week-header {
-        grid-template-columns: 80px repeat(7, 1fr);
-    }
+    .cal-week-header { grid-template-columns: 80px repeat(7, 1fr); }
+    .cal-group-header { grid-template-columns: 80px 1fr; }
+    .cal-shift-section { grid-template-columns: 80px 1fr; }
 
-    .cal-group-header {
-        grid-template-columns: 80px 1fr;
-    }
+    .cal-day-name { font-size: 0.7rem; }
+    .cal-day-date { font-size: 0.65rem; }
 
-    .cal-shift-section {
-        grid-template-columns: 80px 1fr;
-    }
+    .cal-person-card { font-size: 0.65rem; padding: 0.2rem 0.3rem; }
+    .cal-card-time { font-size: 0.6rem; }
+    .cal-card-name { font-size: 0.6rem; }
 
-    .cal-day-name {
-        font-size: 0.7rem;
-    }
+    .cal-shift-info strong { font-size: 0.7rem; }
+    .cal-shift-time { font-size: 0.65rem; }
 
-    .cal-day-date {
-        font-size: 0.65rem;
-    }
-
-    .cal-person-card {
-        font-size: 0.65rem;
-        padding: 0.2rem 0.3rem;
-    }
-
-    .cal-card-time {
-        font-size: 0.6rem;
-    }
-
-    .cal-card-name {
-        font-size: 0.6rem;
-    }
-
-    .cal-shift-info strong {
-        font-size: 0.7rem;
-    }
-
-    .cal-shift-time {
-        font-size: 0.65rem;
-    }
-
-    .cal-group-color {
-        font-size: 0.75rem;
-        padding: 0.25rem 0.5rem;
-    }
+    .cal-group-color { font-size: 0.75rem; padding: 0.25rem 0.5rem; }
 }
 
 @media (max-width: 480px) {
-    .cal-week-header {
-        grid-template-columns: 60px repeat(7, 1fr);
-    }
+    .cal-week-header { grid-template-columns: 60px repeat(7, 1fr); }
+    .cal-group-header { grid-template-columns: 60px 1fr; }
+    .cal-shift-section { grid-template-columns: 60px 1fr; }
 
-    .cal-group-header {
-        grid-template-columns: 60px 1fr;
-    }
-
-    .cal-shift-section {
-        grid-template-columns: 60px 1fr;
-    }
-
-    .cal-group-color {
-        font-size: 0.65rem;
-        padding: 0.2rem 0.4rem;
-    }
-
-    .cal-person-card {
-        font-size: 0.6rem;
-    }
+    .cal-group-color { font-size: 0.65rem; padding: 0.2rem 0.4rem; }
+    .cal-person-card { font-size: 0.6rem; }
 }
