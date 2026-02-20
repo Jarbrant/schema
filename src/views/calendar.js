@@ -165,17 +165,25 @@ function renderLinkPanel(weekKey, weekNum, linkedTemplateId, weekTemplates, cale
         </div>`;
     }
 
-    /* Räkna hur många veckor som redan är kopplade */
     const linkedCount = Object.keys(calendarWeeks).length;
+
+    /* Beräkna default-datum: aktuell veckas måndag + 4 veckors söndag */
+    const today = new Date();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const endDefault = new Date(monday);
+    endDefault.setDate(monday.getDate() + 27); /* 4 veckor */
+
+    const fmtDate = (d) => d.toISOString().slice(0, 10);
 
     return `<div class="cal-link-panel">
         <div class="cal-link-header">
-            <h3>📋 Koppla veckomall → Vecka ${weekNum}</h3>
+            <h3>📋 Koppla veckomall</h3>
             <button class="cal-modal-close" data-cal="toggle-link-panel" type="button">×</button>
         </div>
         <div class="cal-link-body">
             <div class="cal-link-current">
-                <span class="cal-link-label">Nuvarande koppling:</span>
+                <span class="cal-link-label">Nuvarande koppling (vecka ${weekNum}):</span>
                 <strong>${linkedTemplateId ? escapeHtml(weekTemplates[linkedTemplateId]?.name || linkedTemplateId) : 'Ingen'}</strong>
             </div>
 
@@ -187,16 +195,15 @@ function renderLinkPanel(weekKey, weekNum, linkedTemplateId, weekTemplates, cale
                 </select>
             </div>
 
-            <div class="cal-link-bulk-row">
-                <label for="cal-link-weeks">Applicera på antal veckor framåt:</label>
-                <select id="cal-link-weeks" class="cal-link-select">
-                    <option value="1" selected>1 vecka (bara denna)</option>
-                    <option value="4">4 veckor</option>
-                    <option value="8">8 veckor</option>
-                    <option value="13">13 veckor (kvartalsvis)</option>
-                    <option value="26">26 veckor (halvår)</option>
-                    <option value="52">52 veckor (helår)</option>
-                </select>
+            <div class="cal-link-bulk-row" style="display:flex;gap:1rem;align-items:end;flex-wrap:wrap;">
+                <div style="flex:1;min-width:140px;">
+                    <label for="cal-link-from">Från datum:</label>
+                    <input type="date" id="cal-link-from" class="cal-link-select" value="${fmtDate(monday)}">
+                </div>
+                <div style="flex:1;min-width:140px;">
+                    <label for="cal-link-to">Till datum:</label>
+                    <input type="date" id="cal-link-to" class="cal-link-select" value="${fmtDate(endDefault)}">
+                </div>
             </div>
 
             <div class="cal-link-info">
@@ -204,7 +211,8 @@ function renderLinkPanel(weekKey, weekNum, linkedTemplateId, weekTemplates, cale
             </div>
 
             <div class="cal-link-actions">
-                <button class="btn btn-primary" data-cal="apply-link">✓ Koppla</button>
+                <button class="btn btn-primary" data-cal="apply-link">✓ Koppla period</button>
+                <button class="btn btn-primary" data-cal="apply-link-generate" style="background:#27ae60;">🤖 Koppla + Generera allt</button>
                 ${linkedTemplateId ? `<button class="btn btn-danger btn-sm" data-cal="remove-link">🗑️ Ta bort koppling</button>` : ''}
                 <button class="btn btn-secondary" data-cal="toggle-link-panel">Stäng</button>
             </div>
