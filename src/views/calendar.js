@@ -1,31 +1,16 @@
 /*
- * AO-07 — Schedule View (Calendar) — v2.5 STANDALONE (AUTOPATCH)
+ * AO-07 — Schedule View (Calendar) — v2.6 STANDALONE (AUTOPATCH)
  * FIL: src/views/calendar.js
- *
- * Fixar v2.5:
- *   - Koppla veckomall per vecka (dropdown i topbar)
- *   - Bulk-koppla: applicera mall på flera veckor framåt
- *   - Avkoppla veckomall (ta bort koppling)
- * Fixar v2.4:
- *   - Enskilda pass-rader kan fällas ihop/döljas (toggle per shift)
- * Fixar v2.3:
- *   - ◀ ▶ Idag fungerar (AbortController)
- *   - weekOffset max 53
- *   - "Idag" beräknar korrekt veckooffset
- * Fixar v2.2:
- *   - Modal-stängning (overlay-klick + ×-knapp)
- *   - Assign skapar months/days om de saknas
- *   - Tidsredigering i assign-modalen
  */
 
 import { showSuccess, showWarning } from '../ui.js';
 import {
     calcShiftHours,
     generateWeekSchedule,
+    generatePeriodSchedule,
     validateScheduleIntegrity,
     getEligiblePersons,
 } from '../modules/schedule-engine.js';
-
 /* ============================================================
  * BLOCK 1 — CONSTANTS
  * ============================================================ */
