@@ -693,8 +693,28 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
     const templateName = templateId ? (s.weekTemplates?.[templateId]?.name || templateId) : '';
     showSuccess(`✓ ${weekKeysArr.length} vecka(or) ${action}${templateName ? ': ' + templateName : ''}`);
 
-    /* Om "Koppla + Generera allt" */
+    /* Kontrollera om veckorna redan har entries — varna användaren */
     if (alsoGenerate && templateId) {
+        const checkState = store.getState();
+        let existingCount = 0;
+        weekOffsets.forEach(wo => {
+            const wd = getWeekDates(year, wo);
+            wd.forEach(date => {
+                const ds = formatISO(date);
+                const dayData = checkState.schedule?.months?.[getMonthIndex(ds)]?.days?.[getDayIndex(ds)];
+                if (dayData?.entries?.length) existingCount += dayData.entries.filter(e => e.status === 'A').length;
+            });
+        });
+        if (existingCount > 0) {
+            const ok = confirm(`⚠️ Det finns redan ${existingCount} tilldelningar i vald period.\n\nVill du generera ändå? (Kan ge dubbletter)\n\nTryck "Avbryt" för att koppla utan att generera.`);
+            if (!ok) {
+                cal.showLinkPanel = false;
+                renderCalendar(container, ctx);
+                return;
+            }
+        }
+
+        /* Generera schema för alla veckor */
         const state = store.getState();
         const wt = state.weekTemplates?.[templateId];
         if (wt) {
@@ -714,7 +734,7 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
                     groupShifts: state.groupShifts,
                     people: (state.people || []).filter(p => p.isActive),
                     absences: state.absences || [],
-                    existingEntries: {}, // NOTE: om engine använder detta för att undvika dubbletter kan det behöva verkliga entries per dag
+                    existingEntries: {},
                     demand: state.demand
                 });
 
@@ -783,7 +803,6 @@ function handleRemoveLink(store, ctx, container) {
     cal.showLinkPanel = false;
     renderCalendar(container, ctx);
 }
-
 /* ============================================================
  * BLOCK 13 — ACTION HANDLERS (existing)
  * ============================================================ */
