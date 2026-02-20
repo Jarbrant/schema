@@ -689,11 +689,46 @@ function handleGenerate(store, linkedTemplate, cal, container, ctx) {
 function handleApplyGenerate(cal, store, container, ctx) {
     if (!cal.generatePreview) return;
     const { suggestions } = cal.generatePreview;
+    const state = store.getState();
+    const shifts = state.shifts || {};
+    const groupShifts = state.groupShifts || {};
+    const shiftTemplates = state.shiftTemplates || {};
+
     store.update(s => { suggestions.forEach(sug => {
+        // AO-FIX: Mappa shiftTemplateId → rätt shift-ID som kalendern förstår
+        let resolvedShiftId = sug.shiftId || sug.shiftTemplateId;
+        if (resolvedShiftId && !shifts[resolvedShiftId]) {
+            // shiftId finns inte i shifts → det är ett shiftTemplateId
+            // Hitta rätt shift via groupShifts[groupId]
+            const gsArr = Array.isArray(groupShifts[sug.groupId]) ? groupShifts[sug.groupId] : [];
+            const st = shiftTemplates[resolvedShiftId];
+            if (st && gsArr.length > 0) {
+                // Matcha på tid: hitta shift med samma startTime/endTime
+                const timeMatch = gsArr.find(sid => {
+                    const sh = shifts[sid];
+                    return sh && sh.startTime === st.startTime && sh.endTime === st.endTime;
+                });
+                // Fallback: ta första shift i gruppen
+                resolvedShiftId = timeMatch || gsArr[0];
+            }
+        }
+
         const day = ensureDay(s.schedule, getMonthIndex(sug.date), getDayIndex(sug.date));
-        if(day.entries.some(e=>e.personId===sug.personId&&e.shiftId===sug.shiftId&&e.groupId===sug.groupId)) return;
-        day.entries.push({ personId:sug.personId, shiftId:sug.shiftId, groupId:sug.groupId, status:sug.status||'A', startTime:sug.startTime, endTime:sug.endTime, breakStart:sug.breakStart, breakEnd:sug.breakEnd }); }); });
-    showSuccess(`✓ ${suggestions.length} tillämpade`); cal.generatePreview=null; renderCalendar(container, ctx);
+        if(day.entries.some(e=>e.personId===sug.personId&&e.shiftId===resolvedShiftId&&e.groupId===sug.groupId)) return;
+        day.entries.push({
+            personId: sug.personId,
+            shiftId: resolvedShiftId,
+            groupId: sug.groupId,
+            status: sug.status || 'A',
+            startTime: sug.startTime,
+            endTime: sug.endTime,
+            breakStart: sug.breakStart,
+            breakEnd: sug.breakEnd
+        });
+    }); });
+    showSuccess(`✓ ${suggestions.length} tillämpade`);
+    cal.generatePreview = null;
+    renderCalendar(container, ctx);
 }
 
 function handleFillVacancy(btn, cal, store, container, ctx) {
