@@ -1,411 +1,489 @@
 /*
- * AO-07 — Schedule Engine — v2.0 (RULES + COST)
- * FIL: src/modules/schedule-engine.js
+ * AO-07 — SCHEDULE ENGINE v1.0
+ * FIL: modules/schedule-engine.js
  *
- * v2.0 TILLÄGG:
- *   - validateRules(): validerar state.rules mot schemat
- *   - calcFullPersonCost(): beräknar total kostnad inkl semester, FORA, arbetsgivaravgift
- *   - checkMinimumWage(): kollar timlön mot kollektivavtal
+ * Syfte:
+ * - generateWeekSchedule(): Generera schema för EN vecka baserat på veckomall
+ * - generatePeriodSchedule(): Generera schema för FLERA veckor med ackumulerade timmar
  *
- * Befintliga exporter oförändrade (bakåtkompatibla).
+ * Beräkningsperioder (svensk arbetsrätt):
+ * - Heltid (100%): 26 veckor
+ * - Deltid (<100%): 16 veckor
+ *
+ * Principen:
+ * - Varje person har ett tim-mål för beräkningsperioden
+ * - Engine:n håller koll på ackumulerade timmar vecka för vecka
+ * - Den som ligger mest under sitt mål får förtur
  */
 
-/* ============================================================
- * CONSTANTS
- * ============================================================ */
-const VALID_STATUSES = ['A', 'L', 'X', 'SEM', 'SJ', 'VAB', 'FÖR', 'TJL', 'PERM', 'UTB', 'EXTRA'];
-const ABSENCE_STATUSES = ['SEM', 'SJ', 'VAB', 'FÖR', 'TJL', 'PERM', 'UTB'];
+/* ========================================================================
+   BLOCK 1 — PUBLIC API
+   ======================================================================== */
 
-/* Minimilöner per kollektivavtal (kr/tim, ungefärliga 2025-nivåer) */
-const MINIMUM_WAGES = {
-    HRF:      { hourly: 146, monthly: 25370, label: 'HRF (Hotell & Restaurang)' },
-    Unionen:  { hourly: 155, monthly: 26900, label: 'Unionen' },
-    Kommunal: { hourly: 145, monthly: 25000, label: 'Kommunal' },
-    none:     { hourly: 0,   monthly: 0,     label: 'Inget avtal' },
-};
-
-/* ============================================================
- * EXISTING EXPORTS — OFÖRÄNDRADE
- * ============================================================ */
-
-export function getEligiblePersons({ date, groupId, shiftId, groups, shifts, groupShifts, people, dayData, absences, scheduleMonths }) {
-    if (!date || !groupId || !Array.isArray(people)) return [];
-    const dayEntries = dayData?.entries || [];
-    const groupPeople = people.filter(p => {
-        if (!p || !p.isActive) return false;
-        const pGroups = p.groups || p.groupIds || [];
-        return Array.isArray(pGroups) && pGroups.includes(groupId);
-    });
-    const results = groupPeople.map(person => {
-        const pid = person.id;
-        let eligible = true, reason = null;
-        const alreadySameShift = dayEntries.some(e => e.personId === pid && e.shiftId === shiftId && e.status === 'A');
-        if (alreadySameShift) { eligible = false; reason = 'Redan schemalagd på detta pass'; }
-        if (eligible) { const otherShift = dayEntries.some(e => e.personId === pid && e.shiftId !== shiftId && e.status === 'A'); if (otherShift) { eligible = false; reason = 'Arbetar annat pass denna dag'; } }
-        if (eligible && Array.isArray(absences)) { const isAbsent = absences.some(abs => abs.personId === pid && isAbsenceOnDate(abs, date)); if (isAbsent) { eligible = false; const absType = absences.find(a => a.personId === pid && isAbsenceOnDate(a, date)); reason = `Frånvarande (${absType?.type || '?'})`; } }
-        if (eligible) { const absEntry = dayEntries.find(e => e.personId === pid && ABSENCE_STATUSES.includes(e.status)); if (absEntry) { eligible = false; reason = `Frånvarande (${absEntry.status})`; } }
-        if (eligible && Array.isArray(person.availability)) { const dow = new Date(date).getDay(); const ai = dow === 0 ? 6 : dow - 1; if (!person.availability[ai]) { eligible = false; reason = 'Ej tillgänglig denna veckodag'; } }
-        const workedDays = countWorkedDays(pid, dayEntries, scheduleMonths, date);
-        const isPreferred = Array.isArray(person.preferredShifts) && person.preferredShifts.includes(shiftId);
-        const isAvoided = Array.isArray(person.avoidShifts) && person.avoidShifts.includes(shiftId);
-        return { person, eligible, reason, workedDays, isPreferred, isAvoided };
-    });
-    results.sort((a, b) => { if (a.eligible && !b.eligible) return -1; if (!a.eligible && b.eligible) return 1; if (a.isPreferred && !b.isPreferred) return -1; if (!a.isPreferred && b.isPreferred) return 1; const nA = (a.person.lastName || a.person.name || '').toLowerCase(); const nB = (b.person.lastName || b.person.name || '').toLowerCase(); return nA.localeCompare(nB, 'sv'); });
-    return results;
-}
-
-export function assignPersonToShift({ entries, personId, shiftId, shift, groupId }) {
-    if (!personId || !shiftId) return entries || [];
-    const existing = Array.isArray(entries) ? [...entries] : [];
-    if (existing.some(e => e.personId === personId && e.shiftId === shiftId && (!groupId || e.groupId === groupId) && e.status === 'A')) return existing;
-    existing.push({ personId: String(personId), shiftId: String(shiftId), groupId: groupId ? String(groupId) : '', status: 'A', startTime: shift?.startTime || null, endTime: shift?.endTime || null, breakStart: shift?.breakStart || null, breakEnd: shift?.breakEnd || null });
-    return existing;
-}
-
-export function unassignPerson({ entries, personId, shiftId }) {
-    if (!personId || !Array.isArray(entries)) return entries || [];
-    return entries.filter(e => { if (e.personId !== personId) return true; if (shiftId && e.shiftId !== shiftId) return true; return false; });
-}
-
-export function getDaySummary({ date, dayData, groups, demand, people }) {
-    const result = {};
-    if (!date || !groups || typeof groups !== 'object') return result;
-    const dow = new Date(date).getDay(); const di = dow === 0 ? 6 : dow - 1;
-    const entries = dayData?.entries || []; const gd = demand?.groupDemands || {};
-    Object.keys(groups).forEach(gid => { const needed = Array.isArray(gd[gid]) ? (gd[gid][di] || 0) : 0; const assigned = entries.filter(e => e.groupId === gid && e.status === 'A' && e.personId).length; result[gid] = { needed, assigned, delta: assigned - needed }; });
-    return result;
-}
-
-export function calcShiftHours(shift, entry) {
-    const start = entry?.startTime || shift?.startTime;
-    const end = entry?.endTime || shift?.endTime;
-    const breakS = entry?.breakStart || shift?.breakStart;
-    const breakE = entry?.breakEnd || shift?.breakEnd;
-    if (!start || !end) return 0;
-    let totalMinutes = timeToMinutes(end) - timeToMinutes(start);
-    if (totalMinutes < 0) totalMinutes += 24 * 60;
-    if (breakS && breakE) { let bm = timeToMinutes(breakE) - timeToMinutes(breakS); if (bm < 0) bm += 24 * 60; totalMinutes -= bm; }
-    return Math.max(0, totalMinutes / 60);
-}
-
-export function calcDayCost(dayData, shifts, shiftTemplates, people) {
-    const entries = dayData?.entries || [];
-    const result = { totalHours: 0, totalCost: 0, byGroup: {} };
-    const allShifts = { ...(shifts || {}), ...(shiftTemplates || {}) };
-    entries.forEach(entry => { if (entry.status !== 'A' || !entry.personId) return; const shift = allShifts[entry.shiftId]; if (!shift) return; const hours = calcShiftHours(shift, entry); const person = Array.isArray(people) ? people.find(p => p.id === entry.personId) : null; const wage = person?.hourlyWage || 0; const cost = hours * wage; result.totalHours += hours; result.totalCost += cost; const gid = entry.groupId || '_unknown'; if (!result.byGroup[gid]) result.byGroup[gid] = { hours: 0, cost: 0 }; result.byGroup[gid].hours += hours; result.byGroup[gid].cost += cost; });
-    return result;
-}
-
-export function isPersonAvailable(person, dateStr, absences) {
-    if (!person || !person.isActive) return { available: false, reason: 'Inaktiv' };
-    if (Array.isArray(person.availability)) { const dow = new Date(dateStr).getDay(); const ai = dow === 0 ? 6 : dow - 1; if (!person.availability[ai]) return { available: false, reason: 'Ej tillgänglig denna veckodag' }; }
-    if (Array.isArray(absences)) { const abs = absences.find(a => a.personId === person.id && isAbsenceOnDate(a, dateStr)); if (abs) return { available: false, reason: `Frånvarande (${abs.type || '?'})` }; }
-    return { available: true, reason: null };
-}
-
-export function getPersonWorkload(personId, scheduleMonths, monthIdx, shifts, shiftTemplates) {
-    const result = { workedDays: 0, totalHours: 0 };
-    if (!personId || !Array.isArray(scheduleMonths)) return result;
-    const month = scheduleMonths[monthIdx]; if (!month || !Array.isArray(month.days)) return result;
-    const allShifts = { ...(shifts || {}), ...(shiftTemplates || {}) };
-    month.days.forEach(day => { if (!day || !Array.isArray(day.entries)) return; const pe = day.entries.filter(e => e.personId === personId && e.status === 'A'); if (pe.length > 0) { result.workedDays++; pe.forEach(entry => { const shift = allShifts[entry.shiftId]; if (shift) result.totalHours += calcShiftHours(shift, entry); }); } });
-    return result;
-}
-
-export function generateWeekSchedule({ weekDates, weekTemplate, groups, shifts, shiftTemplates, groupShifts, people, absences, existingEntries, demand }) {
-    const suggestions = [], vacancySuggestions = [];
-    if (!weekTemplate || !Array.isArray(weekTemplate.slots) || !Array.isArray(weekDates)) return { suggestions, vacancySuggestions };
-    const allShifts = { ...(shifts || {}), ...(shiftTemplates || {}) };
-    const weekAssignments = new Map();
-    if (existingEntries && typeof existingEntries === 'object') { weekDates.forEach(date => { const ds = formatISO(date); const de = existingEntries[ds] || []; de.forEach(e => { if (e.personId && e.status === 'A') { if (!weekAssignments.has(e.personId)) weekAssignments.set(e.personId, new Set()); weekAssignments.get(e.personId).add(ds); } }); }); }
-    weekTemplate.slots.forEach(slot => { const { dayOfWeek, groupId, shiftTemplateId, count } = slot; if (dayOfWeek < 0 || dayOfWeek > 6) return; const dateObj = weekDates[dayOfWeek]; if (!dateObj) return; const dateStr = formatISO(dateObj); const shift = allShifts[shiftTemplateId]; if (!shift) return; const gp = (people || []).filter(p => { if (!p || !p.isActive) return false; const pg = p.groups || p.groupIds || []; return Array.isArray(pg) && pg.includes(groupId); }); const sorted = [...gp].sort((a, b) => { const ap = Array.isArray(a.preferredShifts) && a.preferredShifts.includes(shiftTemplateId) ? -2 : 0; const bp = Array.isArray(b.preferredShifts) && b.preferredShifts.includes(shiftTemplateId) ? -2 : 0; const aa = Array.isArray(a.avoidShifts) && a.avoidShifts.includes(shiftTemplateId) ? 2 : 0; const ba = Array.isArray(b.avoidShifts) && b.avoidShifts.includes(shiftTemplateId) ? 2 : 0; const at = a.employmentType === 'substitute' ? 1 : 0; const bt = b.employmentType === 'substitute' ? 1 : 0; return (ap + aa + at) - (bp + ba + bt); }); let assigned = 0; const tc = count || 0; for (const person of sorted) { if (assigned >= tc) break; const { available } = isPersonAvailable(person, dateStr, absences || []); if (!available) continue; const pd = weekAssignments.get(person.id); if (pd && pd.has(dateStr)) continue; suggestions.push({ date: dateStr, groupId, shiftId: shiftTemplateId, shiftTemplateId, personId: person.id, status: 'A', startTime: shift.startTime || null, endTime: shift.endTime || null, breakStart: shift.breakStart || null, breakEnd: shift.breakEnd || null }); if (!weekAssignments.has(person.id)) weekAssignments.set(person.id, new Set()); weekAssignments.get(person.id).add(dateStr); assigned++; } const rem = tc - assigned; for (let i = 0; i < rem; i++) vacancySuggestions.push({ date: dateStr, groupId, shiftTemplateId, status: 'open' }); });
-    return { suggestions, vacancySuggestions };
-}
-
-export function validateScheduleIntegrity(scheduleMonths, people, absences) {
-    const warnings = []; const pm = new Map();
-    if (Array.isArray(people)) people.forEach(p => { if (p?.id) pm.set(p.id, p); });
-    if (!Array.isArray(scheduleMonths)) return warnings;
-    scheduleMonths.forEach((month, mIdx) => { if (!month || !Array.isArray(month.days)) return; month.days.forEach((day, dIdx) => { if (!day || !Array.isArray(day.entries)) return; const ds = day.date || `?-${mIdx + 1}-${dIdx + 1}`; const dps = new Map(); day.entries.forEach(entry => { if (!entry || entry.status !== 'A' || !entry.personId) return; if (!pm.has(entry.personId)) { warnings.push({ type: 'ghost', severity: 'warning', message: `Okänd person "${entry.personId}" schemalagd`, date: ds, personId: entry.personId }); return; } if (!dps.has(entry.personId)) dps.set(entry.personId, []); const prev = dps.get(entry.personId); if (prev.length > 0 && !prev.includes(entry.shiftId)) { const p = pm.get(entry.personId); const nm = p ? `${p.firstName} ${p.lastName}` : entry.personId; warnings.push({ type: 'double-booking', severity: 'error', message: `${nm} har ${prev.length + 1} pass på samma dag`, date: ds, personId: entry.personId }); } prev.push(entry.shiftId); if (Array.isArray(absences)) { const abs = absences.find(a => a.personId === entry.personId && isAbsenceOnDate(a, ds)); if (abs) { const p = pm.get(entry.personId); const nm = p ? `${p.firstName} ${p.lastName}` : entry.personId; warnings.push({ type: 'absence-conflict', severity: 'error', message: `${nm} är schemalagd men har ${abs.type}`, date: ds, personId: entry.personId }); } } }); }); });
-    return warnings;
-}
-
-/* ============================================================
- * NEW: validateRules — v2.0
+/**
+ * Generera schema för EN vecka (anropas från kalendern)
  *
- * Validerar state.rules mot schemat för en given vecka.
- * Returnerar array av { type, severity, message, date, personId, ruleId, ruleName }
- * ============================================================ */
-export function validateRules({ weekDates, rules, scheduleMonths, people, shifts, shiftTemplates, groupShifts, groups, settings }) {
-    const warnings = [];
-    if (!Array.isArray(rules) || !Array.isArray(weekDates)) return warnings;
+ * @param {object} options
+ * @param {Date[]} options.weekDates - 7 datum (mån-sön)
+ * @param {object} options.weekTemplate - veckomall med slots
+ * @param {object} options.groups - alla grupper
+ * @param {object} options.shifts - alla skift
+ * @param {object} options.shiftTemplates - skift-mallar
+ * @param {object} options.groupShifts - gruppens skift-kopplingar
+ * @param {object[]} options.people - aktiva personer
+ * @param {object[]} options.absences - frånvaro
+ * @param {object} options.existingEntries - redan tilldelade entries { 'YYYY-MM-DD': [...] }
+ * @param {object} options.demand - bemanningsbehov
+ * @param {object} [options.accumulatedHours] - ackumulerade timmar per person { personId: number }
+ * @param {number} [options.weekIndex] - vilken vecka i perioden (0-baserad)
+ * @param {number} [options.totalWeeks] - totalt antal veckor i perioden
+ * @returns {{ suggestions: object[], vacancies: object[], stats: object }}
+ */
+export function generateWeekSchedule(options) {
+    const {
+        weekDates,
+        weekTemplate,
+        groups,
+        shifts = {},
+        shiftTemplates = {},
+        groupShifts = {},
+        people = [],
+        absences = [],
+        existingEntries = {},
+        demand,
+        accumulatedHours = {},
+        weekIndex = 0,
+        totalWeeks = 1,
+    } = options || {};
 
-    const activeRules = rules.filter(r => r.isActive);
-    if (!activeRules.length) return warnings;
+    if (!weekDates || !Array.isArray(weekDates) || weekDates.length !== 7) {
+        console.warn('generateWeekSchedule: weekDates saknas eller har fel längd');
+        return { suggestions: [], vacancies: [], stats: {} };
+    }
 
-    const allShifts = { ...(shifts || {}), ...(shiftTemplates || {}) };
-    const activePeople = Array.isArray(people) ? people.filter(p => p.isActive) : [];
-    const pm = new Map();
-    activePeople.forEach(p => pm.set(p.id, p));
+    if (!weekTemplate || !weekTemplate.slots || !Array.isArray(weekTemplate.slots)) {
+        console.warn('generateWeekSchedule: weekTemplate saknas eller har inga slots');
+        return { suggestions: [], vacancies: [], stats: {} };
+    }
 
-    /* Bygg veckodata per person */
-    const personWeekData = new Map(); // personId → { days: [{ date, entries, hours }], totalHours, consecutiveDays }
+    const suggestions = [];
+    const vacancies = [];
 
-    activePeople.forEach(person => {
-        const days = [];
-        let totalHours = 0;
+    /* ── Bygg absence-lookup ── */
+    const absenceMap = buildAbsenceMap(absences, weekDates);
 
-        weekDates.forEach(date => {
-            const ds = formatISO(date);
-            const mi = getMonthIndex(ds), di = getDayIndex(ds);
-            const dayData = scheduleMonths?.[mi]?.days?.[di];
-            const entries = (dayData?.entries || []).filter(e => e.personId === person.id && e.status === 'A');
-            let dayHours = 0;
+    /* ── Bygg tracker för ackumulerade timmar ── */
+    const tracker = {};
+    people.forEach(p => {
+        const periodWeeks = getCalculationPeriod(p);
+        const weeklyTarget = (p.employmentPct || 100) / 100 * 40; // 40h = heltidsvecka
+        const periodTarget = weeklyTarget * periodWeeks;
 
-            entries.forEach(e => {
-                const shift = allShifts[e.shiftId];
-                if (shift) dayHours += calcShiftHours(shift, e);
-            });
+        tracker[p.id] = {
+            person: p,
+            periodWeeks,
+            weeklyTarget,
+            periodTarget,
+            accumulated: accumulatedHours[p.id] || 0,
+            thisWeek: 0,
+            maxThisWeek: calcMaxWeekHours(p, weekIndex, totalWeeks, accumulatedHours[p.id] || 0, periodWeeks, weeklyTarget),
+        };
+    });
 
-            days.push({ date: ds, entries, hours: dayHours });
-            totalHours += dayHours;
+    /* ── Processera varje slot i veckomallen ── */
+    weekTemplate.slots.forEach(slot => {
+        const dayIndex = slot.dayIndex; // 0=mån, 6=sön
+        if (dayIndex < 0 || dayIndex > 6) return;
+
+        const date = weekDates[dayIndex];
+        if (!date) return;
+
+        const dateStr = formatDate(date);
+        const groupId = slot.groupId;
+        const shiftId = slot.shiftId || slot.shiftTemplateId;
+        const needCount = slot.count || 1;
+
+        /* Hitta skiftets timmar */
+        const shiftHours = getShiftHours(shiftId, shifts, shiftTemplates);
+
+        /* Hitta kandidater för denna slot */
+        const groupPeople = people.filter(p => {
+            const pGroups = Array.isArray(p.groups) ? p.groups.map(g => String(g)) : [];
+            return pGroups.includes(String(groupId));
         });
 
-        personWeekData.set(person.id, { days, totalHours });
-    });
-
-    /* Kör varje aktiv regel */
-    activeRules.forEach(rule => {
-        const ruleValue = typeof rule.value === 'number' ? rule.value : null;
-        if (ruleValue === null && rule.type !== 'custom' && rule.type !== 'obTillagg') return;
-
-        const ruleBase = { ruleId: rule.id, ruleName: rule.name };
-
-        switch (rule.type) {
-
-            /* ── Max timmar/vecka ── */
-            case 'maxHoursWeek': {
-                personWeekData.forEach((data, pid) => {
-                    if (data.totalHours > ruleValue) {
-                        const p = pm.get(pid);
-                        const nm = p ? `${p.firstName} ${p.lastName}` : pid;
-                        /* Justera för deltid */
-                        const pct = (p?.employmentPct || 100) / 100;
-                        const adjustedMax = ruleValue * pct;
-                        if (data.totalHours > adjustedMax) {
-                            warnings.push({ ...ruleBase, type: 'maxHoursWeek', severity: 'error',
-                                message: `${nm}: ${data.totalHours.toFixed(1)} tim/vecka (max ${adjustedMax.toFixed(0)} tim vid ${p?.employmentPct || 100}%)`,
-                                personId: pid, date: formatISO(weekDates[0]) });
-                        }
-                    }
-                });
-                break;
-            }
-
-            /* ── Max timmar/dag ── */
-            case 'maxHoursDay': {
-                personWeekData.forEach((data, pid) => {
-                    data.days.forEach(day => {
-                        if (day.hours > ruleValue) {
-                            const p = pm.get(pid);
-                            const nm = p ? `${p.firstName} ${p.lastName}` : pid;
-                            warnings.push({ ...ruleBase, type: 'maxHoursDay', severity: 'error',
-                                message: `${nm}: ${day.hours.toFixed(1)} tim på en dag (max ${ruleValue})`,
-                                personId: pid, date: day.date });
-                        }
-                    });
-                });
-                break;
-            }
-
-            /* ── Min vila mellan pass ── */
-            case 'minRestBetween': {
-                personWeekData.forEach((data, pid) => {
-                    for (let i = 1; i < data.days.length; i++) {
-                        const prevDay = data.days[i - 1];
-                        const currDay = data.days[i];
-                        if (prevDay.entries.length === 0 || currDay.entries.length === 0) continue;
-
-                        /* Hitta senaste sluttid föregående dag */
-                        let latestEnd = 0;
-                        prevDay.entries.forEach(e => {
-                            const shift = allShifts[e.shiftId];
-                            const endStr = e.endTime || shift?.endTime;
-                            if (endStr) {
-                                let endMin = timeToMinutes(endStr);
-                                const startStr = e.startTime || shift?.startTime;
-                                if (startStr && endMin < timeToMinutes(startStr)) endMin += 24 * 60; // nattpass
-                                latestEnd = Math.max(latestEnd, endMin);
-                            }
-                        });
-
-                        /* Hitta tidigaste starttid denna dag */
-                        let earliestStart = 24 * 60;
-                        currDay.entries.forEach(e => {
-                            const shift = allShifts[e.shiftId];
-                            const startStr = e.startTime || shift?.startTime;
-                            if (startStr) earliestStart = Math.min(earliestStart, timeToMinutes(startStr));
-                        });
-
-                        /* Vila = tid från slut igår till start idag (+ 24h för ny dag) */
-                        let restHours = (earliestStart + 24 * 60 - latestEnd) / 60;
-                        if (restHours >= 24) restHours -= 24; // normalisera
-
-                        if (restHours < ruleValue) {
-                            const p = pm.get(pid);
-                            const nm = p ? `${p.firstName} ${p.lastName}` : pid;
-                            warnings.push({ ...ruleBase, type: 'minRestBetween', severity: 'error',
-                                message: `${nm}: ${restHours.toFixed(1)} tim vila (min ${ruleValue} tim krävs)`,
-                                personId: pid, date: currDay.date });
-                        }
-                    }
-                });
-                break;
-            }
-
-            /* ── Max dagar i rad ── */
-            case 'maxConsecutive': {
-                personWeekData.forEach((data, pid) => {
-                    let consecutive = 0;
-                    data.days.forEach(day => {
-                        if (day.entries.length > 0) {
-                            consecutive++;
-                            if (consecutive > ruleValue) {
-                                const p = pm.get(pid);
-                                const nm = p ? `${p.firstName} ${p.lastName}` : pid;
-                                warnings.push({ ...ruleBase, type: 'maxConsecutive', severity: 'warning',
-                                    message: `${nm}: ${consecutive} dagar i rad (max ${ruleValue})`,
-                                    personId: pid, date: day.date });
-                            }
-                        } else {
-                            consecutive = 0;
-                        }
-                    });
-                });
-                break;
-            }
-
-            /* ── Min bemanning per pass ── */
-            case 'minStaffPerShift': {
-                weekDates.forEach(date => {
-                    const ds = formatISO(date);
-                    const mi = getMonthIndex(ds), di = getDayIndex(ds);
-                    const dayData = scheduleMonths?.[mi]?.days?.[di];
-                    if (!dayData || !Array.isArray(dayData.entries)) return;
-
-                    /* Räkna per shiftId */
-                    const shiftCounts = {};
-                    dayData.entries.forEach(e => {
-                        if (e.status !== 'A' || !e.personId) return;
-                        if (!shiftCounts[e.shiftId]) shiftCounts[e.shiftId] = { count: 0, groupId: e.groupId };
-                        shiftCounts[e.shiftId].count++;
-                    });
-
-                    Object.entries(shiftCounts).forEach(([sid, info]) => {
-                        if (info.count < ruleValue) {
-                            const shift = allShifts[sid];
-                            const g = groups?.[info.groupId];
-                            warnings.push({ ...ruleBase, type: 'minStaffPerShift', severity: 'warning',
-                                message: `${g?.name || info.groupId} / ${shift?.name || sid}: ${info.count} person(er) (min ${ruleValue})`,
-                                date: ds });
-                        }
-                    });
-                });
-                break;
-            }
-        }
-    });
-
-    return warnings;
-}
-
-/* ============================================================
- * NEW: calcFullPersonCost — v2.0
- *
- * Beräknar TOTAL personalkostnad inkl:
- *   - Bruttolön
- *   - Semesterersättning
- *   - FORA
- *   - Arbetsgivaravgift
- *
- * Returnerar { grossWage, vacationPay, fora, employerTax, totalCost }
- * ============================================================ */
-export function calcFullPersonCost(person, hours, settings) {
-    const wage = person?.hourlyWage || 0;
-    const grossWage = hours * wage;
-
-    /* Personspecifika satser eller fallback till settings/defaults */
-    const vacRate = person?.vacationPayRate ?? settings?.defaultVacationPayRate ?? 0.12;
-    const foraRate = person?.foraRate ?? settings?.defaultForaRate ?? 0.043;
-    const taxRate = settings?.defaultEmployerTaxRate ?? 0.3142;
-
-    const vacationPay = grossWage * vacRate;
-    const fora = grossWage * foraRate;
-    const employerTax = grossWage * taxRate;
-
-    const totalCost = grossWage + vacationPay + fora + employerTax;
-
-    return { grossWage, vacationPay, fora, employerTax, totalCost };
-}
-
-/* ============================================================
- * NEW: checkMinimumWage — v2.0
- *
- * Kollar om personens timlön understiger kollektivavtalets minimum.
- * Returnerar array av varningar.
- * ============================================================ */
-export function checkMinimumWage(people, settings) {
-    const warnings = [];
-    if (!Array.isArray(people)) return warnings;
-
-    const defaultAgreement = settings?.defaultCollectiveAgreement || 'HRF';
-
-    people.forEach(person => {
-        if (!person || !person.isActive) return;
-        const agreement = person.collectiveAgreement || defaultAgreement;
-        const minWage = MINIMUM_WAGES[agreement];
-        if (!minWage || minWage.hourly === 0) return;
-
-        const hourlyWage = person.hourlyWage || 0;
-        if (hourlyWage > 0 && hourlyWage < minWage.hourly) {
-            const nm = person.firstName && person.lastName ? `${person.firstName} ${person.lastName}` : (person.name || person.id);
-            warnings.push({
-                type: 'minimumWage',
-                severity: 'error',
-                ruleId: 'system-min-wage',
-                ruleName: 'Minimilön',
-                message: `${nm}: ${hourlyWage} kr/tim — under ${minWage.label} minimum ${minWage.hourly} kr/tim`,
-                personId: person.id,
+        for (let i = 0; i < needCount; i++) {
+            const candidate = findBestWeekCandidate({
+                groupPeople,
+                tracker,
+                dateStr,
+                dayIndex,
+                shiftId,
+                groupId,
+                shiftHours,
+                absenceMap,
+                existingEntries,
+                suggestions,
             });
+
+            if (candidate) {
+                const st = shiftTemplates[shiftId] || shifts[shiftId] || {};
+
+                const suggestion = {
+                    date: dateStr,
+                    personId: candidate.id,
+                    groupId,
+                    shiftId,
+                    shiftTemplateId: slot.shiftTemplateId || shiftId,
+                    status: 'A',
+                    startTime: st.startTime || slot.startTime || null,
+                    endTime: st.endTime || slot.endTime || null,
+                    breakStart: st.breakStart || null,
+                    breakEnd: st.breakEnd || null,
+                    hours: shiftHours,
+                };
+
+                suggestions.push(suggestion);
+
+                /* Uppdatera tracker */
+                tracker[candidate.id].thisWeek += shiftHours;
+                tracker[candidate.id].accumulated += shiftHours;
+            } else {
+                vacancies.push({
+                    date: dateStr,
+                    groupId,
+                    shiftId,
+                    reason: 'Ingen tillgänglig personal',
+                });
+            }
         }
     });
 
-    return warnings;
+    /* ── Stats ── */
+    const stats = {
+        totalSlots: weekTemplate.slots.reduce((sum, s) => sum + (s.count || 1), 0),
+        filled: suggestions.length,
+        vacancies: vacancies.length,
+        hoursAssigned: suggestions.reduce((sum, s) => sum + (s.hours || 0), 0),
+        perPerson: {},
+    };
+
+    Object.values(tracker).forEach(t => {
+        if (t.thisWeek > 0) {
+            stats.perPerson[t.person.id] = {
+                name: `${t.person.firstName} ${t.person.lastName}`,
+                thisWeek: t.thisWeek,
+                accumulated: t.accumulated,
+                periodTarget: t.periodTarget,
+                pctUsed: t.periodTarget > 0 ? Math.round((t.accumulated / t.periodTarget) * 100) : 0,
+            };
+        }
+    });
+
+    return { suggestions, vacancies, stats };
 }
 
-/* ============================================================
- * INTERNAL HELPERS — OFÖRÄNDRADE
- * ============================================================ */
-function isAbsenceOnDate(absence, dateStr) {
-    if (!absence || !dateStr) return false;
-    if (absence.pattern === 'single') return absence.date === dateStr;
-    if (absence.pattern === 'range') { const s = absence.startDate || '', e = absence.endDate || '9999-12-31'; return dateStr >= s && dateStr <= e; }
-    if (absence.pattern === 'recurring') { const s = absence.startDate || '', e = absence.endDate || '9999-12-31'; if (dateStr < s || dateStr > e) return false; if (!Array.isArray(absence.days)) return false; return absence.days.includes(new Date(dateStr).getDay()); }
-    return false;
+/**
+ * Generera schema för FLERA veckor med ackumulering
+ * Anropas från handleApplyLink för bulk-generering
+ *
+ * @param {object} options
+ * @param {number[]} options.weekOffsets - lista av weekOffset-värden
+ * @param {number} options.year - kalenderår
+ * @param {object} options.weekTemplate - veckomall
+ * @param {object} options.state - hela store state
+ * @param {function} options.getWeekDates - funktion(year, weekOffset) => Date[7]
+ * @returns {{ allSuggestions: object[][], allVacancies: object[], totalStats: object }}
+ */
+export function generatePeriodSchedule(options) {
+    const {
+        weekOffsets,
+        year,
+        weekTemplate,
+        state,
+        getWeekDates,
+    } = options;
+
+    const people = (state.people || []).filter(p => p.isActive);
+    const totalWeeks = weekOffsets.length;
+
+    /* Ackumulerade timmar — startar med redan befintliga entries */
+    const accumulatedHours = calcExistingHours(state, people, year);
+
+    const allSuggestions = [];
+    const allVacancies = [];
+
+    weekOffsets.forEach((wo, idx) => {
+        const weekDates = getWeekDates(year, wo);
+
+        const result = generateWeekSchedule({
+            weekDates,
+            weekTemplate,
+            groups: state.groups,
+            shifts: state.shifts,
+            shiftTemplates: state.shiftTemplates,
+            groupShifts: state.groupShifts,
+            people,
+            absences: state.absences || [],
+            existingEntries: {},
+            demand: state.demand,
+            accumulatedHours,
+            weekIndex: idx,
+            totalWeeks,
+        });
+
+        allSuggestions.push(result.suggestions);
+        allVacancies.push(...result.vacancies);
+
+        /* Uppdatera ackumulerade timmar för nästa vecka */
+        result.suggestions.forEach(sug => {
+            accumulatedHours[sug.personId] = (accumulatedHours[sug.personId] || 0) + (sug.hours || 0);
+        });
+    });
+
+    const totalStats = {
+        weeks: totalWeeks,
+        totalFilled: allSuggestions.reduce((sum, arr) => sum + arr.length, 0),
+        totalVacancies: allVacancies.length,
+        totalHours: allSuggestions.flat().reduce((sum, s) => sum + (s.hours || 0), 0),
+        perPerson: {},
+    };
+
+    people.forEach(p => {
+        const hours = accumulatedHours[p.id] || 0;
+        const periodWeeks = getCalculationPeriod(p);
+        const periodTarget = (p.employmentPct || 100) / 100 * 40 * periodWeeks;
+        totalStats.perPerson[p.id] = {
+            name: `${p.firstName} ${p.lastName}`,
+            hours,
+            periodTarget,
+            periodWeeks,
+            pctUsed: periodTarget > 0 ? Math.round((hours / periodTarget) * 100) : 0,
+        };
+    });
+
+    return { allSuggestions, allVacancies, totalStats };
 }
 
-function countWorkedDays(personId, currentDayEntries, scheduleMonths, dateStr) {
-    if (!scheduleMonths || !dateStr) return currentDayEntries.filter(e => e.personId === personId && e.status === 'A').length > 0 ? 1 : 0;
-    const parts = dateStr.split('-'); const monthIdx = parseInt(parts[1], 10) - 1;
-    if (!Array.isArray(scheduleMonths) || !scheduleMonths[monthIdx]) return 0;
-    const month = scheduleMonths[monthIdx]; let count = 0;
-    if (Array.isArray(month.days)) { month.days.forEach(day => { if (!day || !Array.isArray(day.entries)) return; if (day.entries.some(e => e.personId === personId && e.status === 'A')) count++; }); }
-    return count;
+/* ========================================================================
+   BLOCK 2 — CANDIDATE SELECTION (med beräkningsperiod)
+   ======================================================================== */
+
+function findBestWeekCandidate(ctx) {
+    const {
+        groupPeople, tracker, dateStr, dayIndex, shiftId, groupId,
+        shiftHours, absenceMap, existingEntries, suggestions,
+    } = ctx;
+
+    const candidates = [];
+
+    groupPeople.forEach(person => {
+        const t = tracker[person.id];
+        if (!t) return;
+
+        /* 1) Redan schemalagd idag? */
+        const alreadyToday = suggestions.some(s =>
+            s.date === dateStr && s.personId === person.id
+        );
+        if (alreadyToday) return;
+
+        /* 2) Redan i existingEntries? */
+        const existing = existingEntries[dateStr];
+        if (Array.isArray(existing) && existing.some(e => e.personId === person.id)) return;
+
+        /* 3) Frånvaro? */
+        if (absenceMap[person.id]?.[dateStr]) return;
+
+        /* 4) Överskrider veckans max? */
+        if (t.thisWeek + shiftHours > t.maxThisWeek) return;
+
+        /* 5) Redan över periodmålet? */
+        if (t.accumulated >= t.periodTarget) return;
+
+        /* 6) Beräkna prioritet — den som ligger mest under sitt mål får förtur */
+        const pctUsed = t.periodTarget > 0 ? t.accumulated / t.periodTarget : 1;
+        const weekBalance = t.weeklyTarget - t.thisWeek;
+
+        // Lägre pctUsed = högre prioritet (ligger mer under mål)
+        // Vid lika: den med mer kvar i veckan
+        const priority = (1 - pctUsed) * 10000 + weekBalance * 100;
+
+        candidates.push({
+            person,
+            priority,
+            pctUsed,
+            weekBalance,
+            nameKey: `${person.lastName || ''}|${person.firstName || ''}`.toLowerCase(),
+        });
+    });
+
+    /* Sortera: högst prioritet först, sedan namn (stabil) */
+    candidates.sort((a, b) => {
+        if (Math.abs(b.priority - a.priority) > 0.01) return b.priority - a.priority;
+        return a.nameKey.localeCompare(b.nameKey);
+    });
+
+    return candidates.length > 0 ? candidates[0].person : null;
 }
 
-function timeToMinutes(hhmm) { if (!hhmm || typeof hhmm !== 'string') return 0; const p = hhmm.split(':'); return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0); }
+/* ========================================================================
+   BLOCK 3 — HELPERS
+   ======================================================================== */
 
-function formatISO(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
+/**
+ * Beräkningsperiod: heltid=26v, deltid=16v
+ */
+function getCalculationPeriod(person) {
+    if (person.calculationPeriod) return person.calculationPeriod;
+    return (person.employmentPct || 100) >= 100 ? 26 : 16;
+}
 
-function getMonthIndex(ds) { return parseInt(ds.split('-')[1], 10) - 1; }
-function getDayIndex(ds) { return parseInt(ds.split('-')[2], 10) - 1; }
+/**
+ * Max timmar denna vecka — jämnar ut över perioden
+ */
+function calcMaxWeekHours(person, weekIndex, totalWeeks, accumulated, periodWeeks, weeklyTarget) {
+    // Grundregel: max 48h/vecka (EU-arbetstidsdirektiv)
+    const hardMax = 48;
+
+    // Mjuk max: baserat på hur mycket som är kvar av periodmålet
+    const periodTarget = (person.employmentPct || 100) / 100 * 40 * periodWeeks;
+    const remaining = periodTarget - accumulated;
+    const weeksLeft = Math.max(1, totalWeeks - weekIndex);
+
+    // Fördela jämnt + 20% marginal
+    const softMax = Math.min(hardMax, (remaining / weeksLeft) * 1.2);
+
+    // Men minst 0 och inte under 8 (annars blockeras personen helt)
+    return Math.max(8, Math.min(hardMax, softMax));
+}
+
+/**
+ * Hämta timmar för ett skift
+ */
+function getShiftHours(shiftId, shifts, shiftTemplates) {
+    const shift = shifts[shiftId] || shiftTemplates[shiftId];
+    if (!shift) return 8; // default 8h
+
+    if (typeof shift.hours === 'number') return shift.hours;
+
+    // Beräkna från start/sluttid
+    if (shift.startTime && shift.endTime) {
+        const start = parseTime(shift.startTime);
+        const end = parseTime(shift.endTime);
+        if (start !== null && end !== null) {
+            let diff = end - start;
+            if (diff <= 0) diff += 24; // nattskift
+
+            // Dra av rast om den finns
+            if (shift.breakStart && shift.breakEnd) {
+                const bs = parseTime(shift.breakStart);
+                const be = parseTime(shift.breakEnd);
+                if (bs !== null && be !== null && be > bs) {
+                    diff -= (be - bs);
+                }
+            }
+            return Math.max(0, diff);
+        }
+    }
+
+    return 8;
+}
+
+/**
+ * Parse "HH:MM" → decimaltal
+ */
+function parseTime(str) {
+    if (!str || typeof str !== 'string') return null;
+    const parts = str.split(':');
+    if (parts.length < 2) return null;
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h + m / 60;
+}
+
+/**
+ * Formatera Date → "YYYY-MM-DD"
+ */
+function formatDate(d) {
+    if (!d) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/**
+ * Bygg absence-map: { personId: { 'YYYY-MM-DD': true } }
+ */
+function buildAbsenceMap(absences, weekDates) {
+    const map = {};
+    if (!Array.isArray(absences)) return map;
+
+    const weekStart = weekDates[0]?.getTime();
+    const weekEnd = weekDates[6]?.getTime();
+    if (!weekStart || !weekEnd) return map;
+
+    absences.forEach(abs => {
+        if (!abs || !abs.personId) return;
+
+        const from = new Date(abs.startDate || abs.from).getTime();
+        const to = new Date(abs.endDate || abs.to).getTime();
+
+        if (isNaN(from) || isNaN(to)) return;
+        if (to < weekStart || from > weekEnd) return;
+
+        if (!map[abs.personId]) map[abs.personId] = {};
+
+        weekDates.forEach(d => {
+            const t = d.getTime();
+            if (t >= from && t <= to) {
+                map[abs.personId][formatDate(d)] = true;
+            }
+        });
+    });
+
+    return map;
+}
+
+/**
+ * Räkna redan befintliga timmar i schemat (för ackumulering)
+ */
+function calcExistingHours(state, people, year) {
+    const hours = {};
+    people.forEach(p => { hours[p.id] = 0; });
+
+    const months = state.schedule?.months;
+    if (!Array.isArray(months)) return hours;
+
+    months.forEach(monthData => {
+        const days = Array.isArray(monthData?.days) ? monthData.days : [];
+        days.forEach(day => {
+            const entries = Array.isArray(day?.entries) ? day.entries : [];
+            entries.forEach(entry => {
+                if (!entry || entry.status !== 'A') return;
+                if (!entry.personId || hours[entry.personId] === undefined) return;
+
+                // Beräkna timmar från entry
+                let h = 8; // default
+                if (entry.startTime && entry.endTime) {
+                    const s = parseTime(entry.startTime);
+                    const e = parseTime(entry.endTime);
+                    if (s !== null && e !== null) {
+                        h = e - s;
+                        if (h <= 0) h += 24;
+                        if (entry.breakStart && entry.breakEnd) {
+                            const bs = parseTime(entry.breakStart);
+                            const be = parseTime(entry.breakEnd);
+                            if (bs !== null && be !== null && be > bs) h -= (be - bs);
+                        }
+                        h = Math.max(0, h);
+                    }
+                }
+                hours[entry.personId] += h;
+            });
+        });
+    });
+
+    return hours;
+}
