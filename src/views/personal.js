@@ -570,7 +570,49 @@ export function renderPersonal(container, ctx) {
 
     availabilityInfo.appendChild(availabilityContainer);
     form.appendChild(availabilityInfo);
+        // === CALCULATION PERIOD (AO-12) ===
+    const calcPeriodInfo = document.createElement('fieldset');
+    calcPeriodInfo.style.border = 'none';
+    calcPeriodInfo.style.marginBottom = '1.5rem';
+    calcPeriodInfo.style.padding = '1rem';
+    calcPeriodInfo.style.background = '#fff';
+    calcPeriodInfo.style.borderRadius = '6px';
 
+    const calcPeriodLegend = document.createElement('legend');
+    calcPeriodLegend.textContent = 'Beräkningsperiod (HRF)';
+    calcPeriodLegend.style.fontWeight = '600';
+    calcPeriodLegend.style.marginBottom = '1rem';
+    calcPeriodInfo.appendChild(calcPeriodLegend);
+
+    const calcPeriodDesc = document.createElement('p');
+    calcPeriodDesc.style.fontSize = '0.85rem';
+    calcPeriodDesc.style.color = '#666';
+    calcPeriodDesc.style.marginBottom = '1rem';
+    calcPeriodDesc.textContent = 'Välj vilken kvartal personen börjar sin beräkningsperiod. Timmar balanseras inom varje kvartal enligt HRF (40h/vecka heltid).';
+    calcPeriodInfo.appendChild(calcPeriodDesc);
+
+    const calcPeriodSelect = document.createElement('select');
+    calcPeriodSelect.id = 'personal-calc-period';
+    calcPeriodSelect.className = 'form-control';
+    calcPeriodSelect.style.maxWidth = '300px';
+
+    const periodOptions = [
+        { value: 'q1', label: 'Q1 — Januari–Mars (standard)' },
+        { value: 'q2', label: 'Q2 — April–Juni' },
+        { value: 'q3', label: 'Q3 — Juli–September' },
+        { value: 'q4', label: 'Q4 — Oktober–December' },
+    ];
+    periodOptions.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        if (opt.value === 'q1') option.selected = true;
+        calcPeriodSelect.appendChild(option);
+    });
+    ensureEditableInput(calcPeriodSelect);
+    calcPeriodInfo.appendChild(calcPeriodSelect);
+
+    form.appendChild(calcPeriodInfo);  
     // === BUTTONS ===
     const buttonGroup = document.createElement('div');
     buttonGroup.style.display = 'flex';
