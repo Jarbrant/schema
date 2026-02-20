@@ -490,10 +490,11 @@ function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
                 renderCalendar(container, ctx);
 
             /* ── v2.5: Toggle link panel ── */
-            } else if (action==='toggle-link-panel') {
-                cal.showLinkPanel = !cal.showLinkPanel;
-                renderCalendar(container, ctx);
+                        } else if (action==='apply-link') {
+                handleApplyLink(store, ctx, container, false);
 
+            } else if (action==='apply-link-generate') {
+                handleApplyLink(store, ctx, container, true);
             /* ── v2.5: Apply link (koppla veckomall) ── */
             } else if (action==='apply-link') {
                 handleApplyLink(store, ctx, container);
@@ -563,40 +564,125 @@ function ensureDay(schedule, monthIdx, dayIdx) {
 /* ══════════════════════════════════════════════════════════
  * v2.5: LINK HANDLERS — Koppla/avkoppla veckomall
  * ══════════════════════════════════════════════════════════ */
-function handleApplyLink(store, ctx, container) {
+function handleApplyLink(store, ctx, container, alsoGenerate) {
     const cal = ctx._cal;
     const s = store.getState();
     const year = s.schedule.year;
 
     const selectEl = document.getElementById('cal-link-template');
-    const weeksEl = document.getElementById('cal-link-weeks');
-    if (!selectEl || !weeksEl) return;
+    const fromEl = document.getElementById('cal-link-from');
+    const toEl = document.getElementById('cal-link-to');
+    if (!selectEl || !fromEl || !toEl) return;
 
-    const templateId = selectEl.value; /* tom sträng = ta bort */
-    const weekCount = parseInt(weeksEl.value, 10) || 1;
+    const templateId = selectEl.value;
+    const fromDate = new Date(fromEl.value);
+    const toDate = new Date(toEl.value);
 
-    /* Beräkna vecko-nycklar */
-    const weekKeys = [];
-    for (let i = 0; i < weekCount; i++) {
-        const offset = cal.weekOffset + i;
-        if (offset > MAX_WEEK_OFFSET) break;
-        const dates = getWeekDates(year, offset);
-        const wn = getISOWeekNumber(dates[0]);
-        weekKeys.push(`${year}-W${String(wn).padStart(2,'0')}`);
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+        showWarning('⚠️ Ogiltiga datum'); return;
+    }
+    if (toDate < fromDate) {
+        showWarning('⚠️ Till-datum måste vara efter från-datum'); return;
     }
 
-    store.update(st => {
-        if (!st.calendarWeeks || typeof st.calendarWeeks !== 'object') {
-            st.calendarWeeks = {};
+    const diffDays = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;
+    if (diffDays > 366) {
+        showWarning('⚠️ Max 1 år (366 dagar)'); return;
+    }
+
+    /* Hitta alla vecko-nycklar i datumintervallet */
+    const weekKeys = new Set();
+    const weekOffsets = [];
+    for (let i = 0; i < diffDays; i++) {
+        const d = new Date(fromDate);
+        d.setDate(d.getDate() + i);
+        const dayOfWeek = d.getDay();
+        /* Hitta måndagen för denna dag */
+        const mon = new Date(d);
+        mon.setDate(d.getDate() - ((dayOfWeek + 6) % 7));
+        const wn = getISOWeekNumber(mon);
+        const wy = mon.getFullYear();
+        const wk = `${wy}-W${String(wn).padStart(2, '0')}`;
+        if (!weekKeys.has(wk)) {
+            weekKeys.add(wk);
+            /* Beräkna weekOffset för denna vecka */
+            const jan1 = new Date(year, 0, 1);
+            const d1 = jan1.getDay(), dtm = d1 === 0 ? -6 : 1 - d1;
+            const firstMonday = new Date(year, 0, 1 + dtm);
+            const wo = Math.floor((mon.getTime() - firstMonday.getTime()) / (7 * 24 * 60 * 60 * 1000));
+            if (wo >= 0 && wo <= MAX_WEEK_OFFSET) weekOffsets.push(wo);
         }
-        weekKeys.forEach(wk => {
-            if (templateId) {
-                st.calendarWeeks[wk] = templateId;
-            } else {
-                delete st.calendarWeeks[wk];
-            }
+    }
+
+    const weekKeysArr = [...weekKeys];
+
+    store.update(st => {
+        if (!st.calendarWeeks || typeof st.calendarWeeks !== 'object') st.calendarWeeks = {};
+        weekKeysArr.forEach(wk => {
+            if (templateId) { st.calendarWeeks[wk] = templateId; }
+            else { delete st.calendarWeeks[wk]; }
         });
     });
+
+    const action = templateId ? 'kopplad' : 'avkopplad';
+    const templateName = templateId ? (s.weekTemplates?.[templateId]?.name || templateId) : '';
+    showSuccess(`✓ ${weekKeysArr.length} vecka(or) ${action}${templateName ? ': ' + templateName : ''}`);
+
+    /* Om "Koppla + Generera allt" — kör generering för alla veckor */
+    if (alsoGenerate && templateId) {
+        const state = store.getState();
+        const wt = state.weekTemplates?.[templateId];
+        if (wt) {
+            let totalApplied = 0;
+            const shifts = state.shifts || {};
+            const groupShifts = state.groupShifts || {};
+            const shiftTemplates = state.shiftTemplates || {};
+
+            weekOffsets.forEach(wo => {
+                const weekDates = getWeekDates(year, wo);
+                const preview = generateWeekSchedule({
+                    weekDates, weekTemplate: wt,
+                    groups: state.groups, shifts: state.shifts, shiftTemplates: state.shiftTemplates,
+                    groupShifts: state.groupShifts,
+                    people: (state.people || []).filter(p => p.isActive),
+                    absences: state.absences || [], existingEntries: {}, demand: state.demand
+                });
+
+                if (preview.suggestions && preview.suggestions.length > 0) {
+                    store.update(s => {
+                        preview.suggestions.forEach(sug => {
+                            let resolvedShiftId = sug.shiftId || sug.shiftTemplateId;
+                            if (resolvedShiftId && !shifts[resolvedShiftId]) {
+                                const gsArr = Array.isArray(groupShifts[sug.groupId]) ? groupShifts[sug.groupId] : [];
+                                const st = shiftTemplates[resolvedShiftId];
+                                if (st && gsArr.length > 0) {
+                                    const timeMatch = gsArr.find(sid => {
+                                        const sh = shifts[sid];
+                                        return sh && sh.startTime === st.startTime && sh.endTime === st.endTime;
+                                    });
+                                    resolvedShiftId = timeMatch || gsArr[0];
+                                }
+                            }
+                            const day = ensureDay(s.schedule, getMonthIndex(sug.date), getDayIndex(sug.date));
+                            if (day.entries.some(e => e.personId === sug.personId && e.shiftId === resolvedShiftId && e.groupId === sug.groupId)) return;
+                            day.entries.push({
+                                personId: sug.personId, shiftId: resolvedShiftId, groupId: sug.groupId,
+                                status: sug.status || 'A', startTime: sug.startTime, endTime: sug.endTime,
+                                breakStart: sug.breakStart, breakEnd: sug.breakEnd
+                            });
+                            totalApplied++;
+                        });
+                    });
+                }
+            });
+
+            showSuccess(`✓ ${totalApplied} tilldelningar genererade för ${weekOffsets.length} veckor`);
+        }
+    }
+
+    cal.showLinkPanel = false;
+    renderCalendar(container, ctx);
+}
 
     const action = templateId ? 'kopplad' : 'avkopplad';
     const templateName = templateId ? (s.weekTemplates?.[templateId]?.name || templateId) : '';
