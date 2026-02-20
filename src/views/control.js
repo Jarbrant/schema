@@ -1,5 +1,5 @@
 /*
- * AO-08 — Control View (Dashboard) — v2.0 (RULES + FULL COST)
+ * AO-08 — Control View (Dashboard) — v3.0 (RULES + FULL COST + PERIOD BALANCE)
  * FIL: src/views/control.js
  *
  * v2.0:
@@ -7,6 +7,11 @@
  *   - Visar semesterersättning, FORA, arbetsgivaravgift
  *   - Kollar minimilön mot kollektivavtal
  *   - Ny sektion: "💰 Total personalkostnad" (bruttolön + påslag)
+ *
+ * v3.0 (AO-12):
+ *   - Importerar calcAllPersonBalances från calculation-periods.js
+ *   - Ny sektion: "📊 Timbalans" — visar avvikelser per person/period
+ *   - Varningar i regelkontroll om övertid/undertid
  */
 
 import {
@@ -16,6 +21,12 @@ import {
     calcFullPersonCost,
     checkMinimumWage,
 } from '../modules/schedule-engine.js';
+
+import {
+    calcAllPersonBalances,
+    getDefaultPeriods,
+    getActivePeriod,
+} from '../modules/calculation-periods.js';
 
 /* ── CONSTANTS ── */
 const WEEKDAY_NAMES = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
@@ -46,6 +57,7 @@ export function renderControl(container, ctx) {
         const vacancies = Array.isArray(state.vacancies) ? state.vacancies : [];
         const rules = Array.isArray(state.rules) ? state.rules : [];
         const settings = state.settings || {};
+        const months = Array.isArray(state.schedule.months) ? state.schedule.months : [];
 
         /* ── View state ── */
         if (!ctx._ctrl) {
@@ -80,8 +92,66 @@ export function renderControl(container, ctx) {
         /* v2.0: Minimilönkontroll */
         var wageWarnings = checkMinimumWage(activePeople, settings);
 
+        /* v3.0 (AO-12): Beräkningsperiod-balanser */
+        var balances = calcAllPersonBalances(people, settings, months, shifts, shiftTemplates, year);
+        var midWeekDate = formatISO(weekDates[3]); /* onsdag = mittpunkt */
+        var periods = getDefaultPeriods(year);
+        var activePeriod = getActivePeriod(midWeekDate, periods);
+
+        var balanceWarnings = [];
+        balances.forEach(function(data, personId) {
+            var periodData = activePeriod
+                ? data.periods.find(function(pb) { return pb.periodId === activePeriod.id; })
+                : null;
+            var balance = periodData ? periodData.balanceHours : data.totalBalance;
+            var p = data.person;
+            var nm = (p.firstName && p.lastName) ? p.firstName + ' ' + p.lastName : (p.name || p.id);
+
+            if (balance > 10) {
+                balanceWarnings.push({
+                    type: 'periodBalance',
+                    severity: 'error',
+                    ruleId: 'system-period-balance',
+                    ruleName: 'Beräkningsperiod',
+                    message: nm + ': +' + balance.toFixed(1) + ' tim övertid i ' + (activePeriod ? activePeriod.name : 'perioden'),
+                    personId: personId,
+                    date: midWeekDate,
+                });
+            } else if (balance > 2) {
+                balanceWarnings.push({
+                    type: 'periodBalance',
+                    severity: 'warning',
+                    ruleId: 'system-period-balance',
+                    ruleName: 'Beräkningsperiod',
+                    message: nm + ': +' + balance.toFixed(1) + ' tim över mål i ' + (activePeriod ? activePeriod.name : 'perioden'),
+                    personId: personId,
+                    date: midWeekDate,
+                });
+            } else if (balance < -10) {
+                balanceWarnings.push({
+                    type: 'periodBalance',
+                    severity: 'error',
+                    ruleId: 'system-period-balance',
+                    ruleName: 'Beräkningsperiod',
+                    message: nm + ': ' + balance.toFixed(1) + ' tim undertid i ' + (activePeriod ? activePeriod.name : 'perioden'),
+                    personId: personId,
+                    date: midWeekDate,
+                });
+            } else if (balance < -2) {
+                balanceWarnings.push({
+                    type: 'periodBalance',
+                    severity: 'warning',
+                    ruleId: 'system-period-balance',
+                    ruleName: 'Beräkningsperiod',
+                    message: nm + ': ' + balance.toFixed(1) + ' tim under mål i ' + (activePeriod ? activePeriod.name : 'perioden'),
+                    personId: personId,
+                    date: midWeekDate,
+                });
+            }
+        });
+
         /* Slå ihop alla varningar */
-        var allWarnings = weekIntegrityWarnings.concat(ruleWarnings, wageWarnings);
+        var allWarnings = weekIntegrityWarnings.concat(ruleWarnings, wageWarnings, balanceWarnings);
         var totalErrors = allWarnings.filter(function(w) { return w.severity === 'error'; }).length;
         var totalWarns = allWarnings.filter(function(w) { return w.severity === 'warning'; }).length;
 
@@ -136,6 +206,12 @@ export function renderControl(container, ctx) {
 
                     renderSection('fullcost', '💰 Personalkostnad (inkl påslag)', ctrl, null, 'info',
                         renderFullCostSummary(totalGrossWage, totalVacPay, totalFora, totalTax, totalFullCost, settings), false) +
+
+                    renderSection('balances', '📊 Timbalans (beräkningsperiod)', ctrl,
+                        balanceWarnings.length > 0 ? balanceWarnings.length : null,
+                        balanceWarnings.some(function(w) { return w.severity === 'error'; }) ? 'error' :
+                        balanceWarnings.length > 0 ? 'warn' : 'ok',
+                        renderBalanceSummary(balances, activePeriod), false) +
 
                     renderSection('demand', '📊 Bemanningsöversikt', ctrl, null, 'info',
                         renderDemandTable(weekDates, weekStats.demandByGroup, groups), false) +
@@ -195,16 +271,18 @@ function renderSection(id, title, ctrl, badgeCount, badgeType, bodyHtml, fullWid
     '</div>';
 }
 
-/* ── ISSUES (alla regelbrott) ── */
+/* ── ISSUES (alla regelbrott) ─�� */
 function renderIssues(warnings) {
     if (!warnings.length) return '<p class="ctrl-empty">✅ Inga regelbrott hittade denna vecka.</p>';
 
     var integrity = [];
     var ruleEngineW = [];
     var wageW = [];
+    var balanceW = [];
 
     warnings.forEach(function(w) {
         if (w.type === 'minimumWage') { wageW.push(w); }
+        else if (w.type === 'periodBalance') { balanceW.push(w); }
         else if (w.ruleId) { ruleEngineW.push(w); }
         else { integrity.push(w); }
     });
@@ -221,6 +299,10 @@ function renderIssues(warnings) {
     if (wageW.length) {
         html += '<div class="ctrl-issue-group"><div class="ctrl-issue-group-title">💰 Lön & avtal (' + wageW.length + ')</div>';
         html += renderIssueList(wageW) + '</div>';
+    }
+    if (balanceW.length) {
+        html += '<div class="ctrl-issue-group"><div class="ctrl-issue-group-title">📊 Timbalans (' + balanceW.length + ')</div>';
+        html += renderIssueList(balanceW) + '</div>';
     }
     return html;
 }
@@ -267,6 +349,56 @@ function renderFullCostSummary(grossWage, vacPay, fora, tax, total, settings) {
         '<div style="margin-top:0.5rem;font-size:0.8rem;color:#888;">' +
             '💡 Beräknat på schemalagda timmar denna vecka. Satserna kan justeras i Inställningar eller per person.' +
         '</div>' +
+    '</div>';
+}
+
+/* ── AO-12: BALANCE SUMMARY ── */
+function renderBalanceSummary(balances, activePeriod) {
+    var balanceList = [];
+    balances.forEach(function(data) { balanceList.push(data); });
+
+    if (!balanceList.length) return '<p class="ctrl-empty">Ingen aktiv personal.</p>';
+
+    balanceList.sort(function(a, b) { return Math.abs(b.totalBalance) - Math.abs(a.totalBalance); });
+
+    var rows = balanceList.map(function(data) {
+        var p = data.person;
+        var nm = (p.firstName && p.lastName) ? p.firstName + ' ' + p.lastName : (p.name || p.id);
+        var pct = p.employmentPct || p.degree || 100;
+
+        var periodData = activePeriod
+            ? data.periods.find(function(pb) { return pb.periodId === activePeriod.id; })
+            : null;
+
+        var target = periodData ? periodData.targetHours : data.totalTarget;
+        var scheduled = periodData ? periodData.scheduledHours : data.totalScheduled;
+        var balance = periodData ? periodData.balanceHours : data.totalBalance;
+        var avg = periodData ? periodData.avgHoursPerWeek : 0;
+
+        var isOver = balance > 2;
+        var isUnder = balance < -2;
+        var balanceColor = isOver ? '#dc3545' : isUnder ? '#fd7e14' : '#28a745';
+        var sign = balance > 0 ? '+' : '';
+        var icon = isOver ? '⚠️' : isUnder ? '📉' : '✅';
+
+        return '<tr>' +
+            '<td><strong>' + escapeHtml(nm) + '</strong></td>' +
+            '<td>' + pct + '%</td>' +
+            '<td>' + target.toFixed(1) + '</td>' +
+            '<td>' + scheduled.toFixed(1) + '</td>' +
+            '<td style="color:' + balanceColor + ';font-weight:700;">' + sign + balance.toFixed(1) + '</td>' +
+            '<td>' + avg.toFixed(1) + ' h/v</td>' +
+            '<td>' + icon + '</td>' +
+        '</tr>';
+    }).join('');
+
+    return '<table class="ctrl-person-table">' +
+        '<thead><tr><th>Namn</th><th>Tjänstg.</th><th>Mål</th><th>Schemalagt</th><th>Saldo</th><th>Snitt/v</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+    '</table>' +
+    '<div style="margin-top:0.5rem;font-size:0.8rem;color:#888;">' +
+        'HRF: 40 tim/vecka heltid. Saldo = schemalagt − mål. Tolerans: ±2 tim.' +
+        (activePeriod ? ' Period: ' + escapeHtml(activePeriod.name) + ' (' + escapeHtml(activePeriod.startDate) + ' – ' + escapeHtml(activePeriod.endDate) + ')' : '') +
     '</div>';
 }
 
