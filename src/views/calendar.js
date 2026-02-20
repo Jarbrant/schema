@@ -26,7 +26,9 @@ import {
     getEligiblePersons,
 } from '../modules/schedule-engine.js';
 
-/* ── CONSTANTS ── */
+/* ============================================================
+ * BLOCK 1 — CONSTANTS
+ * ============================================================ */
 const WEEKDAY_NAMES = ['Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lördag', 'Söndag'];
 const MONTH_NAMES = ['Januari','Februari','Mars','April','Maj','Juni','Juli','Augusti','September','Oktober','November','December'];
 const ABSENCE_LABELS = { SEM:'Semester', SJ:'Sjuk', VAB:'VAB', FÖR:'Föräldraledig', PERM:'Permission', UTB:'Utbildning', TJL:'Tjänstledig' };
@@ -42,7 +44,9 @@ const STATUS_COLORS = {
 };
 const MAX_WEEK_OFFSET = 53;
 
-/* ── MAIN RENDER ── */
+/* ============================================================
+ * BLOCK 2 — MAIN RENDER
+ * ============================================================ */
 export function renderCalendar(container, ctx) {
     if (!container) return;
     const store = ctx?.store;
@@ -72,7 +76,9 @@ export function renderCalendar(container, ctx) {
                 weekOffset: calcCurrentWeekOffset(year),
                 collapsedGroups: {},
                 collapsedShifts: {},
-                assignModal: null, editModal: null, generatePreview: null,
+                assignModal: null,
+                editModal: null,
+                generatePreview: null,
                 showLinkPanel: false,  /* v2.5: visa kopplingspanel */
             };
         }
@@ -83,8 +89,10 @@ export function renderCalendar(container, ctx) {
         const weekNum = getISOWeekNumber(weekDates[0]);
         const weekKey = `${year}-W${String(weekNum).padStart(2,'0')}`;
         const isLocked = lockedWeeks.includes(weekKey);
+
         const linkedTemplateId = calendarWeeks[weekKey] || null;
         const linkedTemplate = linkedTemplateId ? weekTemplates[linkedTemplateId] : null;
+
         const weekSchedule = buildWeekSchedule(weekDates, state, groups, shifts, shiftTemplates, people);
         const warnings = validateScheduleIntegrity(state.schedule.months, allPeople, absences);
         const weekWarnings = warnings.filter(w => weekDates.some(d => formatISO(d) === w.date));
@@ -116,7 +124,12 @@ export function renderCalendar(container, ctx) {
     }
 }
 
+/* ============================================================
+ * BLOCK 3 — WEEK OFFSET HELPERS
+ * ============================================================ */
 function calcCurrentWeekOffset(year) {
+    // NOTE: Om användaren bläddrar till annan year än "nu-år", så är detta en approximation.
+    // Men den är stabil: den ger en offset relativt "första måndag i year".
     const now = new Date();
     const jan1 = new Date(year, 0, 1), d1 = jan1.getDay(), dtm = d1===0?-6:1-d1;
     const firstMonday = new Date(year, 0, 1 + dtm);
@@ -124,11 +137,13 @@ function calcCurrentWeekOffset(year) {
     return Math.max(0, Math.min(MAX_WEEK_OFFSET, Math.floor(diffDays / 7)));
 }
 
-/* ══════════════════════════════════════════════════════════
- * TOP BAR — v2.5: klickbar mall-badge + kopplingsknapp
- * ══════════════════════════════════════════════════════════ */
+/* ============================================================
+ * BLOCK 4 — TOP BAR (v2.5 link-panel trigger)
+ * ============================================================ */
 function renderTopBar(cal, weekNum, weekDates, isLocked, linkedTemplate, weekTemplates, weekKey) {
     const hasTemplates = Object.keys(weekTemplates).length > 0;
+
+    // v2.5: badge är klickbar och togglar panelen
     const templateBadge = linkedTemplate
         ? `<span class="cal-template-badge" data-cal="toggle-link-panel" style="cursor:pointer;" title="Klicka för att ändra koppling">📋 ${escapeHtml(linkedTemplate.name)}</span>`
         : hasTemplates
@@ -152,9 +167,9 @@ function renderTopBar(cal, weekNum, weekDates, isLocked, linkedTemplate, weekTem
         </div></div>`;
 }
 
-/* ══════════════════════════════════════════════════════════
- * LINK PANEL — v2.5: Koppla veckomall till kalendervecka
- * ══════════════════════════════════════════════════════════ */
+/* ============================================================
+ * BLOCK 5 — LINK PANEL (v2.5)
+ * ============================================================ */
 function renderLinkPanel(weekKey, weekNum, linkedTemplateId, weekTemplates, calendarWeeks, year) {
     const templateList = Object.values(weekTemplates);
     if (!templateList.length) {
@@ -167,12 +182,12 @@ function renderLinkPanel(weekKey, weekNum, linkedTemplateId, weekTemplates, cale
 
     const linkedCount = Object.keys(calendarWeeks).length;
 
-    /* Beräkna default-datum: aktuell veckas måndag + 4 veckors söndag */
+    // Default: aktuell veckas måndag till +4 veckor
     const today = new Date();
     const monday = new Date(today);
     monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
     const endDefault = new Date(monday);
-    endDefault.setDate(monday.getDate() + 27); /* 4 veckor */
+    endDefault.setDate(monday.getDate() + 27);
 
     const fmtDate = (d) => d.toISOString().slice(0, 10);
 
@@ -220,7 +235,9 @@ function renderLinkPanel(weekKey, weekNum, linkedTemplateId, weekTemplates, cale
     </div>`;
 }
 
-/* ── WARNINGS ── */
+/* ============================================================
+ * BLOCK 6 — WARNINGS / PREVIEW
+ * ============================================================ */
 function renderWarnings(warnings) {
     const errors = warnings.filter(w => w.severity === 'error');
     const warns = warnings.filter(w => w.severity === 'warning');
@@ -232,7 +249,6 @@ function renderWarnings(warnings) {
     </div>`;
 }
 
-/* ── GENERATE PREVIEW ── */
 function renderGeneratePreview(preview, people, groups, shifts, shiftTemplates) {
     const { suggestions, vacancySuggestions } = preview;
     const allShifts = { ...shifts, ...shiftTemplates };
@@ -253,7 +269,9 @@ function renderGeneratePreview(preview, people, groups, shifts, shiftTemplates) 
         }).join('')}</div></div>`;
 }
 
-/* ── GROUP SECTIONS ── */
+/* ============================================================
+ * BLOCK 7 — GROUP RENDER
+ * ============================================================ */
 function renderGroupSections(weekSchedule, weekDates, groups, shifts, shiftTemplates, groupShifts, people, absences, vacancies, cal, isLocked) {
     const gids = Object.keys(groups).filter(g => g !== 'SYSTEM_ADMIN');
     if (!gids.length) return '<p class="cal-empty">Inga grupper.</p>';
@@ -277,7 +295,6 @@ function renderGroupSections(weekSchedule, weekDates, groups, shifts, shiftTempl
     }).join('');
 }
 
-/* ── GROUP BODY — v2.4: per-shift toggle ── */
 function renderGroupBody(gid, groupData, weekDates, shifts, shiftTemplates, linkedShiftIds, people, absences, vacancies, isLocked, cal) {
     if (!linkedShiftIds.length) return `<div class="cal-group-body"><p class="cal-empty-small">Inga grundpass kopplade.</p></div>`;
     const allShifts = { ...shifts, ...shiftTemplates };
@@ -339,14 +356,18 @@ function renderGroupBody(gid, groupData, weekDates, shifts, shiftTemplates, link
     }).join('')}</div>`;
 }
 
-/* ── ASSIGN MODAL ── */
+/* ============================================================
+ * BLOCK 8 — MODALS
+ * ============================================================ */
 function renderAssignModal(modal, groups, shifts, shiftTemplates, groupShifts, people, absences, state) {
     const { date, groupId, shiftId } = modal;
     const allShifts = { ...shifts, ...shiftTemplates };
     const group = groups[groupId], shift = allShifts[shiftId];
     if (!group || !shift) return '';
+
     const startTime = shift.startTime || '07:00', endTime = shift.endTime || '16:00';
     const timeStr = `${startTime} – ${endTime}`;
+
     const dayData = state.schedule?.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)];
     const eligible = getEligiblePersons({ date, groupId, shiftId, groups, shifts, groupShifts, people, dayData, absences, scheduleMonths: state.schedule?.months });
 
@@ -395,7 +416,6 @@ function renderAssignModal(modal, groups, shifts, shiftTemplates, groupShifts, p
     </div>`;
 }
 
-/* ── EDIT MODAL ── */
 function renderEditModal(modal, groups, shifts, shiftTemplates, people, state) {
     const { date, personId, shiftId, groupId } = modal;
     const allShifts = { ...shifts, ...shiftTemplates };
@@ -435,7 +455,9 @@ function renderEditModal(modal, groups, shifts, shiftTemplates, people, state) {
     </div>`;
 }
 
-/* ── BUILD WEEK DATA ── */
+/* ============================================================
+ * BLOCK 9 — BUILD WEEK DATA
+ * ============================================================ */
 function buildWeekSchedule(weekDates, state, groups, shifts, shiftTemplates, people) {
     const result = {}, allShifts = { ...shifts, ...shiftTemplates };
     Object.keys(groups).forEach(gid => {
@@ -445,17 +467,25 @@ function buildWeekSchedule(weekDates, state, groups, shifts, shiftTemplates, peo
             const dayData = state.schedule?.months?.[getMonthIndex(dateStr)]?.days?.[getDayIndex(dateStr)];
             const entries = (dayData?.entries||[]).filter(e=>e.groupId===gid);
             let hours=0, cost=0;
-            entries.forEach(e => { if(e.status!=='A') return; const s=allShifts[e.shiftId]; if(!s) return;
-                const h=calcShiftHours(s,e); hours+=h; if(e.personId){const p=people.find(pp=>pp.id===e.personId); if(p) cost+=h*(p.hourlyWage||0);} });
+            entries.forEach(e => {
+                if(e.status!=='A') return;
+                const s=allShifts[e.shiftId]; if(!s) return;
+                const h=calcShiftHours(s,e);
+                hours+=h;
+                if(e.personId){
+                    const p=people.find(pp=>pp.id===e.personId);
+                    if(p) cost+=h*(p.hourlyWage||0);
+                }
+            });
             result[gid][dateStr] = { entries, hours, cost };
         });
     });
     return result;
 }
 
-/* ══════════════════════════════════════════════════════════
- * EVENT LISTENERS — v2.5: link-panel actions tillagda
- * ══════════════════════════════════════════════════════════ */
+/* ============================================================
+ * BLOCK 10 — EVENT LISTENERS
+ * ============================================================ */
 function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
     if (ctx._calAbort) ctx._calAbort.abort();
     ctx._calAbort = new AbortController();
@@ -464,7 +494,7 @@ function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
     container.addEventListener('click', (e) => {
         const cal = ctx._cal;
 
-        /* Overlay-klick: stäng modal */
+        // Overlay-klick: stäng modal (men inte när man klickar på knappar inuti modalen)
         const overlay = e.target.closest('[data-cal-overlay]');
         if (overlay && !e.target.closest('[data-cal-modal-inner]') && !e.target.closest('[data-cal]')) {
             if (overlay.dataset.calOverlay === 'assign') { cal.assignModal = null; renderCalendar(container, ctx); return; }
@@ -480,26 +510,31 @@ function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
                 cal.weekOffset = Math.max(0, cal.weekOffset - 1);
                 cal.generatePreview = null;
                 renderCalendar(container, ctx);
+
             } else if (action==='next-week') {
                 cal.weekOffset = Math.min(MAX_WEEK_OFFSET, cal.weekOffset + 1);
                 cal.generatePreview = null;
                 renderCalendar(container, ctx);
+
             } else if (action==='today') {
                 cal.weekOffset = calcCurrentWeekOffset(store.getState().schedule.year);
                 cal.generatePreview = null;
                 renderCalendar(container, ctx);
 
-            /* ── v2.5: Toggle link panel ── */
-                        } else if (action==='apply-link') {
+            /* v2.5: Toggle link panel (var saknad -> badge gjorde inget) */
+            } else if (action==='toggle-link-panel') {
+                cal.showLinkPanel = !cal.showLinkPanel;
+                renderCalendar(container, ctx);
+
+            /* v2.5: Koppla period */
+            } else if (action==='apply-link') {
                 handleApplyLink(store, ctx, container, false);
 
+            /* v2.5: Koppla + generera */
             } else if (action==='apply-link-generate') {
                 handleApplyLink(store, ctx, container, true);
-            /* ── v2.5: Apply link (koppla veckomall) ── */
-            } else if (action==='apply-link') {
-                handleApplyLink(store, ctx, container);
 
-            /* ── v2.5: Remove link (avkoppla) ── */
+            /* v2.5: Avkoppla (tar bort koppling för aktuell vecka) */
             } else if (action==='remove-link') {
                 handleRemoveLink(store, ctx, container);
 
@@ -507,49 +542,69 @@ function setupListeners(container, store, ctx, isLocked, linkedTemplate) {
                 const gid = btn.dataset.groupId;
                 if (gid) cal.collapsedGroups[gid] = !cal.collapsedGroups[gid];
                 renderCalendar(container, ctx);
+
             } else if (action==='toggle-shift') {
                 const key = btn.dataset.shiftKey;
                 if (key) cal.collapsedShifts[key] = !cal.collapsedShifts[key];
                 renderCalendar(container, ctx);
+
             } else if (action==='open-assign' && !isLocked) {
                 cal.assignModal = { date: btn.dataset.date, groupId: btn.dataset.groupId, shiftId: btn.dataset.shiftId };
                 renderCalendar(container, ctx);
+
             } else if (action==='close-modal') {
                 cal.assignModal = null;
                 renderCalendar(container, ctx);
+
             } else if (action==='close-edit') {
                 cal.editModal = null;
                 renderCalendar(container, ctx);
+
             } else if (action==='assign-person' && !isLocked) {
                 handleAssign(btn, cal, store, container, ctx);
+
             } else if ((action==='unassign' || action==='unassign-modal') && !isLocked) {
                 handleUnassign(btn, action, cal, store, container, ctx);
+
             } else if (action==='edit-entry' && !isLocked) {
                 cal.editModal = { date: btn.dataset.date, personId: btn.dataset.personId, shiftId: btn.dataset.shiftId, groupId: btn.dataset.groupId };
                 renderCalendar(container, ctx);
+
             } else if (action==='save-edit' && !isLocked) {
                 handleSaveEdit(cal, store, container, ctx);
+
             } else if (action==='delete-entry' && !isLocked) {
                 handleDeleteEntry(btn, cal, store, container, ctx);
+
             } else if (action==='lock-week') {
                 handleLockWeek(store, ctx, container);
+
             } else if (action==='unlock-week') {
                 handleUnlockWeek(store, ctx, container);
+
             } else if (action==='generate' && !isLocked && linkedTemplate) {
                 handleGenerate(store, linkedTemplate, cal, container, ctx);
+
             } else if (action==='apply-generate' && !isLocked) {
                 handleApplyGenerate(cal, store, container, ctx);
+
             } else if (action==='cancel-generate') {
                 cal.generatePreview = null;
                 renderCalendar(container, ctx);
+
             } else if (action==='fill-vacancy' && !isLocked) {
                 handleFillVacancy(btn, cal, store, container, ctx);
             }
-        } catch(err) { console.error('❌ Calendar error:', err); showWarning('❌ Ett fel uppstod'); }
+        } catch(err) {
+            console.error('❌ Calendar error:', err);
+            showWarning('❌ Ett fel uppstod');
+        }
     }, { signal });
 }
 
-/* ── HELPER: säkerställ month/day finns ── */
+/* ============================================================
+ * BLOCK 11 — ensureDay (fail-safe)
+ * ============================================================ */
 function ensureDay(schedule, monthIdx, dayIdx) {
     if (!Array.isArray(schedule.months)) schedule.months = [];
     while (schedule.months.length <= monthIdx) schedule.months.push({ days: [] });
@@ -561,14 +616,15 @@ function ensureDay(schedule, monthIdx, dayIdx) {
     return day;
 }
 
-/* ══════════════════════════════════════════════════════════
- * v2.5: LINK HANDLERS — Koppla/avkoppla veckomall
- * ══════════════════════════════════════════════════════════ */
+/* ============================================================
+ * BLOCK 12 — LINK HANDLERS (v2.5)
+ * ============================================================ */
 function handleApplyLink(store, ctx, container, alsoGenerate) {
     const cal = ctx._cal;
     const s = store.getState();
     const year = s.schedule.year;
 
+    // NOTE: Hämtar via document.getElementById -> kräver att det bara finns en kalender i DOM samtidigt.
     const selectEl = document.getElementById('cal-link-template');
     const fromEl = document.getElementById('cal-link-from');
     const toEl = document.getElementById('cal-link-to');
@@ -593,22 +649,31 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
     /* Hitta alla vecko-nycklar i datumintervallet */
     const weekKeys = new Set();
     const weekOffsets = [];
+
+    // NOTE: Här finns ett edge-case om intervallet går över årsskifte.
+    // weekKey använder wy (måndagens år) -> korrekt för ISO-vecka, men "wo" beräknas mot 'year' (kalenderns år).
+    // Vi begränsar wo med [0..MAX] -> veckor utanför year ignoreras för generering.
     for (let i = 0; i < diffDays; i++) {
         const d = new Date(fromDate);
         d.setDate(d.getDate() + i);
         const dayOfWeek = d.getDay();
+
         /* Hitta måndagen för denna dag */
         const mon = new Date(d);
         mon.setDate(d.getDate() - ((dayOfWeek + 6) % 7));
+
         const wn = getISOWeekNumber(mon);
         const wy = mon.getFullYear();
         const wk = `${wy}-W${String(wn).padStart(2, '0')}`;
+
         if (!weekKeys.has(wk)) {
             weekKeys.add(wk);
-            /* Beräkna weekOffset för denna vecka */
+
+            /* Beräkna weekOffset för denna vecka (endast för samma 'year' som kalendern) */
             const jan1 = new Date(year, 0, 1);
             const d1 = jan1.getDay(), dtm = d1 === 0 ? -6 : 1 - d1;
             const firstMonday = new Date(year, 0, 1 + dtm);
+
             const wo = Math.floor((mon.getTime() - firstMonday.getTime()) / (7 * 24 * 60 * 60 * 1000));
             if (wo >= 0 && wo <= MAX_WEEK_OFFSET) weekOffsets.push(wo);
         }
@@ -619,8 +684,8 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
     store.update(st => {
         if (!st.calendarWeeks || typeof st.calendarWeeks !== 'object') st.calendarWeeks = {};
         weekKeysArr.forEach(wk => {
-            if (templateId) { st.calendarWeeks[wk] = templateId; }
-            else { delete st.calendarWeeks[wk]; }
+            if (templateId) st.calendarWeeks[wk] = templateId;
+            else delete st.calendarWeeks[wk];
         });
     });
 
@@ -628,7 +693,7 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
     const templateName = templateId ? (s.weekTemplates?.[templateId]?.name || templateId) : '';
     showSuccess(`✓ ${weekKeysArr.length} vecka(or) ${action}${templateName ? ': ' + templateName : ''}`);
 
-    /* Om "Koppla + Generera allt" — kör generering för alla veckor */
+    /* Om "Koppla + Generera allt" */
     if (alsoGenerate && templateId) {
         const state = store.getState();
         const wt = state.weekTemplates?.[templateId];
@@ -641,20 +706,28 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
             weekOffsets.forEach(wo => {
                 const weekDates = getWeekDates(year, wo);
                 const preview = generateWeekSchedule({
-                    weekDates, weekTemplate: wt,
-                    groups: state.groups, shifts: state.shifts, shiftTemplates: state.shiftTemplates,
+                    weekDates,
+                    weekTemplate: wt,
+                    groups: state.groups,
+                    shifts: state.shifts,
+                    shiftTemplates: state.shiftTemplates,
                     groupShifts: state.groupShifts,
                     people: (state.people || []).filter(p => p.isActive),
-                    absences: state.absences || [], existingEntries: {}, demand: state.demand
+                    absences: state.absences || [],
+                    existingEntries: {}, // NOTE: om engine använder detta för att undvika dubbletter kan det behöva verkliga entries per dag
+                    demand: state.demand
                 });
 
-                if (preview.suggestions && preview.suggestions.length > 0) {
+                if (preview?.suggestions?.length) {
                     store.update(s => {
                         preview.suggestions.forEach(sug => {
                             let resolvedShiftId = sug.shiftId || sug.shiftTemplateId;
+
+                            // NOTE: resolve templateId -> verkligt shiftId (som UI/kalendern förstår)
                             if (resolvedShiftId && !shifts[resolvedShiftId]) {
                                 const gsArr = Array.isArray(groupShifts[sug.groupId]) ? groupShifts[sug.groupId] : [];
                                 const st = shiftTemplates[resolvedShiftId];
+
                                 if (st && gsArr.length > 0) {
                                     const timeMatch = gsArr.find(sid => {
                                         const sh = shifts[sid];
@@ -663,12 +736,19 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
                                     resolvedShiftId = timeMatch || gsArr[0];
                                 }
                             }
+
                             const day = ensureDay(s.schedule, getMonthIndex(sug.date), getDayIndex(sug.date));
                             if (day.entries.some(e => e.personId === sug.personId && e.shiftId === resolvedShiftId && e.groupId === sug.groupId)) return;
+
                             day.entries.push({
-                                personId: sug.personId, shiftId: resolvedShiftId, groupId: sug.groupId,
-                                status: sug.status || 'A', startTime: sug.startTime, endTime: sug.endTime,
-                                breakStart: sug.breakStart, breakEnd: sug.breakEnd
+                                personId: sug.personId,
+                                shiftId: resolvedShiftId,
+                                groupId: sug.groupId,
+                                status: sug.status || 'A',
+                                startTime: sug.startTime,
+                                endTime: sug.endTime,
+                                breakStart: sug.breakStart,
+                                breakEnd: sug.breakEnd
                             });
                             totalApplied++;
                         });
@@ -684,21 +764,14 @@ function handleApplyLink(store, ctx, container, alsoGenerate) {
     renderCalendar(container, ctx);
 }
 
-    const action = templateId ? 'kopplad' : 'avkopplad';
-    const templateName = templateId ? (s.weekTemplates?.[templateId]?.name || templateId) : '';
-    showSuccess(`✓ ${weekKeys.length} vecka(or) ${action}${templateName ? ': ' + templateName : ''}`);
-
-    cal.showLinkPanel = false;
-    renderCalendar(container, ctx);
-}
-
 function handleRemoveLink(store, ctx, container) {
     const cal = ctx._cal;
     const s = store.getState();
-    const year = s.schedule.year;
-    const weekDates = getWeekDates(year, cal.weekOffset);
+    const yr = s.schedule.year;
+
+    const weekDates = getWeekDates(yr, cal.weekOffset);
     const wn = getISOWeekNumber(weekDates[0]);
-    const weekKey = `${year}-W${String(wn).padStart(2,'0')}`;
+    const weekKey = `${yr}-W${String(wn).padStart(2,'0')}`;
 
     store.update(st => {
         if (st.calendarWeeks && typeof st.calendarWeeks === 'object') {
@@ -711,126 +784,196 @@ function handleRemoveLink(store, ctx, container) {
     renderCalendar(container, ctx);
 }
 
-/* ── ACTION HANDLERS (existing) ── */
+/* ============================================================
+ * BLOCK 13 — ACTION HANDLERS (existing)
+ * ============================================================ */
 function handleAssign(btn, cal, store, container, ctx) {
     const pid = btn.dataset.personId, m = cal.assignModal;
     if (!pid || !m) return;
     const { date, groupId, shiftId } = m;
     const s = store.getState();
     const shift = { ...(s.shifts||{}), ...(s.shiftTemplates||{}) }[shiftId];
+
     const customStart = document.getElementById('cal-assign-start')?.value || shift?.startTime || null;
     const customEnd = document.getElementById('cal-assign-end')?.value || shift?.endTime || null;
 
     store.update(st => {
         const day = ensureDay(st.schedule, getMonthIndex(date), getDayIndex(date));
         if (day.entries.some(e => e.personId===pid && e.shiftId===shiftId && e.groupId===groupId)) return;
-        day.entries.push({ personId:pid, shiftId, groupId, status:'A', startTime:customStart, endTime:customEnd, breakStart:shift?.breakStart||null, breakEnd:shift?.breakEnd||null });
+        day.entries.push({
+            personId:pid,
+            shiftId,
+            groupId,
+            status:'A',
+            startTime:customStart,
+            endTime:customEnd,
+            breakStart:shift?.breakStart||null,
+            breakEnd:shift?.breakEnd||null
+        });
     });
-    showSuccess('✓ Person tilldelad'); cal.assignModal = null; renderCalendar(container, ctx);
+
+    showSuccess('✓ Person tilldelad');
+    cal.assignModal = null;
+    renderCalendar(container, ctx);
 }
 
 function handleUnassign(btn, action, cal, store, container, ctx) {
     const pid=btn.dataset.personId, date=btn.dataset.date||cal.assignModal?.date, sid=btn.dataset.shiftId||cal.assignModal?.shiftId;
     if (!pid || !date) return;
-    store.update(s => { const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d?.entries) return;
-        d.entries = d.entries.filter(e => { if(e.personId!==pid) return true; if(sid&&e.shiftId!==sid) return true; return false; }); });
-    showWarning('🗑️ Borttagen'); if(action==='unassign-modal') cal.assignModal=null; renderCalendar(container, ctx);
+
+    store.update(s => {
+        const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)];
+        if(!d?.entries) return;
+        d.entries = d.entries.filter(e => {
+            if(e.personId!==pid) return true;
+            if(sid && e.shiftId!==sid) return true;
+            return false;
+        });
+    });
+
+    showWarning('🗑️ Borttagen');
+    if(action==='unassign-modal') cal.assignModal=null;
+    renderCalendar(container, ctx);
 }
 
 function handleSaveEdit(cal, store, container, ctx) {
     if (!cal.editModal) return;
     const { date, personId, shiftId, groupId } = cal.editModal;
-    store.update(s => { const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d?.entries) return;
-        const e=d.entries.find(e=>e.personId===personId&&e.shiftId===shiftId&&e.groupId===groupId); if(!e) return;
-        e.startTime=document.getElementById('cal-edit-start')?.value||null; e.endTime=document.getElementById('cal-edit-end')?.value||null;
-        e.breakStart=document.getElementById('cal-edit-break-start')?.value||null; e.breakEnd=document.getElementById('cal-edit-break-end')?.value||null;
-        e.status=document.getElementById('cal-edit-status')?.value||'A'; });
-    showSuccess('✓ Uppdaterat'); cal.editModal=null; renderCalendar(container, ctx);
+
+    store.update(s => {
+        const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)];
+        if(!d?.entries) return;
+        const e=d.entries.find(e=>e.personId===personId&&e.shiftId===shiftId&&e.groupId===groupId);
+        if(!e) return;
+
+        e.startTime=document.getElementById('cal-edit-start')?.value||null;
+        e.endTime=document.getElementById('cal-edit-end')?.value||null;
+        e.breakStart=document.getElementById('cal-edit-break-start')?.value||null;
+        e.breakEnd=document.getElementById('cal-edit-break-end')?.value||null;
+        e.status=document.getElementById('cal-edit-status')?.value||'A';
+    });
+
+    showSuccess('✓ Uppdaterat');
+    cal.editModal=null;
+    renderCalendar(container, ctx);
 }
 
 function handleDeleteEntry(btn, cal, store, container, ctx) {
-    const { personId, date, shiftId } = btn.dataset; if(!personId||!date) return;
-    store.update(s => { const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)]; if(!d?.entries) return;
-        d.entries = d.entries.filter(e => !(e.personId===personId && e.shiftId===shiftId)); });
-    showWarning('🗑️ Borttaget'); cal.editModal=null; renderCalendar(container, ctx);
+    const { personId, date, shiftId } = btn.dataset;
+    if(!personId||!date) return;
+
+    store.update(s => {
+        const d=s.schedule.months?.[getMonthIndex(date)]?.days?.[getDayIndex(date)];
+        if(!d?.entries) return;
+        d.entries = d.entries.filter(e => !(e.personId===personId && e.shiftId===shiftId));
+    });
+
+    showWarning('🗑️ Borttaget');
+    cal.editModal=null;
+    renderCalendar(container, ctx);
 }
 
 function handleLockWeek(store, ctx, container) {
     const cal = ctx._cal, s = store.getState(), yr = s.schedule.year;
     const weekDates = getWeekDates(yr, cal.weekOffset);
     const wn = getISOWeekNumber(weekDates[0]), wk = `${yr}-W${String(wn).padStart(2,'0')}`;
-    store.update(s => { if(!Array.isArray(s.schedule.lockedWeeks)) s.schedule.lockedWeeks=[];
-        if(!s.schedule.lockedWeeks.includes(wk)) s.schedule.lockedWeeks.push(wk); });
-    showSuccess(`🔒 Vecka ${wn} låst`); renderCalendar(container, ctx);
+
+    store.update(s => {
+        if(!Array.isArray(s.schedule.lockedWeeks)) s.schedule.lockedWeeks=[];
+        if(!s.schedule.lockedWeeks.includes(wk)) s.schedule.lockedWeeks.push(wk);
+    });
+
+    showSuccess(`🔒 Vecka ${wn} låst`);
+    renderCalendar(container, ctx);
 }
 
 function handleUnlockWeek(store, ctx, container) {
     const cal = ctx._cal, s = store.getState(), yr = s.schedule.year;
     const weekDates = getWeekDates(yr, cal.weekOffset);
     const wn = getISOWeekNumber(weekDates[0]), wk = `${yr}-W${String(wn).padStart(2,'0')}`;
-    store.update(s => { if(!Array.isArray(s.schedule.lockedWeeks)) return;
-        s.schedule.lockedWeeks = s.schedule.lockedWeeks.filter(w => w !== wk); });
-    showWarning(`🔓 Vecka ${wn} upplåst`); renderCalendar(container, ctx);
+
+    store.update(s => {
+        if(!Array.isArray(s.schedule.lockedWeeks)) return;
+        s.schedule.lockedWeeks = s.schedule.lockedWeeks.filter(w => w !== wk);
+    });
+
+    showWarning(`🔓 Vecka ${wn} upplåst`);
+    renderCalendar(container, ctx);
 }
 
 function handleGenerate(store, linkedTemplate, cal, container, ctx) {
     const s = store.getState(), weekDates = getWeekDates(s.schedule.year, cal.weekOffset);
-    cal.generatePreview = generateWeekSchedule({ weekDates, weekTemplate:linkedTemplate, groups:s.groups, shifts:s.shifts, shiftTemplates:s.shiftTemplates,
-        groupShifts:s.groupShifts, people:(s.people||[]).filter(p=>p.isActive), absences:s.absences||[], existingEntries:{}, demand:s.demand });
+    cal.generatePreview = generateWeekSchedule({
+        weekDates,
+        weekTemplate:linkedTemplate,
+        groups:s.groups,
+        shifts:s.shifts,
+        shiftTemplates:s.shiftTemplates,
+        groupShifts:s.groupShifts,
+        people:(s.people||[]).filter(p=>p.isActive),
+        absences:s.absences||[],
+        existingEntries:{},
+        demand:s.demand
+    });
     renderCalendar(container, ctx);
 }
 
 function handleApplyGenerate(cal, store, container, ctx) {
     if (!cal.generatePreview) return;
     const { suggestions } = cal.generatePreview;
+
     const state = store.getState();
     const shifts = state.shifts || {};
     const groupShifts = state.groupShifts || {};
     const shiftTemplates = state.shiftTemplates || {};
 
-    store.update(s => { suggestions.forEach(sug => {
-        // AO-FIX: Mappa shiftTemplateId → rätt shift-ID som kalendern förstår
-        let resolvedShiftId = sug.shiftId || sug.shiftTemplateId;
-        if (resolvedShiftId && !shifts[resolvedShiftId]) {
-            // shiftId finns inte i shifts → det är ett shiftTemplateId
-            // Hitta rätt shift via groupShifts[groupId]
-            const gsArr = Array.isArray(groupShifts[sug.groupId]) ? groupShifts[sug.groupId] : [];
-            const st = shiftTemplates[resolvedShiftId];
-            if (st && gsArr.length > 0) {
-                // Matcha på tid: hitta shift med samma startTime/endTime
-                const timeMatch = gsArr.find(sid => {
-                    const sh = shifts[sid];
-                    return sh && sh.startTime === st.startTime && sh.endTime === st.endTime;
-                });
-                // Fallback: ta första shift i gruppen
-                resolvedShiftId = timeMatch || gsArr[0];
-            }
-        }
+    store.update(s => {
+        suggestions.forEach(sug => {
+            let resolvedShiftId = sug.shiftId || sug.shiftTemplateId;
 
-        const day = ensureDay(s.schedule, getMonthIndex(sug.date), getDayIndex(sug.date));
-        if(day.entries.some(e=>e.personId===sug.personId&&e.shiftId===resolvedShiftId&&e.groupId===sug.groupId)) return;
-        day.entries.push({
-            personId: sug.personId,
-            shiftId: resolvedShiftId,
-            groupId: sug.groupId,
-            status: sug.status || 'A',
-            startTime: sug.startTime,
-            endTime: sug.endTime,
-            breakStart: sug.breakStart,
-            breakEnd: sug.breakEnd
+            if (resolvedShiftId && !shifts[resolvedShiftId]) {
+                const gsArr = Array.isArray(groupShifts[sug.groupId]) ? groupShifts[sug.groupId] : [];
+                const st = shiftTemplates[resolvedShiftId];
+                if (st && gsArr.length > 0) {
+                    const timeMatch = gsArr.find(sid => {
+                        const sh = shifts[sid];
+                        return sh && sh.startTime === st.startTime && sh.endTime === st.endTime;
+                    });
+                    resolvedShiftId = timeMatch || gsArr[0];
+                }
+            }
+
+            const day = ensureDay(s.schedule, getMonthIndex(sug.date), getDayIndex(sug.date));
+            if(day.entries.some(e=>e.personId===sug.personId&&e.shiftId===resolvedShiftId&&e.groupId===sug.groupId)) return;
+
+            day.entries.push({
+                personId: sug.personId,
+                shiftId: resolvedShiftId,
+                groupId: sug.groupId,
+                status: sug.status || 'A',
+                startTime: sug.startTime,
+                endTime: sug.endTime,
+                breakStart: sug.breakStart,
+                breakEnd: sug.breakEnd
+            });
         });
-    }); });
+    });
+
     showSuccess(`✓ ${suggestions.length} tillämpade`);
     cal.generatePreview = null;
     renderCalendar(container, ctx);
 }
 
 function handleFillVacancy(btn, cal, store, container, ctx) {
-    const v=(store.getState().vacancies||[]).find(v=>v.id===btn.dataset.vacancyId); if(!v) return;
-    cal.assignModal = { date:v.date, groupId:v.groupId, shiftId:v.shiftTemplateId }; renderCalendar(container, ctx);
+    const v=(store.getState().vacancies||[]).find(v=>v.id===btn.dataset.vacancyId);
+    if(!v) return;
+    cal.assignModal = { date:v.date, groupId:v.groupId, shiftId:v.shiftTemplateId };
+    renderCalendar(container, ctx);
 }
 
-/* ── DRAG & DROP ── */
+/* ============================================================
+ * BLOCK 14 — DRAG & DROP
+ * ============================================================ */
 function setupDragAndDrop(container, store, ctx, isLocked) {
     if (isLocked) return;
     if (ctx._calDragAbort) ctx._calDragAbort.abort();
@@ -862,25 +1005,46 @@ function setupDragAndDrop(container, store, ctx, isLocked) {
     container.addEventListener('drop', (e) => {
         e.preventDefault(); const dz = e.target.closest('[data-drop-zone]'); if(!dz||!dragData) return;
         dz.classList.remove('cal-drop-target');
+
         const { personId, shiftId:fromShift, groupId:fromGroup, fromDate } = dragData;
         const toDate=dz.dataset.dropDate, toGroup=dz.dataset.dropGroup, toShift=dz.dataset.dropShift;
+
         if(toDate===fromDate && toGroup===fromGroup && toShift===fromShift){ dragData=null; return; }
+
         try {
             const ts = { ...(store.getState().shifts||{}), ...(store.getState().shiftTemplates||{}) }[toShift];
             store.update(s => {
                 const fd = s.schedule.months?.[getMonthIndex(fromDate)]?.days?.[getDayIndex(fromDate)];
-                if(fd?.entries){ fd.entries = fd.entries.filter(e=>!(e.personId===personId&&e.shiftId===fromShift&&e.groupId===fromGroup)); }
+                if(fd?.entries){
+                    fd.entries = fd.entries.filter(e=>!(e.personId===personId&&e.shiftId===fromShift&&e.groupId===fromGroup));
+                }
                 const td = ensureDay(s.schedule, getMonthIndex(toDate), getDayIndex(toDate));
                 if(!td.entries.some(e=>e.personId===personId&&e.shiftId===toShift&&e.groupId===toGroup)){
-                    td.entries.push({ personId, shiftId:toShift, groupId:toGroup, status:'A', startTime:ts?.startTime||null, endTime:ts?.endTime||null, breakStart:ts?.breakStart||null, breakEnd:ts?.breakEnd||null }); }
+                    td.entries.push({
+                        personId,
+                        shiftId:toShift,
+                        groupId:toGroup,
+                        status:'A',
+                        startTime:ts?.startTime||null,
+                        endTime:ts?.endTime||null,
+                        breakStart:ts?.breakStart||null,
+                        breakEnd:ts?.breakEnd||null
+                    });
+                }
             });
-            showSuccess('✓ Pass flyttat'); renderCalendar(container, ctx);
-        } catch(err){ console.error('❌ D&D error:',err); showWarning('❌ Kunde inte flytta'); }
+            showSuccess('✓ Pass flyttat');
+            renderCalendar(container, ctx);
+        } catch(err){
+            console.error('❌ D&D error:',err);
+            showWarning('❌ Kunde inte flytta');
+        }
         dragData=null;
     }, { signal });
 }
 
-/* ── DATE HELPERS ── */
+/* ============================================================
+ * BLOCK 15 — DATE HELPERS
+ * ============================================================ */
 function getWeekDates(year, weekOffset) {
     const jan1=new Date(year,0,1), d1=jan1.getDay(), dtm=d1===0?-6:1-d1;
     const fm=new Date(year,0,1+dtm), ws=new Date(fm); ws.setDate(fm.getDate()+weekOffset*7);
@@ -904,7 +1068,9 @@ function isAbsenceOnDate(a,ds){
     return false;
 }
 
-/* ── STATUS / FORMAT / XSS HELPERS ── */
+/* ============================================================
+ * BLOCK 16 — STATUS / FORMAT / XSS HELPERS
+ * ============================================================ */
 function getStatusStyle(status) {
     return STATUS_COLORS[status] || STATUS_COLORS.A;
 }
@@ -923,5 +1089,10 @@ function sanitizeColor(input) {
 
 function escapeHtml(str) {
     if (typeof str !== 'string') return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
