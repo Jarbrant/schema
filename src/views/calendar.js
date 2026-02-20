@@ -768,5 +768,31 @@ function formatDayMonth(date){return `${date.getDate()}/${date.getMonth()+1}`;}
 function isDateToday(date){const n=new Date();return date.getFullYear()===n.getFullYear()&&date.getMonth()===n.getMonth()&&date.getDate()===n.getDate();}
 function getMonthIndex(ds){return parseInt(ds.split('-')[1],10)-1;}
 function getDayIndex(ds){return parseInt(ds.split('-')[2],10)-1;}
-function isAbsenceOnDate(a,ds){if(!a||!ds)return false;if(a.pattern==='single')return a.date===ds;if(a.pattern==='range')return ds>=(a.startDate||'')&&ds<=(a.endDate||'9999-12-31');
-    
+function isAbsenceOnDate(a,ds){
+    if(!a||!ds) return false;
+    if(a.pattern==='single') return a.date===ds;
+    if(a.pattern==='range') return ds>=(a.startDate||'')&&ds<=(a.endDate||'9999-12-31');
+    return false;
+}
+
+/* ── STATUS / FORMAT / XSS HELPERS ── */
+function getStatusStyle(status) {
+    return STATUS_COLORS[status] || STATUS_COLORS.A;
+}
+
+function formatCurrency(amount) {
+    if (!amount || !Number.isFinite(amount)) return '0 kr';
+    return Math.round(amount).toLocaleString('sv-SE') + ' kr';
+}
+
+const SAFE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*[\d.]+\s*\)|hsl\(\s*\d{1,3}\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*\)|hsla\(\s*\d{1,3}\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+\s*\)|[a-zA-Z]{1,20})$/;
+function sanitizeColor(input) {
+    if (typeof input !== 'string') return '#777';
+    const trimmed = input.trim();
+    return SAFE_COLOR_RE.test(trimmed) ? trimmed : '#777';
+}
+
+function escapeHtml(str) {
+    if (typeof str !== 'string') return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
