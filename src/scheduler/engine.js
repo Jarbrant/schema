@@ -26,7 +26,7 @@
 import { evaluate } from '../rules.js';
 
 /* ========================================================================
-   BLOCK 1: MAIN GENERATE FUNCTION
+   BLOCK 1 — PUBLIC API: generate(state, input)
    ======================================================================== */
 
 /**
@@ -36,15 +36,19 @@ import { evaluate } from '../rules.js';
  * @returns { proposedState, vacancies: [], notes: [], summary: {} }
  */
 export function generate(state, input) {
+    /* ====================================================================
+       BLOCK 1A — Parse input + normalisera groups
+       ==================================================================== */
     const year = input?.year;
     const month = input?.month;
+
+    // P0: normalisera till string och filtrera bort tomma
     const selectedGroupIdsRaw = Array.isArray(input?.selectedGroupIds) ? input.selectedGroupIds : [];
     const selectedGroupIds = selectedGroupIdsRaw.map((x) => String(x)).filter(Boolean);
 
     /* ====================================================================
-       BLOCK 2: INPUT VALIDATION (FAIL-CLOSED)
+       BLOCK 2 — INPUT VALIDATION (FAIL-CLOSED)
        ==================================================================== */
-
     if (!state || typeof state !== 'object') {
         throw new Error('State saknas eller är fel typ');
     }
@@ -57,6 +61,8 @@ export function generate(state, input) {
         throw new Error('Input.year måste vara ett giltigt år (number)');
     }
 
+    // P1: Om ni framöver stödjer “multi-year” state, blir detta för strikt.
+    // Men enligt nuvarande kontrakt är det fail-closed.
     if (state.schedule.year !== year) {
         throw new Error(`Schedule för år ${year} saknas`);
     }
@@ -79,7 +85,7 @@ export function generate(state, input) {
     }
 
     /* ====================================================================
-       BLOCK 3: NEED (AO-02C + AO-02E)
+       BLOCK 3 — NEED (AO-02C + AO-02E)
        ==================================================================== */
 
     // AO-02C: Primärt behov = summa av demand.groupDemands för valda grupper.
@@ -91,10 +97,11 @@ export function generate(state, input) {
     console.log(`  Valda grupper: ${selectedGroupIds.join(', ')}`);
 
     /* ====================================================================
-       BLOCK 4: AO-02E — FILTER PEOPLE BY GROUPS
+       BLOCK 4 — FILTER PEOPLE BY GROUPS (AO-02E)
        ==================================================================== */
 
     // Endast aktiva personer som tillhör någon av valda grupper
+    // P0: grupper normaliseras till string innan jämförelse
     let activePeople = state.people.filter((p) => p && p.isActive);
 
     activePeople = activePeople.filter((person) => {
@@ -105,9 +112,8 @@ export function generate(state, input) {
     console.log(`  Personal (valda grupper): ${activePeople.length} aktiva`);
 
     /* ====================================================================
-       BLOCK 5: PERSONAL DATA VALIDATION
+       BLOCK 5 — PERSONAL DATA VALIDATION
        ==================================================================== */
-
     for (let i = 0; i < activePeople.length; i++) {
         const person = activePeople[i];
 
@@ -128,7 +134,7 @@ export function generate(state, input) {
     }
 
     /* ====================================================================
-       BLOCK 6: STATE CLONING & BASIC CALCULATIONS
+       BLOCK 6 — STATE CLONING & BASIC CALCULATIONS
        ==================================================================== */
 
     // Deep clone state för att inte ändra original vid fel
@@ -136,7 +142,9 @@ export function generate(state, input) {
     const monthData = proposedState.schedule.months[month - 1];
     const days = Array.isArray(monthData.days) ? monthData.days : [];
 
-    // Beräkna total slots behövs (summa av behov per dag)
+    // P1: Om monthData.days saknas/är tom → inget att generera.
+    // Fail-closed: vi fortsätter men totalNeedDays blir 0 och resultat blir tomt.
+    // (Vill du hård-faila här, säg till.)
     let totalNeedDays = 0;
     days.forEach((_, idx) => {
         const wIdx = getWeekdayIdx(year, month, idx + 1);
@@ -146,7 +154,7 @@ export function generate(state, input) {
     console.log(`  Total A-slots behövs: ${totalNeedDays}`);
 
     /* ====================================================================
-       BLOCK 7: TARGET CALCULATION
+       BLOCK 7 — TARGET CALCULATION (per person)
        ==================================================================== */
 
     const personTargets = {};
@@ -163,21 +171,35 @@ export function generate(state, input) {
     });
 
     /* ====================================================================
-       BLOCK 8: CLEAN OLD ENTRIES (P0 FIX)
+       BLOCK 8 — CLEAN OLD ENTRIES (P0 FIX)
        ==================================================================== */
 
     // P0: Rensa gamla A-entries endast för valda grupper (inte hela månaden).
     // Detta matchar UI-texten: “ersätta A-status för vald månad i valda grupper”.
+    //
+    // P0 RISK/OBS:
+    // - Denna engine tittar bara på personId (inte groupId) när den avgör om en A-entry
+    //   ska rensas. Det är korrekt enligt din spec #2: “endast A för personer i valda grupper”.
+    // - Om samma person ligger A i en annan grupp och den personen också tillhör valda grupper,
+    //   så kommer A rensas även där. Det följer “person-baserad” rensning, men om ni vill
+    //   rensa “grupp-baserat” måste rensningslogiken även kontrollera e.groupId.
     const personIdIsInSelectedGroups = buildPersonGroupChecker(state.people, selectedGroupIds);
 
     days.forEach((day) => {
         const entries = Array.isArray(day.entries) ? day.entries : [];
+
+        // Fail-closed:
+        // - Ogiltiga entry-objekt tas bort (return false)
+        // - Korrupt A utan personId tas bort
         day.entries = entries.filter((e) => {
             if (!e || typeof e !== 'object') return false;
+
             if (e.status !== 'A') return true;
-            // Behåll A om entry-person inte är i valda grupper (dvs annan grupp)
+
             const pid = typeof e.personId === 'string' ? e.personId : null;
-            if (!pid) return false; // korrupt A-entry -> ta bort (fail-closed)
+            if (!pid) return false; // korrupt A-entry -> ta bort
+
+            // Behåll A om entry-person INTE är i valda grupper (dvs annan grupp/person)
             return !personIdIsInSelectedGroups(pid);
         });
     });
@@ -186,7 +208,7 @@ export function generate(state, input) {
     const notes = [];
 
     /* ====================================================================
-       BLOCK 9: MAIN SCHEDULING LOOP
+       BLOCK 9 — MAIN SCHEDULING LOOP
        ==================================================================== */
 
     days.forEach((dayData, dayIdx) => {
@@ -196,9 +218,7 @@ export function generate(state, input) {
         // Safety: dayData.entries måste vara array
         if (!Array.isArray(dayData.entries)) dayData.entries = [];
 
-        // Hur många A finns redan idag (efter rensning för valda grupper)?
-        // Vi fyller upp till "need" (slots) för valda grupper.
-        // Obs: andra grupper kan ha A kvar — de räknas inte här (vi fyller “valda gruppers slots”).
+        // P2: filledToday räknas men används inte (kan tas bort i städ senare).
         let filledToday = 0;
 
         // Fyll dagens slots
@@ -213,6 +233,13 @@ export function generate(state, input) {
                     );
                 }
 
+                // P0 RISK (schema-kompatibilitet):
+                // - Den här entryn saknar groupId/shiftId och använder start/end (inte startTime/endTime).
+                // - I din kalender-vy använder entries: { personId, groupId, shiftId, status, startTime, endTime, ... }.
+                // - Om denna engine är kopplad till kalendern kan resultatet därför bli “osynligt”/fel.
+                //
+                // Jag ändrar INTE schema här (för att inte bryta andra delar), men detta är en
+                // sannolik orsak om du ser: “generering kör men inget syns i kalendern”.
                 const entry = {
                     personId: String(candidate.id),
                     status: 'A',
@@ -253,7 +280,7 @@ export function generate(state, input) {
     });
 
     /* ====================================================================
-       BLOCK 10: GENERATED SCHEMA VALIDATION
+       BLOCK 10 — GENERATED SCHEMA VALIDATION (month-level)
        ==================================================================== */
 
     console.log('🔍 Validerar genererat schema (månaden)...');
@@ -304,7 +331,7 @@ export function generate(state, input) {
     console.log('✓ Validering passerad');
 
     /* ====================================================================
-       BLOCK 11: RULES VALIDATION
+       BLOCK 11 — RULES VALIDATION (evaluate)
        ==================================================================== */
 
     let hasP0 = false;
@@ -323,7 +350,7 @@ export function generate(state, input) {
     }
 
     /* ====================================================================
-       BLOCK 12: VACANCY SUMMARY & FINAL NOTES
+       BLOCK 12 — VACANCY SUMMARY & FINAL NOTES
        ==================================================================== */
 
     if (vacancies.length > 0) {
@@ -334,12 +361,13 @@ export function generate(state, input) {
     const totalAssigned = Object.values(personTargets).reduce((sum, t) => sum + (t.current || 0), 0);
     notes.push(`Förslag genererat: ${totalAssigned} A-slots utlagda (valda grupper)`);
 
+    // P1: anta att proposedState.meta finns. Om meta saknas i state kan detta krascha.
+    // Men store.js brukar garantera meta. Lämnar fail-fast om den är korrupt.
     proposedState.meta.updatedAt = Date.now();
 
     /* ====================================================================
-       BLOCK 13: RETURN RESULT
+       BLOCK 13 — RETURN RESULT
        ==================================================================== */
-
     return {
         proposedState,
         vacancies,
@@ -354,7 +382,7 @@ export function generate(state, input) {
 }
 
 /* ========================================================================
-   BLOCK 14: CANDIDATE SELECTION LOGIC (STABILARE)
+   BLOCK 14 — CANDIDATE SELECTION (stabilare, deterministisk sort)
    ======================================================================== */
 
 /**
@@ -405,7 +433,7 @@ function findBestCandidate(personTargets, dayIdx, days) {
 }
 
 /* ========================================================================
-   BLOCK 15: HELPERS
+   BLOCK 15 — HELPERS
    ======================================================================== */
 
 function getWeekdayIdx(year, month, dayOfMonth) {
@@ -452,6 +480,7 @@ function buildNeedByWeekday(state, selectedGroupIds, fallbackNeedByWeekday) {
 
 function buildPersonGroupChecker(people, selectedGroupIds) {
     const map = new Map(); // personId -> Set(groups)
+
     (Array.isArray(people) ? people : []).forEach((p) => {
         if (!p || typeof p !== 'object') return;
         if (typeof p.id !== 'string' || !p.id) return;
