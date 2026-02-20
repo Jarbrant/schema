@@ -981,6 +981,10 @@ function loadPersonIntoForm(person) {
       }
     });
 
+    // AO-12: Beräkningsperiod
+    const calcPeriodEl = document.getElementById('personal-calc-period');
+    if (calcPeriodEl) calcPeriodEl.value = person?.calculationPeriodStart || 'q1';
+
     // P0: uppdatera cost display efter att vi laddat värden
     const form = document.getElementById('personal-form');
     if (form) updateCostDisplay(form);
@@ -988,7 +992,6 @@ function loadPersonIntoForm(person) {
     console.warn('⚠️ loadPersonIntoForm failed', e);
   }
 }
-
 /* ============================================================
  * BLOCK 19 — UI Guard: ensureEditableInput
  * WHY:
