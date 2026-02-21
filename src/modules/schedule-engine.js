@@ -600,7 +600,7 @@ function _getShiftHoursInternal(shiftId, shifts, shiftTemplates) {
  * _has36hRestGap — Kontrollera 36h sammanhängande vila
  *
  * Tar en sorterad lista av arbetsdagar (ISO-strängar) och
- * kontrollerar om det finns minst ett gap på ≥ 36 timmar
+ * kontrollerar om det finns minst ett gap på >= 36 timmar
  * mellan två arbetsdagar, eller före/efter arbetsdagarna
  * inom en 7-dagarsperiod.
  *
@@ -610,86 +610,64 @@ function _getShiftHoursInternal(shiftId, shifts, shiftTemplates) {
  *   - Faktisk vila = gap i hela dagar × 24h minus arbetstider
  *
  * Exempel som ÄR OK:
- *   Mån Tis Ons Tor _ _ Sön  → gap tor→sön = (3-1)*24 = 48h ✅
- *   Mån Tis Ons _ Fre Lör Sön → gap ons→fre = 1 dag = 24+7=31h ❌
- *                                men gapet mot veckans kant räknas
+ *   Mån Tis Ons Tor _ _ Sön  -> gap tor->sön = 2 dagar = 48h+ ✅
  *
  * Exempel som INTE är OK:
- *   Mån Tis Ons Tor Fre Lör Sön → inget gap ≥ 36h ❌
+ *   Mån Tis Ons Tor Fre Lör Sön -> inget gap >= 36h ❌
  * ============================================================ */
 function _has36hRestGap(scheduledDays) {
     if (!scheduledDays || scheduledDays.length === 0) return true;
-    if (scheduledDays.length <= 4) return true; // Max 4 dagar = alltid 36h+ gap
+    if (scheduledDays.length <= 4) return true;
 
     const sorted = [...scheduledDays].sort();
     const REST_REQUIRED = 36;
 
-    // Konservativa tidpunkter: arbetsdag = 06:00–23:00 (17h worst case)
-    const EARLIEST_START_MIN = 6 * 60;   // 06:00
-    const LATEST_END_MIN = 23 * 60;      // 23:00
+    const EARLIEST_START_MIN = 6 * 60;
+    const LATEST_END_MIN = 23 * 60;
 
-    // Beräkna vilodagar (dag-index 0–6 inom veckan)
     const firstDate = new Date(sorted[0]);
     const jsDay = firstDate.getDay();
     const mondayOffset = jsDay === 0 ? -6 : 1 - jsDay;
     const weekMonday = new Date(firstDate);
     weekMonday.setDate(firstDate.getDate() + mondayOffset);
 
-    // Konvertera till dag-index (0=mån, 6=sön)
     const dayIndices = sorted.map(ds => {
         const d = new Date(ds);
         const diff = Math.round((d.getTime() - weekMonday.getTime()) / (1000 * 60 * 60 * 24));
         return Math.max(0, Math.min(6, diff));
     });
 
-    // Kolla gap mellan varje par av på varandra följande arbetsdagar
     for (let i = 1; i < dayIndices.length; i++) {
         const prevDay = dayIndices[i - 1];
         const currDay = dayIndices[i];
-        const gapDays = currDay - prevDay - 1; // Antal helt lediga dagar emellan
+        const gapDays = currDay - prevDay - 1;
 
         if (gapDays >= 2) {
-            // 2+ helt lediga dagar = minst 48h vila → alltid OK
             return true;
         }
         if (gapDays === 1) {
-            // 1 helt ledig dag emellan:
-            // Vila = slut→start nästa: (24-LATEST_END) + 24 + EARLIEST_START = 7h + 24h + 6h = 37h
             const restHours = (24 * 60 - LATEST_END_MIN + 24 * 60 + EARLIEST_START_MIN) / 60;
             if (restHours >= REST_REQUIRED) return true;
         }
     }
 
-    // Kolla gap före första arbetsdagen (mot måndagen)
     const firstIdx = dayIndices[0];
     if (firstIdx >= 2) {
-        // 2+ dagar före = 48h+ vila
         return true;
     }
     if (firstIdx === 1) {
-        // Måndag ledig → vila från mån 00:00 till tis 06:00 = 30h
-        // Men föregående veckas söndag kan ge mer — konservativt: 30h
         const preRestHours = (firstIdx * 24 * 60 + EARLIEST_START_MIN) / 60;
         if (preRestHours >= REST_REQUIRED) return true;
     }
 
-    // Kolla gap efter sista arbetsdagen (mot söndagen kl 23:59)
     const lastIdx = dayIndices[dayIndices.length - 1];
-    const daysAfter = 6 - lastIdx; // Antal dagar kvar i veckan
+    const daysAfter = 6 - lastIdx;
     if (daysAfter >= 2) {
         return true;
     }
     if (daysAfter === 1) {
-        // Vila = slut sista dag → slut söndag:
-        // (24-LATEST_END) + 24 = 1h + 24h = 25h — inte nog
-        // Men nästa veckas måndag kan ge mer — konservativt: 25h
         const postRestHours = ((24 * 60 - LATEST_END_MIN) + daysAfter * 24 * 60) / 60;
         if (postRestHours >= REST_REQUIRED) return true;
-    }
-    if (daysAfter === 0) {
-        // Söndag är sista arbetsdagen
-        // Vila = efter sön 23:00 → nästa vecka = beror på nästa vecka
-        // Konservativt: kan inte garantera 36h → returnera false
     }
 
     return false;
@@ -739,7 +717,7 @@ function _findCandidate(ctx) {
         if (Array.isArray(person.availability)) {
             const dateObj = new Date(dateStr);
             const jsDay = dateObj.getDay();
-            const dayIdx = jsDay === 0 ? 6 : jsDay - 1; // 0=mån, 6=sön
+            const dayIdx = jsDay === 0 ? 6 : jsDay - 1;
             if (person.availability[dayIdx] === false) return;
         }
 
@@ -749,7 +727,6 @@ function _findCandidate(ctx) {
         if (daysThisWeek >= maxDaysPerWeek) return;
 
         /* ── 5. 36h sammanhängande veckovila ── */
-        // Samla alla redan schemalagda dagar + den vi testar
         const currentDays = pd ? [...pd] : [];
         const testDays = [...currentDays, dateStr];
         if (!_has36hRestGap(testDays)) return;
@@ -764,16 +741,13 @@ function _findCandidate(ctx) {
         const pctUsed = t.periodTarget > 0 ? t.accumulated / t.periodTarget : 1;
         const weekBalance = t.weeklyTarget - t.thisWeek;
 
-        // Passönskemål
         const isPreferred = Array.isArray(person.preferredShifts)
             && person.preferredShifts.includes(resolvedShiftId) ? 500 : 0;
         const isAvoided = Array.isArray(person.avoidShifts)
             && person.avoidShifts.includes(resolvedShiftId) ? -500 : 0;
 
-        // Vikarier sist
         const isSub = person.employmentType === 'substitute' ? -200 : 0;
 
-        // Dagsjämvikt: bonus för att jämna ut dagar
         const daysBalance = maxDaysPerWeek - daysThisWeek;
         const daysBonus = daysBalance > 0 ? daysBalance * 50 : -1000;
 
@@ -792,7 +766,6 @@ function _findCandidate(ctx) {
         });
     });
 
-    // Sortera: högst prioritet först, vid lika → stabil namnordning
     candidates.sort((a, b) => {
         if (Math.abs(b.priority - a.priority) > 0.01) return b.priority - a.priority;
         return a.nameKey.localeCompare(b.nameKey, 'sv');
@@ -803,7 +776,7 @@ function _findCandidate(ctx) {
 
 /* ══════════════════════════════════════════════════════════════
  * SHARED HELPERS
- * ════��═════════════════════════════════════════════════════════ */
+ * ══════════════════════════════════════════════════════════════ */
 
 function isAbsenceOnDate(absence, dateStr) {
     if (!absence || !dateStr) return false;
