@@ -1,20 +1,28 @@
 /*
- * AO-07 — Schedule Engine — v2.2 (AUTOPATCH)
+ * AO-07 — Schedule Engine — v3.0 (UNIFIED RULES ENGINE)
  * FIL: src/modules/schedule-engine.js
  *
- * v2.2 TILLÄGG:
- *   - generatePeriodSchedule(): bulk-generering med beräkningsperiod (16/26v)
- *   - generateWeekSchedule() uppdaterad med accumulatedHours-stöd
+ * v3.0 UNIFIED RULES ENGINE:
+ *   - _evaluateCandidate(): en plats för ALLA regler (P0 blockerar, P1 penalty)
+ *   - Helg-rotation via weekendHistory
+ *   - 36h veckovila (tidsbaserad)
+ *   - Max dagar i rad (streak-penalty)
+ *   - Min 11h dygnsvila
+ *   - Max 10h arbetspass
+ *   - Röda dagar (inbyggd fallback)
  *
- * v2.0 TILLÄGG (bevarade):
+ * v2.4 (bevarade):
+ *   - generatePeriodSchedule(): bulk-generering med beräkningsperiod (16/26v)
+ *   - generateWeekSchedule() med accumulatedHours + weekendHistory
+ *
+ * v2.0 (bevarade):
  *   - validateRules(): validerar state.rules mot schemat
  *   - calcFullPersonCost(): total kostnad inkl semester, FORA, arbetsgivaravgift
  *   - checkMinimumWage(): timlön mot kollektivavtal
  *
  * Alla befintliga exporter oförändrade (bakåtkompatibla).
  */
-import { getCalculationPeriodWeeks } from './hr-rules.js';
-import { isRedDay } from './data/holidays.js';
+
 /* ============================================================
  * CONSTANTS
  * ============================================================ */
@@ -117,7 +125,7 @@ export function getPersonWorkload(personId, scheduleMonths, monthIdx, shifts, sh
 }
 
 /* ============================================================
- * BLOCK 2 — generateWeekSchedule v2.4 (med helg-rotation)
+ * BLOCK 2 — generateWeekSchedule v3.0 (med unified rules)
  * ============================================================ */
 export function generateWeekSchedule({ weekDates, weekTemplate, groups, shifts, shiftTemplates, groupShifts, people, absences, existingEntries, demand, accumulatedHours, weekIndex, totalWeeks, weekendHistory, currentWeekIndex }) {
     const suggestions = [], vacancySuggestions = [];
@@ -203,7 +211,7 @@ export function generateWeekSchedule({ weekDates, weekTemplate, groups, shifts, 
             const candidate = _findCandidate({
                 groupPeople: gp, tracker, dateStr, resolvedShiftId, shiftHours,
                 absenceMap, weekAssignments, suggestions,
-                weekendHistory, currentWeekIndex,
+                weekendHistory, currentWeekIndex, allShifts,
             });
 
             if (candidate) {
@@ -235,20 +243,16 @@ export function generateWeekSchedule({ weekDates, weekTemplate, groups, shifts, 
 
     return { suggestions, vacancySuggestions };
 }
+
 /* ============================================================
- * BLOCK 3 — generatePeriodSchedule v2.4 (PRODUCTION)
+ * BLOCK 3 — generatePeriodSchedule v3.0 (PRODUCTION)
  * Bulk-generering med ackumulering + beräkningsperiod + helg-rotation
- *
- * NYTT i v2.4:
- *   - weekendHistory: spårar vilka veckor varje person jobbade helg
- *   - Skickas med till generateWeekSchedule → _findCandidate
- *   - Möjliggör helg-penalty så inte samma person jobbar varje helg
  * ============================================================ */
 export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state, getWeekDates }) {
     const people = (state.people || []).filter(p => p.isActive);
     const totalWeeks = weekOffsets.length;
 
-    /* Ackumulerade timmar — starta med redan befintliga entries */
+    /* Ackumulerade timmar */
     const accumulatedHours = {};
     people.forEach(p => { accumulatedHours[p.id] = 0; });
 
@@ -269,14 +273,11 @@ export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state,
         });
     }
 
-    /* ── NY: Helg-historik ──
-     * weekendHistory[personId] = [0, 2, 4] = jobbade helg vecka 0, 2, 4
-     * Skickas med till _findCandidate som helg-penalty
-     */
+    /* Helg-historik */
     const weekendHistory = {};
     people.forEach(p => { weekendHistory[p.id] = []; });
 
-    console.log('📊 Period-generering startar (v2.4):');
+    console.log('📊 Period-generering startar (v3.0):');
     people.forEach(p => {
         const period = _getCalcPeriod(p);
         const target = (p.employmentPct || 100) / 100 * 40 * period;
@@ -303,8 +304,8 @@ export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state,
             accumulatedHours,
             weekIndex: idx,
             totalWeeks,
-            weekendHistory,       // NY: skicka med helg-historik
-            currentWeekIndex: idx, // NY: vilken vecka vi genererar
+            weekendHistory,
+            currentWeekIndex: idx,
         });
 
         const weekSuggestions = result.suggestions || [];
@@ -318,13 +319,11 @@ export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state,
             accumulatedHours[sug.personId] = (accumulatedHours[sug.personId] || 0) + (sug.hours || 0);
         });
 
-        /* ── NY: Uppdatera helg-historik ──
-         * Kolla vilka personer som tilldelades lör (index 5) eller sön (index 6)
-         */
+        /* Uppdatera helg-historik */
         const weekendPersons = new Set();
         weekSuggestions.forEach(sug => {
             const sugDate = new Date(sug.date);
-            const jsDay = sugDate.getDay(); // 0=sön, 6=lör
+            const jsDay = sugDate.getDay();
             if (jsDay === 0 || jsDay === 6) {
                 weekendPersons.add(sug.personId);
             }
@@ -357,11 +356,11 @@ export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state,
             periodTarget: Math.round(periodTarget),
             periodWeeks,
             pctUsed: periodTarget > 0 ? Math.round((hours / periodTarget) * 100) : 0,
-            weekendsWorked: (weekendHistory[p.id] || []).length, // NY
+            weekendsWorked: (weekendHistory[p.id] || []).length,
         };
     });
 
-    console.log('📊 Period-generering klar (v2.4):', JSON.stringify(totalStats, null, 2));
+    console.log('📊 Period-generering klar (v3.0):', JSON.stringify(totalStats, null, 2));
     return { allSuggestions, allVacancies, totalStats };
 }
 
@@ -584,41 +583,37 @@ export function checkMinimumWage(people, settings) {
  * BLOCK 7 — UNIFIED RULES ENGINE v3.0 (PRODUCTION)
  *
  * KOPPLAR IHOP:
- *   - hr-rules.js (HRF/Kommunal-regler)
- *   - schedule-engine.js (genereringslogik)
- *   - state.rules[] (konfigurerbara regler via UI)
+ *   - Alla HRF/arbetstidsregler i EN funktion
+ *   - _evaluateCandidate() körs per person per dag
  *
  * REGELHIERARKI:
  *   P0 = Blockera (personen FÅR INTE schemaläggas)
- *   P1 = Penalty  (personen KAN schemaläggas men straffas)
+ *   P1 = Penalty  (personen KAN schemaläggas men straffas i prioritet)
  *
- * ALLA REGLER:
- *   P0: maxHoursDay      — Max 10h arbetspass
- *   P0: minRestBetween   — Min 11h dygnsvila
- *   P0: weeklyRest36h    — Min 36h sammanhängande veckovila
- *   P0: maxDaysPerWeek   — Max dagar/vecka (person.workdaysPerWeek)
- *   P0: availability     — Tillgänglighet per veckodag
- *   P0: absence           — Frånvaro (SEM/SJ/VAB etc)
- *   P0: alreadyScheduled — Redan schemalagd idag
- *   P0: maxHoursWeek     — Max timmar denna vecka
- *   P0: periodTarget     — Beräkningsperiod-mål nått
- *   P1: maxConsecutive   — Max dagar i rad (default 5)
- *   P1: weekendRotation  ��� Varannan helg ledig
- *   P1: preferredShifts  — Passönskemål
- *   P1: avoidShifts      — Undvik pass
- *   P1: substituteType   — Vikarier sist
+ * P0-REGLER:
+ *   alreadyScheduled — Redan schemalagd idag
+ *   absence          — Frånvaro (SEM/SJ/VAB etc)
+ *   availability     — Tillgänglighet per veckodag
+ *   maxDaysPerWeek   — Max dagar/vecka (person.workdaysPerWeek)
+ *   weeklyRest36h    — Min 36h sammanhängande veckovila
+ *   maxHoursWeek     — Max timmar denna vecka
+ *   periodTarget     — Beräkningsperiod-mål nått
+ *   maxHoursDay      — Max 10h arbetspass
+ *   minRestBetween   — Min 11h dygnsvila
+ *
+ * P1-REGLER:
+ *   maxConsecutive   — Max dagar i rad (default 5, penalty)
+ *   weekendRotation  — Varannan helg ledig
+ *   redDay           — Röda dagar (föredra att ge ledigt)
+ *   preferredShifts  — Passönskemål (bonus)
+ *   avoidShifts      — Undvik pass (penalty)
+ *   substituteType   — Vikarier sist
+ *   daysBalance      — Jämna ut dagar inom veckan
  * ============================================================ */
 
 /* ── Hjälpfunktioner ── */
 
 function _getCalcPeriod(person) {
-    // Försök använda hr-rules.js om tillgänglig
-    if (typeof getCalculationPeriodWeeks === 'function') {
-        const degree = person.employmentPct || 100;
-        const sector = person.sector || 'private';
-        return getCalculationPeriodWeeks(degree, sector);
-    }
-    // Fallback
     if (person.calculationPeriod) return person.calculationPeriod;
     return (person.employmentPct || 100) >= 100 ? 26 : 16;
 }
@@ -647,6 +642,28 @@ function _getShiftHoursInternal(shiftId, shifts, shiftTemplates) {
         return Math.max(0, diff / 60);
     }
     return 8;
+}
+
+/* ── Inbyggd röd-dag-check (fallback utan import) ── */
+function _isRedDayFallback(dateStr) {
+    try {
+        const d = new Date(dateStr);
+        if (d.getDay() === 0) return true; // Söndag
+        const m = d.getMonth() + 1;
+        const day = d.getDate();
+        // Fasta röda dagar
+        if (m === 1 && day === 1) return true;   // Nyårsdagen
+        if (m === 1 && day === 6) return true;   // Trettondedag jul
+        if (m === 5 && day === 1) return true;   // Första maj
+        if (m === 6 && day === 6) return true;   // Nationaldag
+        if (m === 12 && day === 24) return true;  // Julafton
+        if (m === 12 && day === 25) return true;  // Juldagen
+        if (m === 12 && day === 26) return true;  // Annandag jul
+        if (m === 12 && day === 31) return true;  // Nyårsafton
+        return false;
+    } catch (e) {
+        return false;
+    }
 }
 
 /* ============================================================
@@ -706,19 +723,19 @@ function _has36hRestGap(scheduledDays) {
  * Körs för varje kandidat innan tilldelning.
  * Returnerar:
  * {
- *   allowed: boolean,       // false = P0-blockerad
- *   blocked: string[],      // vilka P0-regler som blockerade
- *   penalties: object,      // P1-penalties { weekendRotation: -3000, ... }
- *   totalPenalty: number,   // summa av alla penalties
- *   bonuses: object,        // bonusar { preferred: 500, ... }
- *   totalBonus: number      // summa av alla bonusar
+ *   allowed: boolean,
+ *   blocked: string[],
+ *   penalties: object,
+ *   totalPenalty: number,
+ *   bonuses: object,
+ *   totalBonus: number
  * }
  * ============================================================ */
 function _evaluateCandidate(person, dateStr, ctx) {
     const {
         tracker, resolvedShiftId, shiftHours,
         absenceMap, weekAssignments, suggestions,
-        weekendHistory, currentWeekIndex
+        weekendHistory, currentWeekIndex, allShifts
     } = ctx;
 
     const t = tracker[person.id];
@@ -735,7 +752,7 @@ function _evaluateCandidate(person, dateStr, ctx) {
     const daysThisWeek = pd ? pd.size : 0;
     const dateObj = new Date(dateStr);
     const jsDay = dateObj.getDay();
-    const dayIdx = jsDay === 0 ? 6 : jsDay - 1; // 0=mån, 6=sön
+    const dayIdx = jsDay === 0 ? 6 : jsDay - 1;
     const isWeekendDay = (jsDay === 0 || jsDay === 6);
 
     /* ════════════════════════════════════════════
@@ -772,7 +789,7 @@ function _evaluateCandidate(person, dateStr, ctx) {
         result.blocked.push('maxDaysPerWeek');
     }
 
-    // P0: 36h sammanhängande veckovila (HRF REST_36H)
+    // P0: 36h sammanhängande veckovila
     if (result.allowed) {
         const currentDays = pd ? [...pd] : [];
         const testDays = [...currentDays, dateStr];
@@ -794,26 +811,22 @@ function _evaluateCandidate(person, dateStr, ctx) {
         result.blocked.push('periodTarget');
     }
 
-    // P0: Max 10h arbetspass (från hr-rules.js MAX_10H)
+    // P0: Max 10h arbetspass
     if (result.allowed && shiftHours > 10) {
         result.allowed = false;
         result.blocked.push('maxHoursDay');
     }
 
-    // P0: Min 11h dygnsvila (från hr-rules.js REST_11H)
-    // Kolla mot föregående dags pass
+    // P0: Min 11h dygnsvila
     if (result.allowed && pd && pd.size > 0) {
         const prevDayStr = _getPreviousDay(dateStr);
         if (pd.has(prevDayStr)) {
-            // Hämta senaste passslut från suggestions
             const prevSuggestion = suggestions.find(
                 s => s.date === prevDayStr && s.personId === person.id
             );
             if (prevSuggestion && prevSuggestion.endTime) {
                 const prevEndMin = timeToMinutes(prevSuggestion.endTime);
-                // Beräkna start på nytt pass
-                const allShiftsMap = ctx.allShifts || {};
-                const newShift = allShiftsMap[resolvedShiftId];
+                const newShift = (allShifts || {})[resolvedShiftId];
                 const newStartMin = timeToMinutes(
                     newShift?.startTime || prevSuggestion.startTime || '07:00'
                 );
@@ -829,20 +842,19 @@ function _evaluateCandidate(person, dateStr, ctx) {
         }
     }
 
-    // Om blockerad → returnera direkt (ingen mening att beräkna penalties)
+    // Om blockerad → returnera direkt
     if (!result.allowed) return result;
 
     /* ════════════════════════════════════════════
      * P1 REGLER — Penalties (påverkar prioritet)
      * ════════════════════════════════════════════ */
 
-    // P1: Max dagar i rad (STREAK från hr-rules.js)
+    // P1: Max dagar i rad
     if (pd && pd.size > 0) {
         const sortedDays = [...pd].sort();
         const lastDay = sortedDays[sortedDays.length - 1];
         let consecutiveDays = 1;
 
-        // Räkna bakåt från senaste dagen
         for (let i = sortedDays.length - 2; i >= 0; i--) {
             const diff = _daysDifference(sortedDays[i], sortedDays[i + 1]);
             if (diff === 1) {
@@ -852,7 +864,6 @@ function _evaluateCandidate(person, dateStr, ctx) {
             }
         }
 
-        // Kolla om dateStr fortsätter sekvensen
         if (_daysDifference(lastDay, dateStr) === 1) {
             consecutiveDays++;
         }
@@ -870,20 +881,16 @@ function _evaluateCandidate(person, dateStr, ctx) {
         const history = weekendHistory[person.id] || [];
 
         if (history.length === 0) {
-            // Aldrig jobbat helg → bonus
             result.bonuses.weekendNew = 500;
         } else {
             const lastWeekendWeek = history[history.length - 1];
 
             if (lastWeekendWeek === currentWeekIndex - 1) {
-                // Jobbade helg FÖRRA veckan → stark penalty
                 result.penalties.weekendRotation = -3000;
             } else if (lastWeekendWeek === currentWeekIndex - 2) {
-                // Jobbade helg 2 veckor sedan → mild penalty
                 result.penalties.weekendRotation = -500;
             }
 
-            // 2+ av senaste 4 helger → penalty
             const recentWeekends = history.filter(
                 w => w >= currentWeekIndex - 4
             ).length;
@@ -893,9 +900,8 @@ function _evaluateCandidate(person, dateStr, ctx) {
         }
     }
 
-    // P1: Röd dag (från hr-rules.js)
-    if (typeof isRedDay === 'function' && isRedDay(dateStr)) {
-        // Röda dagar → liten penalty (föredra att ge ledigt)
+    // P1: Röd dag
+    if (_isRedDayFallback(dateStr)) {
         result.penalties.redDay = -200;
     }
 
@@ -931,20 +937,16 @@ function _evaluateCandidate(person, dateStr, ctx) {
  * _findCandidate v3.0 — Använder _evaluateCandidate
  * ============================================================ */
 function _findCandidate(ctx) {
-    const { groupPeople, tracker, dateStr, weekendHistory, currentWeekIndex } = ctx;
+    const { groupPeople, tracker, dateStr } = ctx;
     const candidates = [];
 
     groupPeople.forEach(person => {
         const t = tracker[person.id];
         if (!t) return;
 
-        // Kör ALLA regler genom unified engine
         const evaluation = _evaluateCandidate(person, dateStr, ctx);
-
-        // P0-blockerad → skip
         if (!evaluation.allowed) return;
 
-        // Beräkna prioritet
         const pctUsed = t.periodTarget > 0 ? t.accumulated / t.periodTarget : 1;
         const weekBalance = t.weeklyTarget - t.thisWeek;
 
@@ -955,7 +957,7 @@ function _findCandidate(ctx) {
             person,
             priority,
             pctUsed,
-            evaluation, // Spara för debugging
+            evaluation,
             nameKey: `${person.lastName || ''}|${person.firstName || ''}`.toLowerCase(),
         });
     });
