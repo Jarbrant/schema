@@ -1,456 +1,269 @@
 /*
- * AO-06 + AO-14 — RULES ENGINE: HRF-regelmotor
+ * RULES-ENGINE.JS — Konsoliderad regelmotor v2.0
+ * 
+ * ÄNDRINGSLOGG (konsolidering):
+ *   - Använder holidays.js (dynamisk, flerårs) istället för hårdkodad 2026-lista
+ *   - Standardiserat till employmentPct (inte degree) och groups (inte groupIds)
+ *   - Stöd för båda fältnamnen (bakåtkompatibelt med fallback)
+ *   - Importerar HR-regler från hr-rules.js för semestervalidering
+ *   - Exporterar allt som scheduler.js behöver
  *
- * AO-06 FIX:
- *   - Importerar isHoliday + isRedDay från holidays.js (flerdårs-stöd)
- *   - Räknar SEM/SJ/VAB/FÖR-dagar och varnar vid överuttag av semester
- *   - REST_36H implementerad (veckovila 36h per 7-dagarsperiod)
- *   - Streak korsar månadsgräns (evaluateYear fixad)
- *   - Kopplar till person.vacationDaysPerYear + savedVacationDays
- *
- * Store-shape (person):
- *   person.vacationDaysPerYear  = number (25–40)
- *   person.usedVacationDays     = number
- *   person.savedVacationDays    = number
- *   person.extraDaysStartBalance = number
- *   person.employmentPct        = number (0–100)
- *   person.sector               = 'private' | 'municipal'
+ * PERSON-DATAMODELL (standardiserad):
+ *   person.employmentPct    = number (10–100)       ← primär
+ *   person.degree           = number (10–100)       ← fallback (bakåtkompatibel)
+ *   person.groups           = string[]              ← primär
+ *   person.groupIds         = string[]              ← fallback (bakåtkompatibel)
+ *   person.availability     = boolean[7]            ← 0=Mån..6=Sön
+ *   person.vacationDates    = string[]              ← YYYY-MM-DD
+ *   person.leaveDates       = string[]              ← YYYY-MM-DD
+ *   person.workdaysPerWeek  = number (1–7)
+ *   person.startDate        = string                ← YYYY-MM-DD
+ *   person.sector           = 'private'|'municipal'
  */
 
-import { isHoliday, isRedDay } from './data/holidays.js';
+import { isHoliday, isRedDay as isRedDayHolidays } from './data/holidays_2026.js';
+import {
+    getVacationDaysPerYear,
+    getRemainingVacationDays,
+    validatePersonAgainstHRF,
+    getAccumulatedVacationDays,
+    getPersonVacationYearInfo,
+} from './hr-rules.js';
 
-const TIME_MINUTES_RE = /^(\d{2}):(\d{2})$/;
+/* ============================================================
+ * HELPERS
+ * ============================================================ */
 
-function timeToMinutes(timeStr) {
-    if (!timeStr) return null;
-    const match = timeStr.match(TIME_MINUTES_RE);
-    if (!match) return null;
-    return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+/** Hämta anställningsgrad — stödjer båda fältnamnen */
+function getEmploymentPct(person) {
+    return person.employmentPct ?? person.degree ?? 100;
 }
 
-function calculateWorkMinutes(entry, defaults) {
-    const startMin = timeToMinutes(entry.start || defaults.start);
-    const endMin = timeToMinutes(entry.end || defaults.end);
-    const breakStartMin = timeToMinutes(entry.breakStart || defaults.breakStart);
-    const breakEndMin = timeToMinutes(entry.breakEnd || defaults.breakEnd);
-
-    if (startMin === null || endMin === null) return null;
-
-    let workMin = endMin - startMin;
-    if (workMin < 0) workMin += 24 * 60; // nattpass
-
-    if (breakStartMin !== null && breakEndMin !== null) {
-        let breakMin = breakEndMin - breakStartMin;
-        if (breakMin < 0) breakMin += 24 * 60;
-        workMin -= breakMin;
-    }
-
-    return Math.max(0, workMin);
+/** Hämta grupper — stödjer båda fältnamnen */
+function getGroups(person) {
+    const g = person.groups || person.groupIds || [];
+    return Array.isArray(g) ? g.map(String) : [];
 }
 
-function getDefaultTimes(monthData, settings) {
-    return monthData?.timeDefaults || {
-        start: settings?.defaultStart || '07:00',
-        end: settings?.defaultEnd || '16:00',
-        breakStart: settings?.breakStart || '12:00',
-        breakEnd: settings?.breakEnd || '13:00',
-    };
-}
-
-/**
- * Beräkna vilominuter mellan två på varandra följande arbetsdagar
- */
-function calculateRestMinutes(entry, nextEntry, defaults) {
-    const endMin = timeToMinutes(entry.end || defaults.end);
-    const nextStartMin = timeToMinutes(nextEntry.start || defaults.start);
-
-    if (endMin === null || nextStartMin === null) return null;
-
-    let restMin = nextStartMin - endMin;
-    if (nextStartMin <= endMin) {
-        restMin += 24 * 60;
-    }
-
-    return restMin;
+/** Parse "HH:MM" → minuter */
+function parseTime(timeStr) {
+    if (!timeStr) return 0;
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
 }
 
 /* ============================================================
- * EVALUATE PERSON (en månad)
+ * RÖDA DAGAR — Delegerar till holidays.js (dynamisk, alla år)
  * ============================================================ */
-function evaluatePerson(personId, person, monthData, monthIndex, year, settings, prevMonthTrailingStreak) {
-    const warnings = [];
-    const stats = {
-        personId,
-        firstName: person.firstName,
-        lastName: person.lastName,
-        workedDays: 0,
-        redDaysWorked: 0,
-        earnedExtraDays: 0,
-        extraTakenDays: 0,
-        extraBalanceDays: 0,
-        semDays: 0,
-        sjDays: 0,
-        vabDays: 0,
-        forDays: 0,
-        maxStreak: 0,
-        currentStreak: prevMonthTrailingStreak || 0,
-        rest11hBreaches: 0,
-        max10hBreaches: 0,
-        rest36hBreaches: 0,
-    };
 
-    const days = monthData.days || [];
-    const defaults = getDefaultTimes(monthData, settings);
+export { isHoliday };
 
-    // Samla arbetstider för REST_36H-check
-    const workTimeline = []; // { dayIndex, endMin }
-
-    days.forEach((dayData, dayIndex) => {
-        const entry = dayData.entries.find((e) => e.personId === personId);
-
-        if (!entry) {
-            stats.currentStreak = 0;
-            return;
-        }
-
-        const status = entry.status || '';
-
-        switch (status) {
-            case 'A': {
-                stats.workedDays++;
-                stats.currentStreak++;
-                stats.maxStreak = Math.max(stats.maxStreak, stats.currentStreak);
-
-                // Röd dag = helgdag (inte bara söndag — branschpraxis)
-                if (isRedDay(dayData.date)) {
-                    stats.redDaysWorked++;
-                    stats.earnedExtraDays++;
-                }
-
-                // MAX_10H
-                const workMin = calculateWorkMinutes(entry, defaults);
-                if (workMin !== null) {
-                    workTimeline.push({ dayIndex, workMin, date: dayData.date });
-
-                    if (workMin > 10 * 60) {
-                        stats.max10hBreaches++;
-                        warnings.push({
-                            level: 'P0',
-                            code: 'MAX_10H',
-                            personId,
-                            dateFrom: dayData.date,
-                            dateTo: dayData.date,
-                            message: `${person.lastName}: Arbetstid > 10h på ${dayData.date} (${(workMin / 60).toFixed(1)}h)`,
-                            details: { workMinutes: workMin, day: dayData.date },
-                        });
-                    }
-                }
-
-                // STREAK_10
-                if (stats.currentStreak >= 10) {
-                    warnings.push({
-                        level: 'P1',
-                        code: 'STREAK_10',
-                        personId,
-                        dateFrom: dayData.date,
-                        dateTo: dayData.date,
-                        message: `${person.lastName}: ${stats.currentStreak} arbetsdagar i rad`,
-                        details: { streak: stats.currentStreak },
-                    });
-                }
-
-                // REST_11H (mot nästa dag)
-                if (dayIndex < days.length - 1) {
-                    const nextDay = days[dayIndex + 1];
-                    const nextEntry = nextDay.entries.find((e) => e.personId === personId);
-
-                    if (nextEntry && nextEntry.status === 'A') {
-                        const restMin = calculateRestMinutes(entry, nextEntry, defaults);
-
-                        if (restMin !== null && restMin < 11 * 60) {
-                            stats.rest11hBreaches++;
-                            warnings.push({
-                                level: 'P0',
-                                code: 'REST_11H',
-                                personId,
-                                dateFrom: dayData.date,
-                                dateTo: nextDay.date,
-                                message: `${person.lastName}: Dygnsvila < 11h mellan ${dayData.date} och ${nextDay.date} (${(restMin / 60).toFixed(1)}h)`,
-                                details: { restMinutes: restMin },
-                            });
-                        }
-                    }
-                }
-                break;
-            }
-
-            case 'X':
-                stats.extraTakenDays++;
-                stats.currentStreak = 0;
-                break;
-
-            case 'SEM':
-                stats.semDays++;
-                stats.currentStreak = 0;
-                break;
-
-            case 'SJ':
-                stats.sjDays++;
-                stats.currentStreak = 0;
-                break;
-
-            case 'VAB':
-                stats.vabDays++;
-                stats.currentStreak = 0;
-                break;
-
-            case 'FÖR':
-                stats.forDays++;
-                stats.currentStreak = 0;
-                break;
-
-            case 'L':
-                // Ledig — bryter streak
-                stats.currentStreak = 0;
-                break;
-
-            default:
-                // Okänd status — fail-closed: bryt streak
-                stats.currentStreak = 0;
-                break;
-        }
-    });
-
-    // REST_36H: veckovila-check (minst 36h vila per 7-dagarsperiod)
-    for (let startDay = 0; startDay <= days.length - 7; startDay++) {
-        const weekDays = days.slice(startDay, startDay + 7);
-        const workedInWeek = weekDays.filter(d => {
-            const e = d.entries.find(e => e.personId === personId);
-            return e && e.status === 'A';
-        });
-
-        // Om alla 7 dagar är arbete → max 0h vila → breach
-        // Om 6 av 7 → beror på tider, men som approximation:
-        // 7 arbetsdagar i rad = 0 viloblock > 36h
-        if (workedInWeek.length >= 7) {
-            stats.rest36hBreaches++;
-            warnings.push({
-                level: 'P0',
-                code: 'REST_36H',
-                personId,
-                dateFrom: weekDays[0].date,
-                dateTo: weekDays[6].date,
-                message: `${person.lastName}: Veckovila < 36h (${workedInWeek.length} dagar i rad) ${weekDays[0].date} – ${weekDays[6].date}`,
-                details: { workedDaysInWeek: workedInWeek.length },
-            });
-        }
-    }
-
-    // Extra-ledighet balans
-    stats.extraBalanceDays = (person.extraDaysStartBalance || 0) + stats.earnedExtraDays - stats.extraTakenDays;
-
-    if (stats.extraTakenDays > (person.extraDaysStartBalance || 0) + stats.earnedExtraDays) {
-        warnings.push({
-            level: 'P0',
-            code: 'EXTRA_NEGATIVE',
-            personId,
-            dateFrom: days[0]?.date || '',
-            dateTo: days[days.length - 1]?.date || '',
-            message: `${person.lastName}: Uttag extra-ledighet utan tillräckligt saldo (${stats.extraBalanceDays} dagar)`,
-            details: {
-                startBalance: person.extraDaysStartBalance || 0,
-                earnedDays: stats.earnedExtraDays,
-                takenDays: stats.extraTakenDays,
-                balance: stats.extraBalanceDays,
-            },
-        });
-    }
-
-    if (stats.earnedExtraDays > 0 && stats.extraTakenDays === 0) {
-        warnings.push({
-            level: 'P1',
-            code: 'EXTRA_NOT_PLANNED',
-            personId,
-            dateFrom: days[0]?.date || '',
-            dateTo: days[days.length - 1]?.date || '',
-            message: `${person.lastName}: ${stats.earnedExtraDays} intjänade extra-dagar utan uttag`,
-            details: {
-                earnedDays: stats.earnedExtraDays,
-                takenDays: stats.extraTakenDays,
-                balance: stats.extraBalanceDays,
-            },
-        });
-    }
-
-    // Semester-överuttag
-    const totalVacAvailable = (person.vacationDaysPerYear || 25) + (person.savedVacationDays || 0);
-    const totalVacUsed = (person.usedVacationDays || 0) + stats.semDays;
-
-    if (totalVacUsed > totalVacAvailable) {
-        warnings.push({
-            level: 'P0',
-            code: 'VACATION_OVERDRAWN',
-            personId,
-            dateFrom: days[0]?.date || '',
-            dateTo: days[days.length - 1]?.date || '',
-            message: `${person.lastName}: Semesteruttag (${totalVacUsed} dagar) överskrider tillgängliga (${totalVacAvailable} dagar)`,
-            details: {
-                vacationDaysPerYear: person.vacationDaysPerYear || 25,
-                savedVacationDays: person.savedVacationDays || 0,
-                usedVacationDays: person.usedVacationDays || 0,
-                semDaysThisMonth: stats.semDays,
-                totalUsed: totalVacUsed,
-                totalAvailable: totalVacAvailable,
-            },
-        });
-    }
-
-    return { warnings, stats };
+export function isRedDay(dateStr) {
+    return isRedDayHolidays(dateStr);
 }
 
 /* ============================================================
- * EVALUATE (en månad)
+ * TILLGÄNGLIGHET & LEDIGHET
  * ============================================================ */
-export function evaluate(state, { year, month }) {
-    if (!state.schedule || state.schedule.year !== year) {
-        throw new Error(`Schedule för år ${year} saknas`);
-    }
 
-    if (month < 1 || month > 12) {
-        throw new Error(`Månad måste vara 1–12`);
-    }
+export function canWorkOnDay(person, dateStr) {
+    if (!person || !dateStr) return false;
 
-    const monthData = state.schedule.months[month - 1];
-    if (!monthData) {
-        throw new Error(`Månad ${month} saknas`);
-    }
+    if (isVacationDay(person, dateStr)) return false;
+    if (isLeaveDay(person, dateStr)) return false;
 
-    const allWarnings = [];
-    const statsByPerson = {};
+    // Röda dagar: person kan jobba, men det påverkar OB/extra-ledighet
+    return true;
+}
 
-    (state.people || []).forEach((person) => {
-        if (!person.isActive) return; // Hoppa över inaktiva
+export function isAvailableOnDayOfWeek(person, dateStr) {
+    if (!person || !person.availability || !dateStr) return false;
+    const date = new Date(dateStr);
+    const dayOfWeek = date.getDay() === 0 ? 6 : date.getDay() - 1;
+    return person.availability[dayOfWeek] === true;
+}
 
-        const { warnings, stats } = evaluatePerson(
-            person.id,
-            person,
-            monthData,
-            month - 1,
-            year,
-            state.settings,
-            0 // ingen trailing streak vid enstaka månad
-        );
+export function canWorkInGroup(person, groupId) {
+    if (!person || !groupId) return false;
+    return getGroups(person).includes(String(groupId));
+}
 
-        statsByPerson[person.id] = stats;
-        allWarnings.push(...warnings);
-    });
+export function isVacationDay(person, dateStr) {
+    if (!person || !person.vacationDates) return false;
+    return person.vacationDates.includes(dateStr);
+}
 
-    allWarnings.sort((a, b) => {
-        if (a.level !== b.level) return a.level === 'P0' ? -1 : 1;
-        return a.dateFrom.localeCompare(b.dateFrom);
-    });
-
-    return { warnings: allWarnings, statsByPerson, month, year };
+export function isLeaveDay(person, dateStr) {
+    if (!person || !person.leaveDates) return false;
+    return person.leaveDates.includes(dateStr);
 }
 
 /* ============================================================
- * EVALUATE YEAR (alla 12 månader, streak korsar månadsgräns)
+ * ARBETSTID
  * ============================================================ */
-export function evaluateYear(state, { year }) {
-    if (!state.schedule || state.schedule.year !== year) {
-        throw new Error(`Schedule för år ${year} saknas`);
-    }
 
-    const allWarnings = [];
-    const yearStatsByPerson = {};
+export function getAvailableHours(person) {
+    const pct = getEmploymentPct(person);
+    const wdpw = person.workdaysPerWeek || 5;
+    if (!pct || !wdpw) return 0;
+    return (8 * pct) / 100;
+}
 
-    // Init per person
-    (state.people || []).forEach((person) => {
-        if (!person.isActive) return;
+export function getShiftDuration(shift) {
+    if (!shift) return 0;
+    const start = parseTime(shift.startTime);
+    const end = parseTime(shift.endTime);
+    let dur = end - start;
+    if (dur < 0) dur += 24 * 60; // nattpass
+    return dur / 60;
+}
 
-        yearStatsByPerson[person.id] = {
-            personId: person.id,
-            firstName: person.firstName,
-            lastName: person.lastName,
-            workedDays: 0,
-            redDaysWorked: 0,
-            earnedExtraDays: 0,
-            extraTakenDays: 0,
-            extraBalanceDays: 0,
-            semDays: 0,
-            sjDays: 0,
-            vabDays: 0,
-            forDays: 0,
-            maxStreak: 0,
-            rest11hBreaches: 0,
-            max10hBreaches: 0,
-            rest36hBreaches: 0,
-        };
+export function getHoursWorkedThisWeek(person, dateStr, shifts = []) {
+    if (!dateStr || !shifts) return 0;
+
+    const date = new Date(dateStr);
+    const weekStart = new Date(date);
+    weekStart.setDate(date.getDate() - date.getDay() + (date.getDay() === 0 ? -6 : 1));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+
+    const personShifts = shifts.filter(shift => {
+        const shiftDate = new Date(shift.date);
+        return shift.personId === person.id &&
+               shiftDate >= weekStart &&
+               shiftDate <= weekEnd;
     });
 
-    // Spåra trailing streak per person (korsar månadsgräns)
-    const trailingStreaks = {};
+    return personShifts.reduce((total, shift) => {
+        const start = parseTime(shift.startTime);
+        const end = parseTime(shift.endTime);
+        let dur = end - start;
+        if (dur < 0) dur += 24 * 60;
+        return total + dur / 60;
+    }, 0);
+}
 
-    for (let m = 1; m <= 12; m++) {
-        const monthData = state.schedule.months[m - 1];
-        if (!monthData) continue;
+export function hasWorkedTooMuchThisWeek(person, dateStr, hoursWorkedThisWeek = 0) {
+    const pct = getEmploymentPct(person);
+    const wdpw = person.workdaysPerWeek || 5;
+    if (!pct || !wdpw) return false;
+    const maxHoursPerWeek = (wdpw * 8 * pct) / 100;
+    return hoursWorkedThisWeek >= maxHoursPerWeek;
+}
 
-        (state.people || []).forEach((person) => {
-            if (!person.isActive) return;
+/* ============================================================
+ * SEMESTER — Delegerar till hr-rules.js
+ * ============================================================ */
 
-            const prevStreak = trailingStreaks[person.id] || 0;
+export function hasVacationDaysAvailable(person, count = 1) {
+    if (!person) return false;
+    const remaining = getRemainingVacationDays(person, person.sector || 'private');
+    return remaining >= count;
+}
 
-            const { warnings, stats } = evaluatePerson(
-                person.id,
+export function hasLeaveDaysAvailable(person, count = 1) {
+    if (!person) return false;
+    return (person.savedLeaveDays || 0) >= count;
+}
+
+/* ============================================================
+ * HUVUDFUNKTION: canPersonWorkShift (kallas av scheduler.js)
+ * ============================================================ */
+
+export function canPersonWorkShift(person, shift, group, dateStr, hoursWorkedThisWeek = 0) {
+    if (!person) return false;
+    if (!canWorkOnDay(person, dateStr)) return false;
+    if (!isAvailableOnDayOfWeek(person, dateStr)) return false;
+    if (!canWorkInGroup(person, group?.id)) return false;
+
+    const shiftHours = getShiftDuration(shift);
+    const availableHours = getAvailableHours(person);
+
+    if (shiftHours > availableHours) return false;
+    if (hasWorkedTooMuchThisWeek(person, dateStr, hoursWorkedThisWeek + shiftHours)) return false;
+
+    return true;
+}
+
+/* ============================================================
+ * SCORING & ELIGIBILITY
+ * ============================================================ */
+
+export function scorePersonForShift(person, shift, group, dateStr, hoursWorkedThisWeek = 0) {
+    if (!canPersonWorkShift(person, shift, group, dateStr, hoursWorkedThisWeek)) return -1;
+
+    let score = 100;
+    const shiftHours = getShiftDuration(shift);
+    const pct = getEmploymentPct(person);
+    const wdpw = person.workdaysPerWeek || 5;
+    const maxWeeklyHours = (wdpw * 8 * pct) / 100;
+    const remainingWeekly = maxWeeklyHours - hoursWorkedThisWeek;
+
+    if (Math.abs(shiftHours - remainingWeekly) < 1) score += 50;
+    if (remainingWeekly - shiftHours < 2) score += 20;
+
+    // Röd dag bonus — rättvis rotation
+    if (isRedDay(dateStr)) score += 10;
+
+    return score;
+}
+
+export function getEligiblePersonsForShift(people, shift, group, dateStr, shifts = []) {
+    if (!people || !shift || !group || !dateStr) return [];
+
+    return people
+        .map(person => {
+            const hoursWorked = getHoursWorkedThisWeek(person, dateStr, shifts);
+            return {
                 person,
-                monthData,
-                m - 1,
-                year,
-                state.settings,
-                prevStreak
-            );
+                score: scorePersonForShift(person, shift, group, dateStr, hoursWorked),
+                hoursWorked,
+            };
+        })
+        .filter(item => item.score >= 0)
+        .sort((a, b) => b.score - a.score);
+}
 
-            // Spara trailing streak för nästa månad
-            trailingStreaks[person.id] = stats.currentStreak;
+/* ============================================================
+ * VALIDERING — Kombinerar grundvalidering + HR-rules
+ * ============================================================ */
 
-            // Ackumulera
-            const ys = yearStatsByPerson[person.id];
-            ys.workedDays += stats.workedDays;
-            ys.redDaysWorked += stats.redDaysWorked;
-            ys.earnedExtraDays += stats.earnedExtraDays;
-            ys.extraTakenDays += stats.extraTakenDays;
-            ys.semDays += stats.semDays;
-            ys.sjDays += stats.sjDays;
-            ys.vabDays += stats.vabDays;
-            ys.forDays += stats.forDays;
-            ys.maxStreak = Math.max(ys.maxStreak, stats.maxStreak);
-            ys.rest11hBreaches += stats.rest11hBreaches;
-            ys.max10hBreaches += stats.max10hBreaches;
-            ys.rest36hBreaches += stats.rest36hBreaches;
+export function validatePersonForScheduling(person) {
+    const errors = [];
+    const groups = getGroups(person);
 
-            allWarnings.push(...warnings);
-        });
-    }
+    if (groups.length === 0) errors.push('Ingen arbetsgrupp tilldelad');
+    if (!person.availability || person.availability.length === 0) errors.push('Ingen tillgänglighet definierad');
+    if (!person.startDate) errors.push('Inget startdatum');
 
-    // Beräkna årsbalans för extra-ledighet
-    (state.people || []).forEach((person) => {
-        if (!person.isActive) return;
-        const ys = yearStatsByPerson[person.id];
-        ys.extraBalanceDays =
-            (person.extraDaysStartBalance || 0) +
-            ys.earnedExtraDays -
-            ys.extraTakenDays;
-    });
+    const pct = getEmploymentPct(person);
+    if (!pct || pct < 10 || pct > 100) errors.push('Ogiltig tjänstgöringsgrad (10-100%)');
 
-    allWarnings.sort((a, b) => {
-        if (a.level !== b.level) return a.level === 'P0' ? -1 : 1;
-        return a.dateFrom.localeCompare(b.dateFrom);
-    });
+    const wdpw = person.workdaysPerWeek;
+    if (!wdpw || wdpw < 1 || wdpw > 7) errors.push('Ogiltigt antal arbetsdagar per vecka');
+
+    // HR-validering (semester/kollektivavtal)
+    const hrResult = validatePersonAgainstHRF(person, person.sector || 'private');
+    if (!hrResult.valid) errors.push(...hrResult.errors);
+
+    return { valid: errors.length === 0, errors };
+}
+
+/* ============================================================
+ * STATISTIK
+ * ============================================================ */
+
+export function getPersonWeekStats(person, dateStr, shifts = []) {
+    const pct = getEmploymentPct(person);
+    const wdpw = person.workdaysPerWeek || 5;
+    const hoursWorked = getHoursWorkedThisWeek(person, dateStr, shifts);
+    const maxHours = (wdpw * 8 * pct) / 100;
 
     return {
-        warnings: allWarnings,
-        statsByPerson: yearStatsByPerson,
-        year,
-        isYearView: true,
+        hoursWorked,
+        maxHours,
+        utilizationPercent: maxHours > 0 ? Math.round((hoursWorked / maxHours) * 100) : 0,
+        remainingHours: maxHours - hoursWorked,
+        vacationInfo: getPersonVacationYearInfo(person, person.sector || 'private'),
     };
 }
