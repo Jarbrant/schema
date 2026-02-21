@@ -547,9 +547,8 @@ export function checkMinimumWage(people, settings) {
 }
 
 /* ============================================================
- * BLOCK 7 — INTERNAL HELPERS
+ * BLOCK 7 — INTERNAL HELPERS (v2.3 — workdaysPerWeek + availability)
  * ============================================================ */
-
 function _getCalcPeriod(person) {
     if (person.calculationPeriod) return person.calculationPeriod;
     return (person.employmentPct || 100) >= 100 ? 26 : 16;
@@ -581,6 +580,14 @@ function _getShiftHoursInternal(shiftId, shifts, shiftTemplates) {
     return 8;
 }
 
+/* ============================================================
+ * _findCandidate v2.3
+ *
+ * NYA KONTROLLER:
+ *   1) workdaysPerWeek — max antal dagar denna vecka
+ *   2) availability    — är personen tillgänglig denna veckodag?
+ *   3) 36h veckovila   — blockera om redan 6 dagar i rad
+ * ============================================================ */
 function _findCandidate(ctx) {
     const { groupPeople, tracker, dateStr, resolvedShiftId, shiftHours, absenceMap, weekAssignments, suggestions } = ctx;
     const candidates = [];
@@ -589,18 +596,56 @@ function _findCandidate(ctx) {
         const t = tracker[person.id];
         if (!t) return;
 
+        /* --- Redan schemalagd idag? --- */
         const alreadyToday = suggestions.some(s => s.date === dateStr && s.personId === person.id);
         if (alreadyToday) return;
 
         const pd = weekAssignments.get(person.id);
         if (pd && pd.has(dateStr)) return;
 
+        /* --- Frånvaro? --- */
         if (absenceMap[person.id]?.[dateStr]) return;
 
+        /* ============================================================
+         * NY KONTROLL 1: Tillgänglighet (availability)
+         *
+         * person.availability = [true, true, true, true, true, true, false]
+         *                        mån   tis   ons   tor   fre   lör   sön
+         * ============================================================ */
+        if (Array.isArray(person.availability)) {
+            const dateObj = new Date(dateStr);
+            const jsDay = dateObj.getDay();               // 0=sön, 1=mån...6=lör
+            const dayIdx = jsDay === 0 ? 6 : jsDay - 1;  // Konvertera till 0=mån, 6=sön
+            if (person.availability[dayIdx] === false) return;
+        }
+
+        /* ============================================================
+         * NY KONTROLL 2: Max dagar per vecka (workdaysPerWeek)
+         *
+         * Kidist: tillgänglig mån–lör (6 dagar) men workdaysPerWeek=5
+         * → max 5 schemalagda dagar denna vecka
+         * ============================================================ */
+        const maxDaysPerWeek = person.workdaysPerWeek || 5;
+        const daysThisWeek = pd ? pd.size : 0;
+        if (daysThisWeek >= maxDaysPerWeek) return;
+
+        /* ============================================================
+         * NY KONTROLL 3: 36h veckovila (implicit)
+         *
+         * Med standardpass (7–8h) + 11h dygnsvila:
+         * 6 dagar × 8h = person har bara 16h kvar av veckan
+         * → Inte nog för 36h sammanhängande vila
+         * → Blockera vid 6+ dagar oavsett workdaysPerWeek
+         * ============================================================ */
+        if (daysThisWeek >= 6) return;
+
+        /* --- Max timmar denna vecka? --- */
         if (t.thisWeek + shiftHours > t.maxThisWeek) return;
 
+        /* --- Redan nått periodmålet? --- */
         if (t.accumulated >= t.periodTarget) return;
 
+        /* --- Prioritetsberäkning --- */
         const pctUsed = t.periodTarget > 0 ? t.accumulated / t.periodTarget : 1;
         const weekBalance = t.weeklyTarget - t.thisWeek;
 
@@ -608,7 +653,12 @@ function _findCandidate(ctx) {
         const isAvoided = Array.isArray(person.avoidShifts) && person.avoidShifts.includes(resolvedShiftId) ? -500 : 0;
         const isSub = person.employmentType === 'substitute' ? -200 : 0;
 
-        const priority = (1 - pctUsed) * 10000 + weekBalance * 100 + isPreferred + isAvoided + isSub;
+        /* NY: Bonus om personen är nära sitt dagsmål men inte över */
+        const daysTarget = maxDaysPerWeek;
+        const daysBalance = daysTarget - daysThisWeek;
+        const daysBonus = daysBalance > 0 ? daysBalance * 50 : -1000;
+
+        const priority = (1 - pctUsed) * 10000 + weekBalance * 100 + daysBonus + isPreferred + isAvoided + isSub;
 
         candidates.push({
             person, priority, pctUsed,
