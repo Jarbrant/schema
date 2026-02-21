@@ -235,8 +235,13 @@ export function generateWeekSchedule({ weekDates, weekTemplate, groups, shifts, 
 }
 
 /* ============================================================
- * BLOCK 3 — generatePeriodSchedule v2.2 (NY)
- * Bulk-generering med ackumulering + beräkningsperiod
+ * BLOCK 3 — generatePeriodSchedule v2.4 (PRODUCTION)
+ * Bulk-generering med ackumulering + beräkningsperiod + helg-rotation
+ *
+ * NYTT i v2.4:
+ *   - weekendHistory: spårar vilka veckor varje person jobbade helg
+ *   - Skickas med till generateWeekSchedule → _findCandidate
+ *   - Möjliggör helg-penalty så inte samma person jobbar varje helg
  * ============================================================ */
 export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state, getWeekDates }) {
     const people = (state.people || []).filter(p => p.isActive);
@@ -263,7 +268,14 @@ export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state,
         });
     }
 
-    console.log('📊 Period-generering startar:');
+    /* ── NY: Helg-historik ──
+     * weekendHistory[personId] = [0, 2, 4] = jobbade helg vecka 0, 2, 4
+     * Skickas med till _findCandidate som helg-penalty
+     */
+    const weekendHistory = {};
+    people.forEach(p => { weekendHistory[p.id] = []; });
+
+    console.log('📊 Period-generering startar (v2.4):');
     people.forEach(p => {
         const period = _getCalcPeriod(p);
         const target = (p.employmentPct || 100) / 100 * 40 * period;
@@ -290,6 +302,8 @@ export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state,
             accumulatedHours,
             weekIndex: idx,
             totalWeeks,
+            weekendHistory,       // NY: skicka med helg-historik
+            currentWeekIndex: idx, // NY: vilken vecka vi genererar
         });
 
         const weekSuggestions = result.suggestions || [];
@@ -298,11 +312,29 @@ export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state,
         allSuggestions.push(weekSuggestions);
         allVacancies.push(...weekVacancies);
 
+        /* Uppdatera ackumulerade timmar */
         weekSuggestions.forEach(sug => {
             accumulatedHours[sug.personId] = (accumulatedHours[sug.personId] || 0) + (sug.hours || 0);
         });
 
-        console.log(`  Vecka ${idx + 1}/${totalWeeks}: ${weekSuggestions.length} tilldelningar`);
+        /* ── NY: Uppdatera helg-historik ──
+         * Kolla vilka personer som tilldelades lör (index 5) eller sön (index 6)
+         */
+        const weekendPersons = new Set();
+        weekSuggestions.forEach(sug => {
+            const sugDate = new Date(sug.date);
+            const jsDay = sugDate.getDay(); // 0=sön, 6=lör
+            if (jsDay === 0 || jsDay === 6) {
+                weekendPersons.add(sug.personId);
+            }
+        });
+        weekendPersons.forEach(pid => {
+            if (weekendHistory[pid]) {
+                weekendHistory[pid].push(idx);
+            }
+        });
+
+        console.log(`  Vecka ${idx + 1}/${totalWeeks}: ${weekSuggestions.length} tilldelningar, helg: ${weekendPersons.size} pers`);
     });
 
     const totalStats = {
@@ -324,10 +356,11 @@ export function generatePeriodSchedule({ weekOffsets, year, weekTemplate, state,
             periodTarget: Math.round(periodTarget),
             periodWeeks,
             pctUsed: periodTarget > 0 ? Math.round((hours / periodTarget) * 100) : 0,
+            weekendsWorked: (weekendHistory[p.id] || []).length, // NY
         };
     });
 
-    console.log('📊 Period-generering klar:', JSON.stringify(totalStats, null, 2));
+    console.log('📊 Period-generering klar (v2.4):', JSON.stringify(totalStats, null, 2));
     return { allSuggestions, allVacancies, totalStats };
 }
 
