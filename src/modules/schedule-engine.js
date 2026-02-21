@@ -13,7 +13,8 @@
  *
  * Alla befintliga exporter oförändrade (bakåtkompatibla).
  */
-
+import { getCalculationPeriodWeeks } from './hr-rules.js';
+import { isRedDay } from './data/holidays.js';
 /* ============================================================
  * CONSTANTS
  * ============================================================ */
