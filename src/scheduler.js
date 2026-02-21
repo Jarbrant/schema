@@ -1,5 +1,10 @@
 /*
- * SCHEDULER.JS — Schema-genererings logik (UPDATED med regelmotor)
+ * SCHEDULER.JS — Schema-genererings logik v2.0 (konsoliderad)
+ *
+ * ÄNDRINGSLOGG (konsolidering):
+ *   - Importerar fortfarande från rules-engine.js (som nu delegerar till holidays.js + hr-rules.js)
+ *   - Entry-format standardiserat: startTime/endTime + groupId + shiftId
+ *   - employmentPct istället för degree i output
  */
 
 import { reportError } from './diagnostics.js';
@@ -18,29 +23,18 @@ export function generateSchedule(params) {
 
         const { mode, year, month, fromDate, toDate, groups, passes, demands, people } = params;
 
-        // Validera inputs
-        if (!mode || !['month', 'period'].includes(mode)) {
-            throw new Error('Ogiltigt läge');
-        }
+        if (!mode || !['month', 'period'].includes(mode)) throw new Error('Ogiltigt läge');
+        if (!groups || groups.length === 0) throw new Error('Inga grupper definierade');
+        if (!passes || passes.length === 0) throw new Error('Inga grundpass definierade');
+        if (!people || people.length === 0) throw new Error('Ingen personal definierad');
 
-        if (!groups || groups.length === 0) {
-            throw new Error('Inga grupper definierade');
-        }
-
-        if (!passes || passes.length === 0) {
-            throw new Error('Inga grundpass definierade');
-        }
-
-        if (!people || people.length === 0) {
-            throw new Error('Ingen personal definierad');
-        }
-
-        // Validera alla personer för schemagenerering
+        // Validera med konsoliderade regler (inkl HR)
         const validationErrors = [];
         people.forEach(person => {
             const validation = validatePersonForScheduling(person);
             if (!validation.valid) {
-                validationErrors.push(`${person.name}: ${validation.errors.join(', ')}`);
+                const name = person.name || `${person.firstName} ${person.lastName}`;
+                validationErrors.push(`${name}: ${validation.errors.join(', ')}`);
             }
         });
 
@@ -48,39 +42,24 @@ export function generateSchedule(params) {
             throw new Error(`Validering misslyckades:\n${validationErrors.join('\n')}`);
         }
 
-        // Beräkna datumintervall
         let startDate, endDate;
 
         if (mode === 'month') {
             if (!year || !month) throw new Error('År och månad krävs');
             const monthNum = parseInt(month, 10);
             if (monthNum < 1 || monthNum > 12) throw new Error(`Ogiltigt månadsnummer: ${monthNum}`);
-            
             startDate = new Date(year, monthNum - 1, 1);
             endDate = new Date(year, monthNum, 0);
         } else if (mode === 'period') {
             if (!fromDate || !toDate) throw new Error('från-datum och till-datum krävs');
-
             startDate = new Date(fromDate);
             endDate = new Date(toDate);
-
-            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-                throw new Error('Ogiltiga datum');
-            }
-
-            if (endDate < startDate) {
-                throw new Error('Till-datum måste vara efter från-datum');
-            }
-
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) throw new Error('Ogiltiga datum');
+            if (endDate < startDate) throw new Error('Till-datum måste vara efter från-datum');
             const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-            if (daysDiff > 93) {
-                throw new Error(`Period kan max vara 93 dagar (du valde ${daysDiff} dagar)`);
-            }
+            if (daysDiff > 93) throw new Error(`Period kan max vara 93 dagar (du valde ${daysDiff} dagar)`);
         }
 
-        console.log(`✓ Datumintervall: ${startDate.toLocaleDateString('sv')} → ${endDate.toLocaleDateString('sv')}`);
-
-        // Generera shifts med intelligent person-matching
         const generatedShifts = [];
         const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
@@ -89,56 +68,48 @@ export function generateSchedule(params) {
             currentDate.setDate(currentDate.getDate() + i);
             const dateStr = formatDate(currentDate);
 
-            // För varje grupp + pass
             groups.forEach(group => {
                 passes.forEach(pass => {
                     const demandKey = `${group.id}_${pass.id}`;
                     const demand = demands.find(d => d.key === demandKey);
 
                     if (demand && demand.count > 0) {
-                        // Hitta de mest lämpade personerna
-                        const eligible = getEligiblePersonsForShift(
-                            people,
-                            pass,
-                            group,
-                            dateStr,
-                            generatedShifts
-                        );
+                        const eligible = getEligiblePersonsForShift(people, pass, group, dateStr, generatedShifts);
 
                         if (eligible.length === 0) {
                             console.warn(`⚠️ Ingen lämplig person för ${group.name} ${pass.name} på ${dateStr}`);
                             return;
                         }
 
-                        // Ta de top N personerna enligt demand
                         for (let j = 0; j < Math.min(demand.count, eligible.length); j++) {
                             const { person } = eligible[j];
+                            const pct = person.employmentPct ?? person.degree ?? 100;
 
+                            // STANDARDISERAT ENTRY-FORMAT (kompatibelt med kalender-vy + schedule-engine)
                             generatedShifts.push({
                                 id: `generated_${dateStr}_${group.id}_${pass.id}_${j}`,
                                 date: dateStr,
                                 startTime: pass.startTime,
                                 endTime: pass.endTime,
-                                personId: person.id,
-                                personName: person.name,
-                                groupId: group.id,
+                                breakStart: pass.breakStart || null,
+                                breakEnd: pass.breakEnd || null,
+                                personId: String(person.id),
+                                personName: person.name || `${person.firstName} ${person.lastName}`,
+                                groupId: String(group.id),
                                 groupName: group.name,
-                                passId: pass.id,
+                                shiftId: String(pass.id),
                                 passName: pass.name,
+                                status: 'A',
                                 isRedDay: isRedDay(dateStr),
-                                degree: person.degree,
+                                employmentPct: pct,
                                 hours: getShiftDuration(pass),
                                 generatedAt: new Date().toISOString()
                             });
-
-                            console.log(`✓ ${person.name} tillagd: ${group.name} ${pass.name} ${dateStr}`);
                         }
                     }
                 });
             });
         }
-
-        console.log(`✓ Genererade ${generatedShifts.length} skift`);
 
         return {
             success: true,
@@ -149,20 +120,8 @@ export function generateSchedule(params) {
 
     } catch (err) {
         console.error('❌ Fel vid schemagenerering:', err);
-
-        reportError(
-            'SCHEDULE_GENERATION_FAILED',
-            'SCHEDULER',
-            'src/scheduler.js',
-            err.message || 'Schema kunde inte genereras'
-        );
-
-        return {
-            success: false,
-            shifts: [],
-            message: null,
-            errors: [err.message || 'Ett okänt fel uppstod']
-        };
+        reportError('SCHEDULE_GENERATION_FAILED', 'SCHEDULER', 'src/scheduler.js', err.message || 'Schema kunde inte genereras');
+        return { success: false, shifts: [], message: null, errors: [err.message || 'Ett okänt fel uppstod'] };
     }
 }
 
