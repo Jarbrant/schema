@@ -116,9 +116,9 @@ export function getPersonWorkload(personId, scheduleMonths, monthIdx, shifts, sh
 }
 
 /* ============================================================
- * BLOCK 2 — generateWeekSchedule v2.2 (med beräkningsperiod)
+ * BLOCK 2 — generateWeekSchedule v2.4 (med helg-rotation)
  * ============================================================ */
-export function generateWeekSchedule({ weekDates, weekTemplate, groups, shifts, shiftTemplates, groupShifts, people, absences, existingEntries, demand, accumulatedHours, weekIndex, totalWeeks }) {
+export function generateWeekSchedule({ weekDates, weekTemplate, groups, shifts, shiftTemplates, groupShifts, people, absences, existingEntries, demand, accumulatedHours, weekIndex, totalWeeks, weekendHistory, currentWeekIndex }) {
     const suggestions = [], vacancySuggestions = [];
     if (!weekTemplate || !Array.isArray(weekTemplate.slots) || !Array.isArray(weekDates)) return { suggestions, vacancySuggestions };
 
@@ -202,6 +202,7 @@ export function generateWeekSchedule({ weekDates, weekTemplate, groups, shifts, 
             const candidate = _findCandidate({
                 groupPeople: gp, tracker, dateStr, resolvedShiftId, shiftHours,
                 absenceMap, weekAssignments, suggestions,
+                weekendHistory, currentWeekIndex,
             });
 
             if (candidate) {
@@ -233,7 +234,6 @@ export function generateWeekSchedule({ weekDates, weekTemplate, groups, shifts, 
 
     return { suggestions, vacancySuggestions };
 }
-
 /* ============================================================
  * BLOCK 3 — generatePeriodSchedule v2.4 (PRODUCTION)
  * Bulk-generering med ackumulering + beräkningsperiod + helg-rotation
