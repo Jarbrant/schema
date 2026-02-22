@@ -384,18 +384,27 @@ export function generate(state, input) {
 }
 
 /* ========================================================================
-   BLOCK 14 — CANDIDATE SELECTION v3.0 (LÄSER state.rules)
+   BLOCK 14 — CANDIDATE SELECTION v4.0 (KUMULATIV HELG + RÄTTVIS FÖRDELNING)
 
-   Kopplar ihop med state.rules (samma regler som visas i #/rules):
-   - Läser aktiva regler från state.rules
-   - P0-regler blockerar kandidaten helt
-   - P1-regler ger penalty (lägre prioritet)
+   ÄNDRING v3.0 → v4.0:
+   - Helg-rotation baserad på KUMULATIV räkning (hela månaden hittills)
+     istället för "titta bara på förra veckan"
+   - Röda dagar: kumulativ räkning (den som jobbat minst röda dagar → bonus)
+   - Ny: dagtyps-balansering — sprider mån/tis/ons/tor/fre jämnt
+   - Ny: "under-ratio" istället för absolut "under" — rättvisare vid
+     olika sysselsättningsgrader
 
    Regeltyper som hanteras:
-     P0: maxHoursWeek, maxHoursDay, maxDaysPerWeek, minRestBetween,
-         maxConsecutive, weeklyRest36h, availabilityCheck, absenceCheck,
-         startDateCheck, periodTarget
-     P1: weekendRotation, redDayHandling, substituteLastPriority
+     P0 (blockerar):
+       availabilityCheck, absenceCheck, startDateCheck,
+       maxConsecutive, maxDaysPerWeek, maxHoursWeek, periodTarget
+     P1 (penalty/bonus):
+       weekendRotation    — kumulativ helg-räkning
+       redDayHandling     — kumulativ röd-dag-räkning
+       substituteLastPriority — vikarier sist
+       streak-penalty     — gradvis efter 4+ dagar
+       veckobalans        — bonus om fler dagar kvar i veckan
+       under-ratio        — rättvisare fördelning vid olika pct
    ======================================================================== */
 
 function findBestCandidate(personTargets, dayIdx, days, year, month, stateRules, statePeople) {
@@ -408,24 +417,62 @@ function findBestCandidate(personTargets, dayIdx, days, year, month, stateRules,
     const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1; // 0=Mån..6=Sön
     const isWeekend = (dayOfWeek === 5 || dayOfWeek === 6);
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(dayIdx + 1).padStart(2, '0')}`;
+    const isRedDay = isRedDayCheck(dateStr);
 
-    // ISO-vecka: beräkna index för måndagen i denna vecka
+    // ISO-vecka: index för måndagen i denna vecka
     const isoWeekStart = dayIdx - dayOfWeek;
 
     // Läs aktiva regler
     const rules = Array.isArray(stateRules) ? stateRules.filter(r => r.isActive) : [];
 
-    // Snabb-lookup för regelvärden
     const ruleValue = (type, fallback) => {
         const r = rules.find(r => r.type === type);
         return r && r.value !== null && r.value !== undefined ? r.value : fallback;
     };
     const ruleActive = (type) => rules.some(r => r.type === type);
 
-    // Regelvärden (med fallback om regler saknas)
     const maxHoursWeek = ruleValue('maxHoursWeek', 40);
     const maxDaysPerWeekRule = ruleValue('maxDaysPerWeek', 5);
     const maxConsecutive = ruleValue('maxConsecutive', 6);
+
+    /* ════════════════════════════════════════════════════════════════════
+     * KUMULATIV STATISTIK — räkna helg-dagar och röda dagar hittills
+     * per person (dag 0 → dayIdx-1)
+     * ════════════════════════════════════════════════════════════════════ */
+
+    const weekendCounts = new Map();  // personId → antal helg-dagar hittills
+    const redDayCounts = new Map();   // personId → antal röda dagar hittills
+
+    for (let d = 0; d < dayIdx; d++) {
+        const pastEntries = Array.isArray(days[d]?.entries) ? days[d].entries : [];
+        const pastDate = new Date(year, month - 1, d + 1);
+        const pastJsDay = pastDate.getDay();
+        const pastIsWeekend = (pastJsDay === 0 || pastJsDay === 6);
+        const pastDateStr = `${year}-${String(month).padStart(2, '0')}-${String(d + 1).padStart(2, '0')}`;
+        const pastIsRedDay = isRedDayCheck(pastDateStr);
+
+        pastEntries.forEach((e) => {
+            if (e && e.status === 'A' && e.personId) {
+                if (pastIsWeekend) {
+                    weekendCounts.set(e.personId, (weekendCounts.get(e.personId) || 0) + 1);
+                }
+                if (pastIsRedDay) {
+                    redDayCounts.set(e.personId, (redDayCounts.get(e.personId) || 0) + 1);
+                }
+            }
+        });
+    }
+
+    // Beräkna genomsnitt för referens
+    const allPersonIds = Object.keys(personTargets);
+    const avgWeekend = allPersonIds.length > 0
+        ? allPersonIds.reduce((s, id) => s + (weekendCounts.get(id) || 0), 0) / allPersonIds.length
+        : 0;
+    const avgRedDay = allPersonIds.length > 0
+        ? allPersonIds.reduce((s, id) => s + (redDayCounts.get(id) || 0), 0) / allPersonIds.length
+        : 0;
+
+    /* ════════════════════════════════════════════════════════════════════ */
 
     const candidates = [];
 
@@ -450,12 +497,11 @@ function findBestCandidate(personTargets, dayIdx, days, year, month, stateRules,
             }
         }
 
-        // P0: Frånvaro (absenceCheck) — semester, sjuk, VAB etc
+        // P0: Frånvaro (absenceCheck)
         if (ruleActive('absenceCheck') || !rules.length) {
             if (Array.isArray(person.vacationDates) && person.vacationDates.includes(dateStr)) return;
             if (Array.isArray(person.leaveDates) && person.leaveDates.includes(dateStr)) return;
 
-            // Kontrollera befintliga entries med frånvarostatus på denna dag
             const absenceStatuses = ['SEM', 'SJ', 'VAB', 'FÖR', 'TJL', 'PERM', 'UTB'];
             const hasAbsenceEntry = entries.some(
                 (e) => e && e.personId === person.id && absenceStatuses.includes(e.status)
@@ -471,7 +517,7 @@ function findBestCandidate(personTargets, dayIdx, days, year, month, stateRules,
         // P0: Max dagar i rad (maxConsecutive)
         if ((t.streak || 0) >= maxConsecutive) return;
 
-        // P0: Max arbetsdagar per vecka (maxDaysPerWeek) — ISO-vecka
+        // P0: Max arbetsdagar per vecka — ISO-vecka
         let daysThisWeek = 0;
         const weekStartIdx = Math.max(0, isoWeekStart);
         const weekEndIdx = Math.min(isoWeekStart + 7, days.length);
@@ -484,74 +530,59 @@ function findBestCandidate(personTargets, dayIdx, days, year, month, stateRules,
         }
         if (daysThisWeek >= personMaxDays) return;
 
-        // P0: Max timmar per vecka (maxHoursWeek) — anpassat efter sysselsättningsgrad
+        // P0: Max timmar per vecka — anpassat efter sysselsättningsgrad
         const pct = (person.employmentPct || 100) / 100;
         const adjustedMaxHoursWeek = maxHoursWeek * pct;
-        const estimatedHoursThisWeek = daysThisWeek * 8; // estimat: 8h/dag
+        const estimatedHoursThisWeek = daysThisWeek * 8;
         if (estimatedHoursThisWeek + 8 > adjustedMaxHoursWeek) return;
 
-        // P0: Periodmål nått — behöver fortfarande fler dagar
+        // P0: Periodmål nått
         const under = (t.target || 0) - (t.current || 0);
         if (under <= 0) return;
 
         /* ════════════════════════════════════════════
-         * P1 REGLER — Penalty/Bonus (påverkar prioritet)
+         * P1 REGLER — Penalty/Bonus
          * ════════════════════════════════════════════ */
 
-        let priority = under * 1000 - (t.current || 0);
+        // Basepriority: under-ratio istället för absolut under
+        // (rättvisare vid olika sysselsättningsgrader)
+        const targetVal = t.target || 1;
+        const underRatio = under / targetVal; // 0.0–1.0, högre = mer behov
+        let priority = underRatio * 5000 - (t.current || 0);
 
-        // P1: Helg-rotation (weekendRotation) — varannan helg ledig
+        // P1: KUMULATIV HELG-ROTATION (weekendRotation)
         if (isWeekend && ruleActive('weekendRotation')) {
-            // Kontrollera om personen jobbade FÖRRA helgen
-            const prevWeekStart = isoWeekStart - 7;
-            if (prevWeekStart >= 0) {
-                let workedLastWeekend = false;
-                for (let d = Math.max(0, prevWeekStart); d < Math.min(prevWeekStart + 7, days.length); d++) {
-                    const prevDate = new Date(year, month - 1, d + 1);
-                    const prevJsDay = prevDate.getDay();
-                    if (prevJsDay === 0 || prevJsDay === 6) {
-                        const prevEntries = Array.isArray(days[d]?.entries) ? days[d].entries : [];
-                        if (prevEntries.some((e) => e && e.status === 'A' && e.personId === person.id)) {
-                            workedLastWeekend = true;
-                            break;
-                        }
-                    }
-                }
-                if (workedLastWeekend) priority -= 3000;
-            }
+            const myWeekends = weekendCounts.get(person.id) || 0;
 
-            // Kontrollera om personen jobbat helg ≥2 av senaste 4 veckor
-            let recentWeekends = 0;
-            for (let w = 1; w <= 4; w++) {
-                const checkWeekStart = isoWeekStart - (w * 7);
-                if (checkWeekStart < 0) break;
-                let foundWeekend = false;
-                for (let d = Math.max(0, checkWeekStart); d < Math.min(checkWeekStart + 7, days.length); d++) {
-                    const checkDate = new Date(year, month - 1, d + 1);
-                    const checkJsDay = checkDate.getDay();
-                    if (checkJsDay === 0 || checkJsDay === 6) {
-                        const checkEntries = Array.isArray(days[d]?.entries) ? days[d].entries : [];
-                        if (checkEntries.some((e) => e && e.status === 'A' && e.personId === person.id)) {
-                            foundWeekend = true;
-                            break;
-                        }
-                    }
-                }
-                if (foundWeekend) recentWeekends++;
+            // Differens från genomsnitt: positivt = personen har jobbar MER helg än snitt
+            const weekendDiff = myWeekends - avgWeekend;
+
+            if (weekendDiff > 0) {
+                // Personen har jobbar mer helg än snitt → kraftig penalty
+                // Ju mer över snitt, desto värre
+                priority -= 2000 * weekendDiff;
+            } else if (weekendDiff < 0) {
+                // Personen har jobbat MINDRE helg än snitt → bonus
+                priority += 1000 * Math.abs(weekendDiff);
             }
-            if (recentWeekends >= 2) priority -= 1500;
+            // weekendDiff === 0 → ingen justering (rättvist)
+        }
+
+        // P1: KUMULATIV RÖD DAG (redDayHandling)
+        if (isRedDay && ruleActive('redDayHandling')) {
+            const myRedDays = redDayCounts.get(person.id) || 0;
+            const redDayDiff = myRedDays - avgRedDay;
+
+            if (redDayDiff > 0) {
+                priority -= 500 * redDayDiff;
+            } else if (redDayDiff < 0) {
+                priority += 300 * Math.abs(redDayDiff);
+            }
         }
 
         // P1: Dagar i rad — gradvis penalty (4+ dagar)
         if ((t.streak || 0) >= 4) {
             priority -= ((t.streak || 0) - 3) * 500;
-        }
-
-        // P1: Röd dag (redDayHandling) — rättvis rotation
-        if (ruleActive('redDayHandling')) {
-            if (isRedDayCheck(dateStr)) {
-                priority -= 200;
-            }
         }
 
         // P1: Vikarier sist (substituteLastPriority)
@@ -561,7 +592,7 @@ function findBestCandidate(personTargets, dayIdx, days, year, month, stateRules,
             }
         }
 
-        // P1: Veckobalans — bonus om fler dagar kvar att fylla
+        // P1: Veckobalans — bonus om fler dagar kvar att fylla i veckan
         const daysBalance = personMaxDays - daysThisWeek;
         if (daysBalance > 2) {
             priority += daysBalance * 50;
@@ -585,7 +616,6 @@ function findBestCandidate(personTargets, dayIdx, days, year, month, stateRules,
 
     return candidates.length > 0 ? candidates[0].person : null;
 }
-
 /* ========================================================================
    BLOCK 15 — HELPERS + evaluateSchedule()
 
