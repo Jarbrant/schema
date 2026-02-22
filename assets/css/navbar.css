@@ -1,6 +1,6 @@
 /* ========================================================================
    NAVBAR — “DI style”
-   AUTOPATCH v1.5 — SINGLE TOPBAR + SCROLL + FADE HINT
+   AUTOPATCH v1.6 — SINGLE TOPBAR + SCROLL FIX (GRID min-width:0)
    ======================================================================== */
 
 :root{
@@ -21,7 +21,7 @@
   --pill-active-bg: rgba(255,255,255,0.16);
   --pill-active-border: rgba(255,255,255,0.24);
 
-  --fade-w: 38px; /* hur bred fade-hinten är */
+  --fade-w: 34px;
 }
 
 #navbar{
@@ -43,6 +43,7 @@
   background: linear-gradient(90deg, var(--nav-accent), rgba(185,28,28,0.55));
 }
 
+/* ✅ Grid: tillåt att mittenkolumnen faktiskt kan krympa */
 .navbar-content{
   max-width: var(--frame-max);
   margin: 0 auto;
@@ -54,6 +55,8 @@
 
   padding: 10px var(--frame-pad);
   gap: 10px;
+
+  min-width: 0; /* viktig i vissa layouter */
 }
 
 .navbar-brand{
@@ -61,6 +64,7 @@
   display: flex;
   align-items: center;
   gap: 0.65rem;
+  min-width: 0;
 }
 .navbar-brand h2{
   margin: 0;
@@ -71,10 +75,17 @@
   white-space: nowrap;
 }
 
-/* Menu wrapper (för fade hints) */
+.navbar-actions{
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* ✅ Menu: scroll MÅSTE funka i grid -> min-width:0 + max-width:100% */
 .navbar-menu{
   grid-area: menu;
-  position: relative;
 
   display: flex;
   align-items: center;
@@ -88,32 +99,30 @@
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
 
-  scroll-snap-type: x proximity;
+  min-width: 0;     /* P0: gör att overflow triggas */
+  max-width: 100%;  /* P0: stoppar att den “läcker” utanför */
+
   scrollbar-width: none;
 }
 .navbar-menu::-webkit-scrollbar{ display: none; }
 
-/* Fade-hints (visuellt “det finns mer”) */
-.navbar-menu::before,
-.navbar-menu::after{
-  content: "";
-  position: sticky;
-  top: 0;
-  width: var(--fade-w);
-  height: 100%;
-  pointer-events: none;
-  z-index: 2;
-}
-.navbar-menu::before{
-  left: 0;
-  background: linear-gradient(90deg, rgba(11,18,32,0.95), rgba(11,18,32,0.0));
-}
-.navbar-menu::after{
-  right: 0;
-  background: linear-gradient(270deg, rgba(11,18,32,0.95), rgba(11,18,32,0.0));
+/* Fade-hint utan pseudo-sticky (mask fungerar bättre) */
+@supports (-webkit-mask-image: linear-gradient(#000,#000)) or (mask-image: linear-gradient(#000,#000)){
+  .navbar-menu{
+    -webkit-mask-image: linear-gradient(90deg,
+      transparent 0,
+      #000 var(--fade-w),
+      #000 calc(100% - var(--fade-w)),
+      transparent 100%);
+            mask-image: linear-gradient(90deg,
+      transparent 0,
+      #000 var(--fade-w),
+      #000 calc(100% - var(--fade-w)),
+      transparent 100%);
+  }
 }
 
-/* Chips: tightare så fler ryms */
+/* Chips */
 .nav-link{
   display: inline-flex;
   align-items: center;
@@ -132,7 +141,6 @@
   border: 1px solid var(--pill-border);
 
   white-space: nowrap;
-  scroll-snap-align: start;
 
   transition: background 0.18s ease, border-color 0.18s ease, transform 0.05s ease;
 }
@@ -148,13 +156,6 @@
 
 .nav-icon{ display: inline-flex; opacity: 0.95; }
 .nav-label{ display: inline; }
-
-.navbar-actions{
-  grid-area: actions;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
 
 .btn-logout{
   padding: 0.52rem 0.78rem;
@@ -177,7 +178,7 @@
 }
 
 @media (max-width: 768px){
-  :root{ --frame-pad: 1rem; --fade-w: 28px; }
+  :root{ --frame-pad: 1rem; --fade-w: 24px; }
   #navbar{ margin-bottom: 12px; }
   .navbar-content{ padding: 10px var(--frame-pad); gap: 8px; }
   .nav-link{ padding: 0.44rem 0.56rem; font-size: 0.88rem; }
