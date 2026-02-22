@@ -1,10 +1,11 @@
 /*
- * UI.JS — Shared UI Utilities (UPPDATERAD AO-06 + NAV FIX)
+ * UI.JS — Shared UI Utilities (AUTOPATCH v1 — NAVBAR GRID ORDER FIX)
  *
- * AO-06: Ny nav-länk "Veckomallar" tillagd i NAV_ITEMS
- * AO-16: Navbar fix:
- *  - Markerar aktiv route (nav-link.active)
- *  - Stabil markup (ingen extra wrappers)
+ * Fixar (P0):
+ * - renderNavbar(): matchar CSS grid-areas genom att placera actions före menu
+ * - Behåller allt annat oförändrat
+ *
+ * Policy: UI-only. Ingen store/routing ändras.
  */
 
 import { diagnostics } from './diagnostics.js';
@@ -62,26 +63,39 @@ export function renderNavbar(container) {
       </a>`;
     }).join('');
 
+    // P0: Viktigt — ordningen måste matcha grid-template-areas:
+    // "brand actions"
+    // "menu  menu"
     const html = `
       <div class="navbar-content">
         <div class="navbar-brand">
           <h2>📅 Schema-Program</h2>
         </div>
 
-        <nav class="navbar-menu" aria-label="Huvudmeny">
-          ${linksHtml}
-        </nav>
-
         <div class="navbar-actions">
-          <button type="button" onclick="window.location.hash = '#/login'" class="btn-logout">
+          <button type="button" class="btn-logout" data-route="#/login">
             <span class="nav-icon">🚪</span>
             <span class="nav-label">Logga ut</span>
           </button>
         </div>
+
+        <nav class="navbar-menu" aria-label="Huvudmeny">
+          ${linksHtml}
+        </nav>
       </div>
     `;
 
     container.innerHTML = html;
+
+    // P0: Stabil logout utan inline onclick (men samma beteende)
+    const btn = container.querySelector('.btn-logout[data-route]');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-route') || '#/login';
+        window.location.hash = target;
+      }, { passive: true });
+    }
+
     console.log('✓ Navbar renderad');
   } catch (err) {
     console.error('❌ Fel vid renderNavbar:', err);
