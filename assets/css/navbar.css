@@ -1,19 +1,22 @@
 /* ========================================================================
    NAVBAR — “DI style”
-   AUTOPATCH v1.1 — KILL STRAY TOPBAR
+   AUTOPATCH v1.2 — ROBUST STRAY TOPBAR KILL
 
    Fixar:
-   - P0: Tar bort extra ljus topbar (dubbla navbars) genom att dölja
-         body-level nav/header som inte är #navbar.
-   - P0: Behåller DI-navbar (#navbar) oförändrad.
+   - P0: Dödar extra topbar även om den inte är body > nav/header
+         (t.ex. body > div > header/nav/topbar)
+   - P0: Behåller #navbar oförändrad
    ======================================================================== */
 
 /* ============================================================
-   P0 KILL-SWITCH: Om en extra topbar renderas av legacy-kod
-   (ofta <nav> eller <header> direkt under <body>)
+   P0 KILL-SWITCH (ROBUST)
+   - Om legacy-topbar renderas före/utanför #navbar
+   - Vi döljer "topbar-liknande" element i toppen, men ALDRIG #navbar
    ============================================================ */
+
+/* 1) Alla direkta topbar-kandidater som INTE är #navbar */
 body > nav:not(#navbar),
-body > header,
+body > header:not(#navbar),
 body > .topbar,
 body > .navbar,
 body > .app-topbar,
@@ -23,20 +26,35 @@ body > .nav-container {
   display: none !important;
 }
 
-/* Behåll även “inne i appen” om någon vy råkar rendera legacy-topbar där */
+/* 2) Om topbar ligger i en wrapper (t.ex. body > div > header/nav/...) */
+body > *:not(#navbar) > nav,
+body > *:not(#navbar) > header,
+body > *:not(#navbar) > .topbar,
+body > *:not(#navbar) > .navbar,
+body > *:not(#navbar) > .app-topbar,
+body > *:not(#navbar) > .header-bar,
+body > *:not(#navbar) > .nav-bar,
+body > *:not(#navbar) > .nav-container {
+  display: none !important;
+}
+
+/* 3) Sista skydd: om någon vy råkar rendera legacy-topbar inne i appen */
 #app .navbar,
 #app .topbar,
 #app .app-topbar,
 #app .header-bar,
 #app .nav-bar,
-#app .nav-container{
+#app .nav-container {
   display: none !important;
 }
 
+/* ============================================================
+   DI NAVBAR STYLING
+   ============================================================ */
 :root{
-  --nav-outer-bg: #0b1220;        /* mörk ram */
-  --nav-accent: #b91c1c;          /* röd accent */
-  --nav-inner-bg: #111a2e;        /* meny-rad */
+  --nav-outer-bg: #0b1220;
+  --nav-accent: #b91c1c;
+  --nav-inner-bg: #111a2e;
 
   --nav-text: rgba(255,255,255,0.96);
   --nav-text-dim: rgba(255,255,255,0.82);
@@ -62,7 +80,7 @@ body > .nav-container {
   box-shadow: var(--nav-shadow);
 }
 
-/* Accent-linje (som “ram”) */
+/* Accent-linje */
 #navbar::before{
   content: "";
   display: block;
@@ -85,7 +103,7 @@ body > .nav-container {
   padding: 0;
 }
 
-/* Rad 1: brand/actions */
+/* Rad 1 */
 .navbar-brand{
   grid-area: brand;
   padding: 0.85rem 1rem;
@@ -110,7 +128,7 @@ body > .nav-container {
   justify-content: flex-end;
 }
 
-/* Logout-knapp */
+/* Logout */
 .btn-logout{
   padding: 0.55rem 0.85rem;
   border-radius: 10px;
@@ -150,7 +168,7 @@ body > .nav-container {
 }
 .navbar-menu::-webkit-scrollbar{ display: none; }
 
-/* Länkar: chips */
+/* Chips */
 .nav-link{
   display: inline-flex;
   align-items: center;
