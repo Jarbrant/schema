@@ -1,11 +1,29 @@
 /* ========================================================================
    NAVBAR — “DI style”
-   - Sticky header (fast ram) med tydlig färg
-   - 2 rader: brand/actions överst, meny under
-   - Hög kontrast: ingen blek text
+   AUTOPATCH v1.1 — KILL STRAY TOPBAR
+
+   Fixar:
+   - P0: Tar bort extra ljus topbar (dubbla navbars) genom att dölja
+         body-level nav/header som inte är #navbar.
+   - P0: Behåller DI-navbar (#navbar) oförändrad.
    ======================================================================== */
 
-/* TEMP FIX (behåll): om en extra topbar råkar renderas inne i vyn */
+/* ============================================================
+   P0 KILL-SWITCH: Om en extra topbar renderas av legacy-kod
+   (ofta <nav> eller <header> direkt under <body>)
+   ============================================================ */
+body > nav:not(#navbar),
+body > header,
+body > .topbar,
+body > .navbar,
+body > .app-topbar,
+body > .header-bar,
+body > .nav-bar,
+body > .nav-container {
+  display: none !important;
+}
+
+/* Behåll även “inne i appen” om någon vy råkar rendera legacy-topbar där */
 #app .navbar,
 #app .topbar,
 #app .app-topbar,
@@ -17,7 +35,7 @@
 
 :root{
   --nav-outer-bg: #0b1220;        /* mörk ram */
-  --nav-accent: #b91c1c;          /* röd accent (DI-känsla). Byt till din lila om du vill. */
+  --nav-accent: #b91c1c;          /* röd accent */
   --nav-inner-bg: #111a2e;        /* meny-rad */
 
   --nav-text: rgba(255,255,255,0.96);
@@ -52,7 +70,7 @@
   background: linear-gradient(90deg, var(--nav-accent), rgba(185,28,28,0.55));
 }
 
-/* Vi gör navbar-content till en 2-raders layout */
+/* 2-raders layout */
 .navbar-content{
   max-width: 1200px;
   margin: 0 auto;
@@ -64,7 +82,7 @@
     "menu  menu";
   gap: 0;
 
-  padding: 0; /* vi sätter padding per rad nedan */
+  padding: 0;
 }
 
 /* Rad 1: brand/actions */
@@ -92,7 +110,7 @@
   justify-content: flex-end;
 }
 
-/* Logout som “liten knapp” i header */
+/* Logout-knapp */
 .btn-logout{
   padding: 0.55rem 0.85rem;
   border-radius: 10px;
@@ -123,17 +141,16 @@
 
   padding: 0.55rem 1rem;
 
-  /* En rad, scroll på små skärmar */
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
 
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
 }
 .navbar-menu::-webkit-scrollbar{ display: none; }
 
-/* Länkar: små “chips” (inte bleka) */
+/* Länkar: chips */
 .nav-link{
   display: inline-flex;
   align-items: center;
@@ -165,16 +182,13 @@
   border-color: var(--pill-active-border);
 }
 
-/* Om ui.js använder nav-icon/nav-label */
 .nav-icon{ display: inline-flex; }
 .nav-label{ display: inline; }
 
-/* Mobil: dölj labels om du vill, behåll ikoner */
 @media (max-width: 520px){
   .nav-label{ display: none; }
 }
 
-/* Små skärmar: lite tightare paddings */
 @media (max-width: 768px){
   .navbar-brand{ padding: 0.75rem 0.85rem; }
   .navbar-actions{ padding: 0.65rem 0.85rem; }
