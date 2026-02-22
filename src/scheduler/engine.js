@@ -29,8 +29,6 @@
  * - BUGG: entry-format använde start/end istf startTime/endTime → osynligt i kalender (P0).
  */
 
-import { evaluate } from '../rules.js';
-
 /* ========================================================================
    BLOCK 1 — PUBLIC API: generate(state, input)
    ======================================================================== */
