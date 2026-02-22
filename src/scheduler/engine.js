@@ -510,7 +510,18 @@ function findBestCandidate(personTargets, dayIdx, days, year, month) {
 }
 
 /* ========================================================================
-   BLOCK 15A — evaluateSchedule() (NYTT — ersätter trasig evaluate-import)
+   BLOCK 15 — HELPERS + evaluateSchedule()
+
+   Innehåll:
+   15A: evaluateSchedule()  — NY, ersätter trasig evaluate-import
+   15B: getWeekdayIdx()     — OFÖRÄNDRAD (behövs av Block 3, 6, 9)
+   15C: getPersonGroups()   — OFÖRÄNDRAD (behövs av Block 4, 8)
+   15D: buildNeedByWeekday() — OFÖRÄNDRAD (behövs av Block 3)
+   15E: buildPersonGroupChecker() — OFÖR��NDRAD (behövs av Block 8)
+   ======================================================================== */
+
+/* ────────────────────────────────────────────────────────────────────────
+   15A — evaluateSchedule() (NYTT — ersätter trasig evaluate-import)
 
    Validerar genererat schema mot arbetstidsregler:
    - P0: Max dagar i rad (>6)
@@ -518,7 +529,7 @@ function findBestCandidate(personTargets, dayIdx, days, year, month) {
    - P0: Ingen veckovila (minst 1 ledig dag per 7-dagarsperiod)
    - P1: Helg-obalans (samma person jobbar helg >2 veckor i rad)
    - P1: Ojämn fördelning (>20% avvikelse från target)
-   ======================================================================== */
+   ──────────────────────────────────────────────────────────────────────── */
 
 function evaluateSchedule(state, { year, month }) {
     const warnings = [];
@@ -559,7 +570,7 @@ function evaluateSchedule(state, { year, month }) {
         const maxDaysPerWeek = person?.workdaysPerWeek || 5;
         const sortedDays = [...dayIndices].sort((a, b) => a - b);
 
-        // P0: Max dagar i rad
+        // ── P0: Max dagar i rad ──
         let maxStreak = 1;
         let currentStreak = 1;
         for (let i = 1; i < sortedDays.length; i++) {
@@ -581,7 +592,7 @@ function evaluateSchedule(state, { year, month }) {
             });
         }
 
-        // P0: Max dagar per vecka
+        // ── P0: Max dagar per vecka ──
         const weekBuckets = {};
         sortedDays.forEach((d) => {
             const weekNum = Math.floor(d / 7);
@@ -600,7 +611,7 @@ function evaluateSchedule(state, { year, month }) {
             }
         });
 
-        // P1: Helg-obalans (jobbar helg >2 veckor i rad)
+        // ── P1: Helg-obalans (jobbar helg >2 veckor i rad) ──
         const weekendWeeks = new Set();
         sortedDays.forEach((d) => {
             const date = new Date(year, month - 1, d + 1);
@@ -616,7 +627,10 @@ function evaluateSchedule(state, { year, month }) {
         for (let i = 1; i < weekendWeeksList.length; i++) {
             if (weekendWeeksList[i] === weekendWeeksList[i - 1] + 1) {
                 consecutiveWeekendWeeks++;
-                maxConsecutiveWeekends = Math.max(maxConsecutiveWeekends, consecutiveWeekendWeeks);
+                maxConsecutiveWeekends = Math.max(
+                    maxConsecutiveWeekends,
+                    consecutiveWeekendWeeks
+                );
             } else {
                 consecutiveWeekendWeeks = 1;
             }
@@ -634,4 +648,108 @@ function evaluateSchedule(state, { year, month }) {
     });
 
     return { warnings };
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   15B — getWeekdayIdx()
+   JS: getDay() => 0=Sun..6=Sat. Vi vill 0=Mån..6=Sön
+   Används av: Block 3, Block 6, Block 9
+   ──────────────────────────────────────────────────────────────────────── */
+
+function getWeekdayIdx(year, month, dayOfMonth) {
+    const date = new Date(year, month - 1, dayOfMonth);
+    const d = date.getDay();
+    return d === 0 ? 6 : d - 1;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   15C — getPersonGroups()
+   Hämta person-grupper med fallback: groups → groupIds
+   Normaliserar till string-array.
+   Används av: Block 4, Block 8 (via buildPersonGroupChecker)
+   ──────────────────────────────────────────────────────────────────────── */
+
+function getPersonGroups(person) {
+    const raw = Array.isArray(person.groups)
+        ? person.groups
+        : Array.isArray(person.groupIds)
+          ? person.groupIds
+          : [];
+    return raw.map((g) => String(g)).filter(Boolean);
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   15D — buildNeedByWeekday()
+   Beräkna bemanningsbehov per veckodag (mån–sön, 7 värden).
+   Primärt: state.demand.groupDemands (summa av valda grupper)
+   Fallback: input.needByWeekday
+   Används av: Block 3
+   ──────────────────────────────────────────────────────────────────────── */
+
+function buildNeedByWeekday(state, selectedGroupIds, fallbackNeedByWeekday) {
+    const demand = state?.demand;
+    const groupDemands = demand?.groupDemands;
+
+    // Primärt: summera groupDemands för valda grupper
+    if (groupDemands && typeof groupDemands === 'object') {
+        const sum = [0, 0, 0, 0, 0, 0, 0];
+
+        selectedGroupIds.forEach((gid) => {
+            const arr = groupDemands[gid];
+            if (Array.isArray(arr) && arr.length === 7) {
+                for (let i = 0; i < 7; i++) {
+                    const v = parseInt(arr[i], 10);
+                    sum[i] += Number.isFinite(v) && v >= 0 ? v : 0;
+                }
+            }
+        });
+
+        const any = sum.some((v) => v > 0);
+        if (any) return sum;
+    }
+
+    // Fallback: input.needByWeekday (7 värden)
+    if (Array.isArray(fallbackNeedByWeekday) && fallbackNeedByWeekday.length === 7) {
+        return fallbackNeedByWeekday.map((x) => {
+            const v = parseInt(x, 10);
+            return Number.isFinite(v) && v >= 0 ? v : 0;
+        });
+    }
+
+    // Fail-closed: inget behov definierat
+    throw new Error(
+        'Bemanningsbehov saknas: sätt groupDemands i Kontroll-vyn eller skicka giltig needByWeekday'
+    );
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   15E — buildPersonGroupChecker()
+   Returnerar en funktion: (personId) => boolean
+   True om personen tillhör någon av selectedGroupIds.
+   Används av: Block 8 (rensning av gamla A-entries)
+   ──────────────────────────────────────────────────────────────────────── */
+
+function buildPersonGroupChecker(people, selectedGroupIds) {
+    const map = new Map();
+
+    (Array.isArray(people) ? people : []).forEach((p) => {
+        if (!p || typeof p !== 'object') return;
+        if (typeof p.id !== 'string' || !p.id) return;
+
+        const gs = getPersonGroups(p);
+        map.set(p.id, new Set(gs));
+    });
+
+    const selected = new Set(
+        selectedGroupIds.map((x) => String(x)).filter(Boolean)
+    );
+
+    return (personId) => {
+        const set = map.get(personId);
+        if (!set) return false;
+        for (const gid of set.values()) {
+            if (selected.has(gid)) return true;
+        }
+        return false;
+    };
 }
