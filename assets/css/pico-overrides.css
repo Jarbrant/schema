@@ -1,24 +1,28 @@
 /* ==========================================================================
-   Pico overrides — SAFE MODE v3 (MINIMAL)
+   Pico overrides — SAFE MODE v4 (NAVBAR SAFE)
+   FIL: assets/css/pico-overrides.css
+
    Mål:
-   - Låt master.css styra layouten (bakgrund, navbar, card-grid)
-   - Hindra Pico från att ändra spacing/sizing så det "ser värre ut"
-   - Fortfarande få Pico-typografi + form styling där det inte krockar
+   - Låt master.css styra layout (bakgrund, navbar, cards, grids)
+   - Låt Pico ge typografi + formulär där det inte krockar
+   - P0: Rör INTE #navbar (navbar.css är single source of truth)
+
+   Policy: UI-only. Ingen logik ändras.
    ========================================================================== */
 
-/* Accent bara (ofarligt) */
+/* Accent (ofarligt) */
 :root{
   --pico-primary: #667eea;
   --pico-primary-hover: #5a6fe0;
   --pico-primary-focus: rgba(102,126,234,0.25);
 }
 
-/* Pico kan sätta margins/padding som krockar — nolla det */
+/* Pico kan sätta margins som krockar */
 body{
   margin: 0;
 }
 
-/* Pico har default på main/container — vi vill INTE ändra layouten */
+/* Pico har default på main/container — vi vill INTE ändra appens layout */
 main{
   max-width: none !important;
   padding: 0 !important;
@@ -35,16 +39,13 @@ main{
   box-shadow: none !important;
 }
 
-/* Navbar: låt master.css bestämma */
-#navbar{
-  position: static !important;
-  top: auto !important;
-  background: transparent !important;
-  border: 0 !important;
-  backdrop-filter: none !important;
-}
+/* ============================================================
+   P0: NAVBAR — DO NOT TOUCH
+   - #navbar ska styras av assets/css/navbar.css
+   - Inga !important overrides här
+   ============================================================ */
 
-/* Pico påverkar buttons/inputs globalt — gör dina knappar stabila */
+/* Pico påverkar buttons/inputs globalt — stabilisera dina knappar */
 .btn,
 .btn-primary,
 .btn-secondary,
@@ -58,13 +59,13 @@ main{
   min-width: 0;
 }
 
-/* Pico kan ge a/button "line-height" och padding som gör navbar skev */
-.nav-link{
-  line-height: normal;
+/* Låt navbar.css sköta .nav-link. Här gör vi INGET som kan krocka. */
+/* (Om du vill: bara säkra att Pico inte understryker länkar globalt) */
+#navbar a{
   text-decoration: none;
 }
 
-/* Tables kan bli konstiga i era cards om Pico tar över */
+/* Tables: undvik att Pico tvingar "full width" inne i cards */
 table{
   width: auto;
 }
