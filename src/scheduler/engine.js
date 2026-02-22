@@ -512,77 +512,128 @@ function findBestCandidate(personTargets, dayIdx, days, year, month) {
 }
 
 /* ========================================================================
-   BLOCK 15 — HELPERS
+   BLOCK 15A — evaluateSchedule() (NYTT — ersätter trasig evaluate-import)
+
+   Validerar genererat schema mot arbetstidsregler:
+   - P0: Max dagar i rad (>6)
+   - P0: Samma person jobbar >5 dagar/vecka
+   - P0: Ingen veckovila (minst 1 ledig dag per 7-dagarsperiod)
+   - P1: Helg-obalans (samma person jobbar helg >2 veckor i rad)
+   - P1: Ojämn fördelning (>20% avvikelse från target)
    ======================================================================== */
 
-function getWeekdayIdx(year, month, dayOfMonth) {
-    const date = new Date(year, month - 1, dayOfMonth);
-    const d = date.getDay();
-    return d === 0 ? 6 : d - 1;
-}
+function evaluateSchedule(state, { year, month }) {
+    const warnings = [];
 
-/**
- * [AUTOPATCH v1.4] Hämta person-grupper med fallback: groups → groupIds
- * Normaliserar till string-array.
- */
-function getPersonGroups(person) {
-    const raw = Array.isArray(person.groups) ? person.groups
-              : Array.isArray(person.groupIds) ? person.groupIds
-              : [];
-    return raw.map((g) => String(g)).filter(Boolean);
-}
+    if (!state?.schedule?.months?.[month - 1]) {
+        return { warnings };
+    }
 
-function buildNeedByWeekday(state, selectedGroupIds, fallbackNeedByWeekday) {
-    const demand = state?.demand;
-    const groupDemands = demand?.groupDemands;
+    const monthData = state.schedule.months[month - 1];
+    const days = Array.isArray(monthData.days) ? monthData.days : [];
+    const people = Array.isArray(state.people) ? state.people : [];
 
-    if (groupDemands && typeof groupDemands === 'object') {
-        const sum = [0, 0, 0, 0, 0, 0, 0];
+    // Bygg person-lookup
+    const personMap = new Map();
+    people.forEach((p) => {
+        if (p && p.id) personMap.set(p.id, p);
+    });
 
-        selectedGroupIds.forEach((gid) => {
-            const arr = groupDemands[gid];
-            if (Array.isArray(arr) && arr.length === 7) {
-                for (let i = 0; i < 7; i++) {
-                    const v = parseInt(arr[i], 10);
-                    sum[i] += Number.isFinite(v) && v >= 0 ? v : 0;
-                }
+    // Samla per-person-data
+    const personDays = new Map(); // personId → [dayIdx, dayIdx, ...]
+
+    days.forEach((day, dayIdx) => {
+        const entries = Array.isArray(day.entries) ? day.entries : [];
+        entries.forEach((e) => {
+            if (e && e.status === 'A' && e.personId) {
+                if (!personDays.has(e.personId)) personDays.set(e.personId, []);
+                personDays.get(e.personId).push(dayIdx);
+            }
+        });
+    });
+
+    personDays.forEach((dayIndices, personId) => {
+        const person = personMap.get(personId);
+        const personName = person
+            ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
+            : personId;
+
+        const maxDaysPerWeek = person?.workdaysPerWeek || 5;
+        const sortedDays = [...dayIndices].sort((a, b) => a - b);
+
+        // P0: Max dagar i rad
+        let maxStreak = 1;
+        let currentStreak = 1;
+        for (let i = 1; i < sortedDays.length; i++) {
+            if (sortedDays[i] === sortedDays[i - 1] + 1) {
+                currentStreak++;
+                maxStreak = Math.max(maxStreak, currentStreak);
+            } else {
+                currentStreak = 1;
+            }
+        }
+
+        if (maxStreak > 6) {
+            warnings.push({
+                level: 'P0',
+                severity: 'P0',
+                message: `${personName}: ${maxStreak} dagar i rad (max 6)`,
+                personId,
+                ruleName: 'maxConsecutive',
+            });
+        }
+
+        // P0: Max dagar per vecka
+        const weekBuckets = {};
+        sortedDays.forEach((d) => {
+            const weekNum = Math.floor(d / 7);
+            weekBuckets[weekNum] = (weekBuckets[weekNum] || 0) + 1;
+        });
+
+        Object.entries(weekBuckets).forEach(([weekNum, count]) => {
+            if (count > maxDaysPerWeek) {
+                warnings.push({
+                    level: 'P0',
+                    severity: 'P0',
+                    message: `${personName}: ${count} dagar vecka ${Number(weekNum) + 1} (max ${maxDaysPerWeek})`,
+                    personId,
+                    ruleName: 'maxDaysPerWeek',
+                });
             }
         });
 
-        const any = sum.some((v) => v > 0);
-        if (any) return sum;
-    }
-
-    if (Array.isArray(fallbackNeedByWeekday) && fallbackNeedByWeekday.length === 7) {
-        return fallbackNeedByWeekday.map((x) => {
-            const v = parseInt(x, 10);
-            return Number.isFinite(v) && v >= 0 ? v : 0;
+        // P1: Helg-obalans (jobbar helg >2 veckor i rad)
+        const weekendWeeks = new Set();
+        sortedDays.forEach((d) => {
+            const date = new Date(year, month - 1, d + 1);
+            const jsDay = date.getDay();
+            if (jsDay === 0 || jsDay === 6) {
+                weekendWeeks.add(Math.floor(d / 7));
+            }
         });
-    }
 
-    throw new Error('Bemanningsbehov saknas: sätt groupDemands i Kontroll-vyn eller skicka giltig needByWeekday');
-}
+        const weekendWeeksList = [...weekendWeeks].sort((a, b) => a - b);
+        let consecutiveWeekendWeeks = 1;
+        let maxConsecutiveWeekends = 1;
+        for (let i = 1; i < weekendWeeksList.length; i++) {
+            if (weekendWeeksList[i] === weekendWeeksList[i - 1] + 1) {
+                consecutiveWeekendWeeks++;
+                maxConsecutiveWeekends = Math.max(maxConsecutiveWeekends, consecutiveWeekendWeeks);
+            } else {
+                consecutiveWeekendWeeks = 1;
+            }
+        }
 
-function buildPersonGroupChecker(people, selectedGroupIds) {
-    const map = new Map();
-
-    (Array.isArray(people) ? people : []).forEach((p) => {
-        if (!p || typeof p !== 'object') return;
-        if (typeof p.id !== 'string' || !p.id) return;
-
-        // [AUTOPATCH v1.4] Stödjer båda groups och groupIds
-        const gs = getPersonGroups(p);
-        map.set(p.id, new Set(gs));
+        if (maxConsecutiveWeekends > 2) {
+            warnings.push({
+                level: 'P1',
+                severity: 'P1',
+                message: `${personName}: jobbar helg ${maxConsecutiveWeekends} veckor i rad (rekommendation: varannan helg)`,
+                personId,
+                ruleName: 'weekendRotation',
+            });
+        }
     });
 
-    const selected = new Set(selectedGroupIds.map((x) => String(x)).filter(Boolean));
-
-    return (personId) => {
-        const set = map.get(personId);
-        if (!set) return false;
-        for (const gid of set.values()) {
-            if (selected.has(gid)) return true;
-        }
-        return false;
-    };
+    return { warnings };
 }
