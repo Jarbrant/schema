@@ -313,19 +313,30 @@ export function generate(state, input) {
 
     console.log('✓ Validering passerad');
 
-    /* ====================================================================
-       BLOCK 11 — RULES VALIDATION (evaluate)
+       /* ====================================================================
+       BLOCK 11 — RULES VALIDATION v2.0 (INBYGGD EVALUATE)
+
+       [ÄNDRING] Använder den nya inbyggda evaluate() istället för
+       den trasiga importen från rules.js (som saknade funktionen).
        ==================================================================== */
 
     let hasP0 = false;
     try {
-        const fullEvaluation = evaluate(proposedState, { year, month });
+        const fullEvaluation = evaluateSchedule(proposedState, { year, month });
         const warnings = Array.isArray(fullEvaluation?.warnings) ? fullEvaluation.warnings : [];
-        const p0Warnings = warnings.filter((w) => w.level === 'P0');
+        const p0Warnings = warnings.filter((w) => w.severity === 'P0' || w.level === 'P0');
 
         if (p0Warnings.length > 0) {
             hasP0 = true;
             notes.push(`⚠️  ${p0Warnings.length} P0-varning(ar) vid slutlig kontroll`);
+            p0Warnings.forEach((w) => {
+                console.warn(`  P0: ${w.message || w.ruleName || 'okänd'}`);
+            });
+        }
+
+        const p1Warnings = warnings.filter((w) => w.severity === 'P1' || w.level === 'P1');
+        if (p1Warnings.length > 0) {
+            notes.push(`ℹ️  ${p1Warnings.length} P1-varning(ar) (rekommendation)`);
         }
     } catch (err) {
         console.warn('Slutlig regelvalidering misslyckades:', err);
