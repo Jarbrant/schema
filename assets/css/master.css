@@ -22,7 +22,9 @@
    17) navbar.css     — Topbar
    18) diagnostics.css— Felpanel
    19) healthcheck.css— Modulstatus (AO-05)
-   20) responsive.css — ALLTID SIST
+   20) help.css       — Hjälpvy (AO-14)
+   21) rules-enhanced.css — Regler (AO-15)
+   22) responsive.css — ALLTID SIST
    ======================================================================== */
 
 /* 1) Global reset + layout */
@@ -73,7 +75,7 @@
 /* 16) Summary */
 @import url('./summary.css');
 
-/* 17) Navbar */
+/* 17) Navbar (SINGLE SOURCE OF TRUTH) */
 @import url('./navbar.css');
 
 /* 18) Diagnostics */
@@ -82,5 +84,11 @@
 /* 19) Healthcheck */
 @import url('./healthcheck.css');
 
-/* 20) Responsive (ALLTID SIST!) */
+/* 20) Help (AO-14) */
+@import url('./help.css');
+
+/* 21) Rules enhanced (AO-15) */
+@import url('./rules-enhanced.css');
+
+/* 22) Responsive (ALLTID SIST!) */
 @import url('./responsive.css');
