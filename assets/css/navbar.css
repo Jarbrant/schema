@@ -1,7 +1,8 @@
 /* ========================================================================
-   NAVBAR — Top navigation bar (MODERN + STABLE, ONE-LINE MENU)
-   - Sticky: alltid synlig när man scrollar
-   - Hård “ram”/bar: stabil höjd + tydlig bottenlinje
+   NAVBAR — “DI style”
+   - Sticky header (fast ram) med tydlig färg
+   - 2 rader: brand/actions överst, meny under
+   - Hög kontrast: ingen blek text
    ======================================================================== */
 
 /* TEMP FIX (behåll): om en extra topbar råkar renderas inne i vyn */
@@ -14,231 +15,168 @@
   display: none !important;
 }
 
-/* Theme tokens för navbar */
 :root{
-  --nav-bg: rgba(16, 24, 40, 0.78);
-  --nav-border: rgba(255,255,255,0.14);
-  --nav-shadow: 0 14px 34px rgba(0,0,0,0.25);
+  --nav-outer-bg: #0b1220;        /* mörk ram */
+  --nav-accent: #b91c1c;          /* röd accent (DI-känsla). Byt till din lila om du vill. */
+  --nav-inner-bg: #111a2e;        /* meny-rad */
 
-  --pill-bg: rgba(255,255,255,0.08);
-  --pill-bg-hover: rgba(255,255,255,0.14);
-  --pill-border: rgba(255,255,255,0.16);
+  --nav-text: rgba(255,255,255,0.96);
+  --nav-text-dim: rgba(255,255,255,0.82);
 
-  /* NYTT: “rutorna”/pills accentfärg */
-  --pill-active-a: rgba(34,197,94,0.35);   /* grön */
-  --pill-active-b: rgba(16,185,129,0.20);  /* teal */
+  --nav-border: rgba(255,255,255,0.10);
+  --nav-shadow: 0 10px 30px rgba(0,0,0,0.25);
+
+  --pill-bg: rgba(255,255,255,0.06);
+  --pill-hover: rgba(255,255,255,0.10);
+  --pill-border: rgba(255,255,255,0.12);
+
+  --pill-active-bg: rgba(255,255,255,0.16);
+  --pill-active-border: rgba(255,255,255,0.24);
 }
 
 #navbar{
-  /* FAST RAM: alltid synlig */
   position: sticky;
   top: 0;
   z-index: 9999;
 
-  /* Håll navbar visuellt stabil (ingen “hoppa” pga blur) */
-  min-height: 64px;
-  display: flex;
-  align-items: center;
-
-  background: var(--nav-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-
+  background: var(--nav-outer-bg);
   border-bottom: 1px solid var(--nav-border);
   box-shadow: var(--nav-shadow);
-  padding: 0;
-
-  /* Förhindrar att innehåll skapar “räls”/overflow på baren */
-  overflow: hidden;
 }
 
-.navbar-content{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* Accent-linje (som “ram”) */
+#navbar::before{
+  content: "";
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg, var(--nav-accent), rgba(185,28,28,0.55));
+}
 
-  width: 100%;
+/* Vi gör navbar-content till en 2-raders layout */
+.navbar-content{
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0.75rem 1rem;
-  gap: 1rem;
+
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "brand actions"
+    "menu  menu";
+  gap: 0;
+
+  padding: 0; /* vi sätter padding per rad nedan */
 }
 
-/* Brand */
+/* Rad 1: brand/actions */
 .navbar-brand{
-  flex-shrink: 0;
-  padding: 0;
+  grid-area: brand;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
-
 .navbar-brand h2{
   margin: 0;
-  color: rgba(255,255,255,0.95);
-  font-size: 1.1rem;
+  color: var(--nav-text);
+  font-size: 1.15rem;
   font-weight: 900;
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
-/* Menu: ONE LINE + horizontal scroll (scrollbar hidden) */
-.navbar-menu{
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  justify-content: center;
-
-  flex: 1;
-  margin: 0 0.5rem;
-  padding: 0;
-
-  list-style: none;
-
-  /* ONE ROW */
-  flex-wrap: nowrap;
-
-  /* Allow horizontal scroll without ugly rail */
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; /* Firefox */
-}
-.navbar-menu::-webkit-scrollbar{
-  display: none; /* Chrome/Safari */
-}
-
-/* “Rutorna” (nav pills) — ändrad färg */
-.nav-link{
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-
-  padding: 0.55rem 0.9rem;
-  color: rgba(255,255,255,0.92);
-  text-decoration: none;
-
-  font-weight: 700;
-  font-size: 0.92rem;
-  line-height: 1;
-
-  white-space: nowrap;
-  border-radius: 999px;
-
-  border: 1px solid var(--pill-border);
-  background: var(--pill-bg);
-
-  transition: background 0.18s ease, border-color 0.18s ease, transform 0.05s ease, color 0.18s ease;
-}
-
-.nav-link:hover{
-  background: var(--pill-bg-hover);
-  border-color: rgba(255,255,255,0.26);
-  color: rgba(255,255,255,0.98);
-}
-
-.nav-link:active{
-  transform: translateY(1px);
-}
-
-/* Aktiv ruta: NY färg (grön/teal) */
-.nav-link.active{
-  background: linear-gradient(135deg, var(--pill-active-a), var(--pill-active-b));
-  border-color: rgba(255,255,255,0.26);
-  color: #fff;
-}
-
-/* Actions */
 .navbar-actions{
-  flex-shrink: 0;
+  grid-area: actions;
+  padding: 0.75rem 1rem;
   display: flex;
   align-items: center;
   justify-content: flex-end;
 }
 
+/* Logout som “liten knapp” i header */
 .btn-logout{
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.06);
+  color: var(--nav-text);
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.05s ease;
+}
+.btn-logout:hover{
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.30);
+}
+.btn-logout:active{ transform: translateY(1px); }
+
+/* Rad 2: meny */
+.navbar-menu{
+  grid-area: menu;
+
+  background: var(--nav-inner-bg);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  padding: 0.55rem 1rem;
+
+  /* En rad, scroll på små skärmar */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+
+  scrollbar-width: none; /* Firefox */
+}
+.navbar-menu::-webkit-scrollbar{ display: none; }
+
+/* Länkar: små “chips” (inte bleka) */
+.nav-link{
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
 
-  padding: 0.55rem 0.9rem;
-  border: 1px solid rgba(255,255,255,0.22);
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.96);
-
+  padding: 0.5rem 0.75rem;
   border-radius: 999px;
-  font-weight: 800;
-  cursor: pointer;
 
+  color: var(--nav-text);
+  text-decoration: none;
+  font-weight: 750;
+  font-size: 0.92rem;
+  line-height: 1;
+
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+
+  white-space: nowrap;
   transition: background 0.18s ease, border-color 0.18s ease, transform 0.05s ease;
 }
+.nav-link:hover{
+  background: var(--pill-hover);
+  border-color: rgba(255,255,255,0.20);
+}
+.nav-link:active{ transform: translateY(1px); }
 
-.btn-logout:hover{
-  background: rgba(255,255,255,0.14);
-  border-color: rgba(255,255,255,0.30);
+.nav-link.active{
+  background: var(--pill-active-bg);
+  border-color: var(--pill-active-border);
 }
 
-.btn-logout:active{
-  transform: translateY(1px);
-}
-
-/* Icons/labels (used by ui.js if present) */
+/* Om ui.js använder nav-icon/nav-label */
 .nav-icon{ display: inline-flex; }
 .nav-label{ display: inline; }
 
-/* Responsive */
-@media (max-width: 1024px){
-  .navbar-content{
-    padding: 0.7rem 0.85rem;
-  }
-  .navbar-menu{
-    justify-content: flex-start;
-  }
-  .nav-link{
-    padding: 0.5rem 0.75rem;
-    font-size: 0.86rem;
-  }
-}
-
-@media (max-width: 768px){
-  .navbar-content{
-    flex-wrap: wrap;
-    gap: 0.6rem;
-  }
-
-  /* On mobile: full width scroller row */
-  .navbar-menu{
-    width: 100%;
-    margin: 0;
-    order: 3;
-  }
-
-  .nav-link{
-    padding: 0.5rem 0.65rem;
-    font-size: 0.82rem;
-  }
-}
-
-/* Small phones: show icons only (if ui.js uses .nav-label) */
+/* Mobil: dölj labels om du vill, behåll ikoner */
 @media (max-width: 520px){
-  .nav-label{
-    display: none;
-  }
+  .nav-label{ display: none; }
 }
 
-@media (max-width: 480px){
-  #navbar{
-    min-height: 60px;
-  }
-
-  .navbar-brand h2{
-    font-size: 1rem;
-  }
-
-  .nav-link{
-    padding: 0.45rem 0.55rem;
-    font-size: 0.78rem;
-  }
-
-  .btn-logout{
-    padding: 0.5rem 0.75rem;
-    font-size: 0.85rem;
-  }
+/* Små skärmar: lite tightare paddings */
+@media (max-width: 768px){
+  .navbar-brand{ padding: 0.75rem 0.85rem; }
+  .navbar-actions{ padding: 0.65rem 0.85rem; }
+  .navbar-menu{ padding: 0.5rem 0.85rem; }
 }
