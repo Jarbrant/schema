@@ -1,5 +1,5 @@
 /* ========================================================================
-   NAVBAR — Top navigation bar (MODERN + STABLE)
+   NAVBAR — Top navigation bar (MODERN + STABLE, ONE-LINE MENU)
    ======================================================================== */
 
 /* TEMP FIX (behåll): om en extra topbar råkar renderas inne i vyn */
@@ -52,7 +52,7 @@
   white-space: nowrap;
 }
 
-/* Menu: NO scrollbar rail */
+/* Menu: ONE LINE + horizontal scroll (scrollbar hidden) */
 .navbar-menu{
   display: flex;
   gap: 0.5rem;
@@ -65,9 +65,17 @@
 
   list-style: none;
 
-  /* KEY FIX: ingen overflow-auto => ingen räls */
-  overflow: hidden;
-  flex-wrap: wrap;
+  /* ONE ROW */
+  flex-wrap: nowrap;
+
+  /* Allow horizontal scroll without ugly rail */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+}
+.navbar-menu::-webkit-scrollbar{
+  display: none; /* Chrome/Safari */
 }
 
 .nav-link{
@@ -141,7 +149,7 @@
   transform: translateY(1px);
 }
 
-/* Icons/labels */
+/* Icons/labels (used by ui.js if present) */
 .nav-icon{ display: inline-flex; }
 .nav-label{ display: inline; }
 
@@ -165,6 +173,7 @@
     gap: 0.6rem;
   }
 
+  /* On mobile: full width scroller row */
   .navbar-menu{
     width: 100%;
     margin: 0;
@@ -177,7 +186,7 @@
   }
 }
 
-/* Small phones: show icons only */
+/* Small phones: show icons only (if ui.js uses .nav-label) */
 @media (max-width: 520px){
   .nav-label{
     display: none;
