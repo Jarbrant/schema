@@ -1,22 +1,44 @@
 /*
- * AO-10 — Rules View (Arbetstidsregler)
+ * AO-10 — Rules View (Arbetstidsregler) v2.0
  * FIL: src/views/rules.js
  *
- * CRUD för arbetstidsregler:
- *   1. Lista alla regler med kort (aktiv/inaktiv)
- *   2. Skapa ny regel via modal
- *   3. Redigera befintlig regel
- *   4. Ta bort regel
- *   5. Toggle aktiv/inaktiv
+ * CRUD för arbetstidsregler + FULLSTÄNDIG REGELÖVERSIKT
+ *
+ * v2.0 ÄNDRINGAR:
+ *   - Nya regeltyper: maxDaysPerWeek, weeklyRest36h, weekendRotation, availabilityCheck,
+ *     absenceCheck, startDateCheck, redDayHandling, periodTarget, substituteLastPriority
+ *   - DEFAULT_RULES utökad med ALLA regler som schemamotorn ska ta hänsyn till
+ *   - Ny sektion "Systemregler" som alltid visas (ej redigerbara, alltid aktiva)
+ *   - Regelkort visar källa (ATL/EU/HRF/Intern)
  *
  * Regeltyper:
- *   - maxHoursWeek     Max timmar per vecka
- *   - maxHoursDay      Max timmar per dag
- *   - minRestBetween   Min vila mellan pass (timmar)
- *   - maxConsecutive   Max dagar i rad
- *   - minStaffPerShift Min bemanning per pass
- *   - obTillagg        OB-tillägg (kväll/natt/helg)
- *   - custom           Egen regel (fritext)
+ *   ARBETSTID:
+ *     maxHoursWeek       Max timmar per vecka
+ *     maxHoursDay        Max timmar per dag
+ *     maxDaysPerWeek     Max arbetsdagar per vecka
+ *     periodTarget       Periodmål (beräkningsperiod 16/26v)
+ *
+ *   VILA:
+ *     minRestBetween     Min vila mellan pass (11h dygnsvila)
+ *     maxConsecutive     Max dagar i rad
+ *     weeklyRest36h      36h sammanhängande veckovila
+ *     weekendRotation    Helg-rotation (varannan helg ledig)
+ *
+ *   BEMANNING:
+ *     minStaffPerShift   Min bemanning per pass
+ *     availabilityCheck  Tillgänglighetskontroll (person.availability)
+ *     absenceCheck       Frånvarokontroll (SEM/SJ/VAB etc)
+ *     startDateCheck     Startdatumkontroll
+ *
+ *   KOSTNAD:
+ *     obTillagg          OB-tillägg (kväll/natt/helg)
+ *     redDayHandling     Röd dag — OB + rotation
+ *
+ *   PRIORITERING:
+ *     substituteLastPriority  Vikarier schemaläggas sist
+ *
+ *   ÖVRIGT:
+ *     custom             Egen regel (fritext)
  *
  * Reglerna sparas i state.rules = []
  *
@@ -28,21 +50,124 @@
 
 /* ── CONSTANTS ── */
 const RULE_TYPES = {
-    maxHoursWeek:    { icon: '⏱️', label: 'Max timmar/vecka',     category: 'time',  color: 'rules-type-time' },
-    maxHoursDay:     { icon: '📅', label: 'Max timmar/dag',       category: 'time',  color: 'rules-type-time' },
-    minRestBetween:  { icon: '😴', label: 'Min vila mellan pass', category: 'rest',  color: 'rules-type-rest' },
-    maxConsecutive:  { icon: '📆', label: 'Max dagar i rad',      category: 'rest',  color: 'rules-type-rest' },
-    minStaffPerShift:{ icon: '👥', label: 'Min bemanning/pass',   category: 'staff', color: 'rules-type-staff' },
-    obTillagg:       { icon: '💰', label: 'OB-tillägg',           category: 'cost',  color: 'rules-type-cost' },
-    custom:          { icon: '📝', label: 'Egen regel',           category: 'custom',color: 'rules-type-custom' },
+    /* ARBETSTID */
+    maxHoursWeek:           { icon: '⏱️', label: 'Max timmar/vecka',           category: 'time',     color: 'rules-type-time' },
+    maxHoursDay:            { icon: '📅', label: 'Max timmar/dag',             category: 'time',     color: 'rules-type-time' },
+    maxDaysPerWeek:         { icon: '🗓️', label: 'Max dagar/vecka',            category: 'time',     color: 'rules-type-time' },
+    periodTarget:           { icon: '📊', label: 'Periodmål',                  category: 'time',     color: 'rules-type-time' },
+
+    /* VILA */
+    minRestBetween:         { icon: '��', label: 'Min vila mellan pass',       category: 'rest',     color: 'rules-type-rest' },
+    maxConsecutive:         { icon: '📆', label: 'Max dagar i rad',            category: 'rest',     color: 'rules-type-rest' },
+    weeklyRest36h:          { icon: '🛏️', label: '36h veckovila',              category: 'rest',     color: 'rules-type-rest' },
+    weekendRotation:        { icon: '🔄', label: 'Helg-rotation',              category: 'rest',     color: 'rules-type-rest' },
+
+    /* BEMANNING */
+    minStaffPerShift:       { icon: '👥', label: 'Min bemanning/pass',         category: 'staff',    color: 'rules-type-staff' },
+    availabilityCheck:      { icon: '✅', label: 'Tillgänglighet',             category: 'staff',    color: 'rules-type-staff' },
+    absenceCheck:           { icon: '🚫', label: 'Frånvarokontroll',           category: 'staff',    color: 'rules-type-staff' },
+    startDateCheck:         { icon: '📋', label: 'Startdatum',                 category: 'staff',    color: 'rules-type-staff' },
+
+    /* KOSTNAD */
+    obTillagg:              { icon: '💰', label: 'OB-tillägg',                 category: 'cost',     color: 'rules-type-cost' },
+    redDayHandling:         { icon: '🔴', label: 'Röd dag — OB + rotation',   category: 'cost',     color: 'rules-type-cost' },
+
+    /* PRIORITERING */
+    substituteLastPriority: { icon: '🔽', label: 'Vikarier sist',             category: 'priority', color: 'rules-type-priority' },
+
+    /* ÖVRIGT */
+    custom:                 { icon: '📝', label: 'Egen regel',                 category: 'custom',   color: 'rules-type-custom' },
+};
+
+const CATEGORY_LABELS = {
+    time:     '⏱️ Arbetstid',
+    rest:     '😴 Vila & Rotation',
+    staff:    '👥 Bemanning & Tillgänglighet',
+    cost:     '💰 Kostnad & OB',
+    priority: '🔽 Prioritering',
+    custom:   '📝 Övrigt',
 };
 
 const DEFAULT_RULES = [
-    { id: 'r-max-week',  type: 'maxHoursWeek',    name: 'Max 40 tim/vecka',       value: 40,  unit: 'timmar', description: 'Heltidsanställd max 40 timmar per vecka enligt kollektivavtal.', isActive: true },
-    { id: 'r-max-day',   type: 'maxHoursDay',     name: 'Max 10 tim/dag',         value: 10,  unit: 'timmar', description: 'Ingen ska arbeta mer än 10 timmar per arbetsdag.',               isActive: true },
-    { id: 'r-min-rest',  type: 'minRestBetween',  name: 'Min 11 tim vila',        value: 11,  unit: 'timmar', description: 'Minst 11 timmars sammanhängande vila mellan arbetspass (EU-direktiv).', isActive: true },
-    { id: 'r-max-cons',  type: 'maxConsecutive',   name: 'Max 6 dagar i rad',     value: 6,   unit: 'dagar',  description: 'Max 6 arbetsdagar i följd innan ledighet.',                     isActive: true },
-    { id: 'r-min-staff', type: 'minStaffPerShift', name: 'Min 2 per pass',        value: 2,   unit: 'personer', description: 'Minst 2 personer per aktivt pass.',                          isActive: false },
+    /* ── ARBETSTID ── */
+    {
+        id: 'r-max-week', type: 'maxHoursWeek', name: 'Max 40 tim/vecka', value: 40, unit: 'timmar',
+        description: 'Heltidsanställd max 40 timmar per vecka enligt kollektivavtal. Justeras automatiskt efter sysselsättningsgrad (t.ex. 75% = max 30 tim).',
+        source: 'ATL §5 + HRF-avtal', severity: 'P0', isActive: true
+    },
+    {
+        id: 'r-max-day', type: 'maxHoursDay', name: 'Max 10 tim/dag', value: 10, unit: 'timmar',
+        description: 'Ingen ska arbeta mer än 10 timmar per arbetsdag.',
+        source: 'ATL §8', severity: 'P0', isActive: true
+    },
+    {
+        id: 'r-max-days-week', type: 'maxDaysPerWeek', name: 'Max 5 arbetsdagar/vecka', value: 5, unit: 'dagar',
+        description: 'Max antal arbetsdagar per vecka. Styrs av person.workdaysPerWeek (default 5). Blockerar schemaläggning om gränsen nåtts.',
+        source: 'ATL §5', severity: 'P0', isActive: true
+    },
+    {
+        id: 'r-period-target', type: 'periodTarget', name: 'Periodmål (beräkningsperiod)', value: null, unit: '',
+        description: 'Beräkningsperiod enligt HRF: 26 veckor (heltid) / 16 veckor (deltid). När periodmålet nåtts blockeras personen från fler pass.',
+        source: 'HRF-avtal', severity: 'P0', isActive: true
+    },
+
+    /* ── VILA ── */
+    {
+        id: 'r-min-rest', type: 'minRestBetween', name: 'Min 11 tim dygnsvila', value: 11, unit: 'timmar',
+        description: 'Minst 11 timmars sammanhängande vila mellan arbetspass. EU:s arbetstidsdirektiv 2003/88/EG.',
+        source: 'ATL §13 + EU 2003/88/EG', severity: 'P0', isActive: true
+    },
+    {
+        id: 'r-max-cons', type: 'maxConsecutive', name: 'Max 6 dagar i rad', value: 6, unit: 'dagar',
+        description: 'Max 6 arbetsdagar i följd innan minst 1 ledig dag. Garanterar veckovila.',
+        source: 'ATL §14', severity: 'P0', isActive: true
+    },
+    {
+        id: 'r-weekly-rest', type: 'weeklyRest36h', name: '36h sammanhängande veckovila', value: 36, unit: 'timmar',
+        description: 'Minst 36 timmars sammanhängande vila per 7-dagarsperiod. Ska om möjligt infalla på helg.',
+        source: 'ATL §14', severity: 'P0', isActive: true
+    },
+    {
+        id: 'r-weekend-rotation', type: 'weekendRotation', name: 'Helg-rotation (varannan helg)', value: 2, unit: 'veckor',
+        description: 'Ingen ska jobba helg (lör/sön) mer än varannan vecka. Personen som jobbade förra helgen nedprioriteras kraftigt (-3000 priority). Jobbar helg 2 av senaste 4 veckor → -1500.',
+        source: 'HRF-avtal + Intern policy', severity: 'P1', isActive: true
+    },
+
+    /* ── BEMANNING ── */
+    {
+        id: 'r-min-staff', type: 'minStaffPerShift', name: 'Min 2 per pass', value: 2, unit: 'personer',
+        description: 'Minst 2 personer per aktivt pass. Genererar varning om bemanningen understiger gränsen.',
+        source: 'Intern policy', severity: 'P1', isActive: false
+    },
+    {
+        id: 'r-availability', type: 'availabilityCheck', name: 'Tillgänglighetskontroll', value: null, unit: '',
+        description: 'Kontrollerar person.availability[0-6] (Mån-Sön). Om personen inte är tillgänglig en viss veckodag blockeras schemaläggning den dagen. Systemregel — alltid aktiv.',
+        source: 'Systemregel', severity: 'P0', isActive: true, isSystem: true
+    },
+    {
+        id: 'r-absence', type: 'absenceCheck', name: 'Frånvarokontroll', value: null, unit: '',
+        description: 'Kontrollerar frånvaro: semester (SEM), sjuk (SJ), vård av barn (VAB), föräldraledig (FÖR), tjänstledig (TJL), permission (PERM), utbildning (UTB). Blockerar schemaläggning om frånvaro finns.',
+        source: 'Systemregel', severity: 'P0', isActive: true, isSystem: true
+    },
+    {
+        id: 'r-start-date', type: 'startDateCheck', name: 'Startdatumkontroll', value: null, unit: '',
+        description: 'Person med startdatum i framtiden blockeras från schemaläggning innan det datumet.',
+        source: 'Systemregel', severity: 'P0', isActive: true, isSystem: true
+    },
+
+    /* ── KOSTNAD ── */
+    {
+        id: 'r-red-day', type: 'redDayHandling', name: 'Röd dag — OB + rättvis rotation', value: null, unit: '',
+        description: 'Arbete på röda dagar ger OB-tillägg enligt kollektivavtal. Röda dagar fördelas rättvist mellan personal (rotation). Person som jobbat röd dag nyligen nedprioriteras (-200).',
+        source: 'HRF-avtal', severity: 'P1', isActive: true
+    },
+
+    /* ── PRIORITERING ── */
+    {
+        id: 'r-substitute-last', type: 'substituteLastPriority', name: 'Vikarier schemaläggas sist', value: null, unit: '',
+        description: 'Person med employmentType = "substitute" (vikarie) får -200 penalty och schemaläggas därmed efter tillsvidareanställda.',
+        source: 'Intern policy', severity: 'P1', isActive: true
+    },
 ];
 
 /* ── MAIN RENDER ── */
@@ -54,20 +179,30 @@ export function renderRules(container, ctx) {
     try {
         const state = store.getState();
 
-        /* Initiera rules i store om de inte finns */
+        /* Initiera rules i store om de inte finns, eller migrera gamla regler */
         if (!Array.isArray(state.rules)) {
             store.update(s => { s.rules = [...DEFAULT_RULES]; });
+        } else {
+            // Migrera: lägg till nya default-regler som saknas
+            const existingIds = new Set(state.rules.map(r => r.id));
+            const missing = DEFAULT_RULES.filter(d => !existingIds.has(d.id));
+            if (missing.length > 0) {
+                store.update(s => {
+                    missing.forEach(r => s.rules.push({ ...r }));
+                });
+            }
         }
 
         const rules = store.getState().rules || [];
 
         if (!ctx._rules) {
-            ctx._rules = { modal: null }; // modal: null | { mode: 'create' } | { mode: 'edit', ruleId: '...' }
+            ctx._rules = { modal: null, showCategory: null };
         }
         const rv = ctx._rules;
 
         const activeCount = rules.filter(r => r.isActive).length;
         const inactiveCount = rules.filter(r => !r.isActive).length;
+        const systemCount = rules.filter(r => r.isSystem).length;
 
         container.innerHTML = `
             <div class="rules-container">
@@ -93,10 +228,24 @@ export function renderRules(container, ctx) {
                         <span class="rules-stat-label">Inaktiva</span>
                         <span class="rules-stat-value">${inactiveCount}</span>
                     </div>
+                    <div class="rules-stat-card s-system">
+                        <span class="rules-stat-label">Systemregler</span>
+                        <span class="rules-stat-value">${systemCount}</span>
+                    </div>
                 </div>
 
-                <!-- RULES LIST -->
-                ${rules.length === 0 ? renderEmpty() : renderRulesList(rules)}
+                <!-- INFO BOX -->
+                <div class="rules-info-box">
+                    <strong>ℹ️ Så fungerar reglerna:</strong>
+                    <ul>
+                        <li><span class="rules-severity-badge p0">P0</span> <strong>Blockerar</strong> — personen kan INTE schemaläggas om regeln bryts</li>
+                        <li><span class="rules-severity-badge p1">P1</span> <strong>Nedprioriterar</strong> — personen KAN schemaläggas men får lägre prioritet</li>
+                        <li><span class="rules-severity-badge system">System</span> Systemregler är alltid aktiva och kan inte inaktiveras</li>
+                    </ul>
+                </div>
+
+                <!-- RULES LIST (grouped by category) -->
+                ${rules.length === 0 ? renderEmpty() : renderGroupedRulesList(rules)}
 
                 <!-- MODAL -->
                 ${rv.modal ? renderModal(rv.modal, rules) : ''}
@@ -119,61 +268,99 @@ function renderEmpty() {
     </div>`;
 }
 
-/* ── RULES LIST ── */
-function renderRulesList(rules) {
-    const sorted = [...rules].sort((a, b) => {
-        if (a.isActive && !b.isActive) return -1;
-        if (!a.isActive && b.isActive) return 1;
-        return (a.name || '').localeCompare(b.name || '', 'sv');
+/* ── GROUPED RULES LIST ── */
+function renderGroupedRulesList(rules) {
+    // Group by category
+    const groups = {};
+    rules.forEach(rule => {
+        const rt = RULE_TYPES[rule.type] || RULE_TYPES.custom;
+        const cat = rt.category || 'custom';
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(rule);
     });
 
-    return `<div class="rules-list">${sorted.map(rule => {
-        const rt = RULE_TYPES[rule.type] || RULE_TYPES.custom;
-        return `<div class="rules-card ${rule.isActive ? '' : 'inactive'}">
-            <div class="rules-card-header">
-                <div class="rules-card-left">
-                    <span class="rules-card-icon">${rt.icon}</span>
-                    <span class="rules-card-title">${escapeHtml(rule.name)}</span>
-                    <span class="rules-card-type ${rt.color}">${escapeHtml(rt.label)}</span>
-                </div>
-                <div class="rules-card-actions">
+    // Sort categories in display order
+    const categoryOrder = ['time', 'rest', 'staff', 'cost', 'priority', 'custom'];
+
+    return categoryOrder
+        .filter(cat => groups[cat] && groups[cat].length > 0)
+        .map(cat => {
+            const catRules = groups[cat].sort((a, b) => {
+                // System first, then active, then by name
+                if (a.isSystem && !b.isSystem) return -1;
+                if (!a.isSystem && b.isSystem) return 1;
+                if (a.isActive && !b.isActive) return -1;
+                if (!a.isActive && b.isActive) return 1;
+                return (a.name || '').localeCompare(b.name || '', 'sv');
+            });
+
+            return `
+                <div class="rules-category-group">
+                    <h3 class="rules-category-title">${CATEGORY_LABELS[cat] || cat}</h3>
+                    <div class="rules-list">${catRules.map(rule => renderRuleCard(rule)).join('')}</div>
+                </div>`;
+        })
+        .join('');
+}
+
+/* ── SINGLE RULE CARD ── */
+function renderRuleCard(rule) {
+    const rt = RULE_TYPES[rule.type] || RULE_TYPES.custom;
+    const isSystem = rule.isSystem === true;
+    const severityClass = rule.severity === 'P0' ? 'p0' : rule.severity === 'P1' ? 'p1' : '';
+
+    return `<div class="rules-card ${rule.isActive ? '' : 'inactive'} ${isSystem ? 'system' : ''}">
+        <div class="rules-card-header">
+            <div class="rules-card-left">
+                <span class="rules-card-icon">${rt.icon}</span>
+                <span class="rules-card-title">${escapeHtml(rule.name)}</span>
+                <span class="rules-card-type ${rt.color}">${escapeHtml(rt.label)}</span>
+                ${rule.severity ? `<span class="rules-severity-badge ${severityClass}">${escapeHtml(rule.severity)}</span>` : ''}
+            </div>
+            <div class="rules-card-actions">
+                ${isSystem ? `<span class="rules-system-badge" title="Systemregel — alltid aktiv">🔒 System</span>` : `
                     <button class="btn btn-secondary btn-sm" data-rules="toggle-active" data-rule-id="${escapeHtml(rule.id)}"
                             title="${rule.isActive ? 'Inaktivera' : 'Aktivera'}">
                         ${rule.isActive ? '⏸️' : '▶️'}
                     </button>
                     <button class="btn btn-secondary btn-sm" data-rules="open-edit" data-rule-id="${escapeHtml(rule.id)}" title="Redigera">✏️</button>
                     <button class="btn btn-danger btn-sm" data-rules="delete" data-rule-id="${escapeHtml(rule.id)}" title="Ta bort">🗑️</button>
-                </div>
+                `}
             </div>
-            <div class="rules-card-body">
-                ${rule.description ? `<div class="rules-card-desc">${escapeHtml(rule.description)}</div>` : ''}
-                <div class="rules-card-params">
-                    ${rule.value !== undefined && rule.value !== null ? `
-                        <div class="rules-param">
-                            <span class="rules-param-label">Värde:</span>
-                            <span class="rules-param-value">${escapeHtml(String(rule.value))} ${escapeHtml(rule.unit || '')}</span>
-                        </div>` : ''}
-                    ${rule.appliesTo ? `
-                        <div class="rules-param">
-                            <span class="rules-param-label">Gäller:</span>
-                            <span class="rules-param-value">${escapeHtml(rule.appliesTo)}</span>
-                        </div>` : ''}
-                    ${rule.penalty ? `
-                        <div class="rules-param">
-                            <span class="rules-param-label">Konsekvens:</span>
-                            <span class="rules-param-value">${escapeHtml(rule.penalty)}</span>
-                        </div>` : ''}
-                </div>
+        </div>
+        <div class="rules-card-body">
+            ${rule.description ? `<div class="rules-card-desc">${escapeHtml(rule.description)}</div>` : ''}
+            <div class="rules-card-params">
+                ${rule.value !== undefined && rule.value !== null ? `
+                    <div class="rules-param">
+                        <span class="rules-param-label">Värde:</span>
+                        <span class="rules-param-value">${escapeHtml(String(rule.value))} ${escapeHtml(rule.unit || '')}</span>
+                    </div>` : ''}
+                ${rule.source ? `
+                    <div class="rules-param">
+                        <span class="rules-param-label">Källa:</span>
+                        <span class="rules-param-value">${escapeHtml(rule.source)}</span>
+                    </div>` : ''}
+                ${rule.appliesTo ? `
+                    <div class="rules-param">
+                        <span class="rules-param-label">Gäller:</span>
+                        <span class="rules-param-value">${escapeHtml(rule.appliesTo)}</span>
+                    </div>` : ''}
+                ${rule.penalty ? `
+                    <div class="rules-param">
+                        <span class="rules-param-label">Konsekvens:</span>
+                        <span class="rules-param-value">${escapeHtml(rule.penalty)}</span>
+                    </div>` : ''}
             </div>
-            <div class="rules-card-footer">
-                <span class="rules-active-badge">
-                    <span class="rules-active-dot ${rule.isActive ? 'on' : 'off'}"></span>
-                    ${rule.isActive ? 'Aktiv' : 'Inaktiv'}
-                </span>
-                <span>ID: ${escapeHtml(rule.id)}</span>
-            </div>
-        </div>`;
-    }).join('')}</div>`;
+        </div>
+        <div class="rules-card-footer">
+            <span class="rules-active-badge">
+                <span class="rules-active-dot ${rule.isActive ? 'on' : 'off'}"></span>
+                ${isSystem ? 'System (alltid aktiv)' : rule.isActive ? 'Aktiv' : 'Inaktiv'}
+            </span>
+            <span>ID: ${escapeHtml(rule.id)}</span>
+        </div>
+    </div>`;
 }
 
 /* ── MODAL (create / edit) ── */
@@ -186,6 +373,8 @@ function renderModal(modal, rules) {
     const value = rule?.value ?? '';
     const unit = rule?.unit || '';
     const description = rule?.description || '';
+    const source = rule?.source || '';
+    const severity = rule?.severity || 'P0';
     const appliesTo = rule?.appliesTo || 'Alla';
     const penalty = rule?.penalty || '';
     const isActive = rule?.isActive ?? true;
@@ -218,6 +407,19 @@ function renderModal(modal, rules) {
                         <div class="rules-form-row">
                             <label>Enhet</label>
                             <input type="text" id="rule-unit" value="${escapeHtml(unit)}" placeholder="timmar / dagar / personer" />
+                        </div>
+                    </div>
+                    <div class="rules-form-grid">
+                        <div class="rules-form-row">
+                            <label>Allvarlighetsgrad</label>
+                            <select id="rule-severity">
+                                <option value="P0" ${severity === 'P0' ? 'selected' : ''}>🔴 P0 — Blockerar</option>
+                                <option value="P1" ${severity === 'P1' ? 'selected' : ''}>🟡 P1 — Nedprioriterar</option>
+                            </select>
+                        </div>
+                        <div class="rules-form-row">
+                            <label>Källa / Lagstöd</label>
+                            <input type="text" id="rule-source" value="${escapeHtml(source)}" placeholder="ATL §14 / HRF-avtal / Intern" />
                         </div>
                     </div>
                     <div class="rules-form-row">
@@ -281,7 +483,11 @@ function setupRulesListeners(container, store, ctx) {
                 renderRules(container, ctx);
 
             } else if (action === 'open-edit') {
-                rv.modal = { mode: 'edit', ruleId: btn.dataset.ruleId };
+                const ruleId = btn.dataset.ruleId;
+                const state = store.getState();
+                const rule = (state.rules || []).find(r => r.id === ruleId);
+                if (rule?.isSystem) { alert('Systemregler kan inte redigeras.'); return; }
+                rv.modal = { mode: 'edit', ruleId };
                 renderRules(container, ctx);
 
             } else if (action === 'close-modal') {
@@ -315,10 +521,13 @@ function setupRulesListeners(container, store, ctx) {
 
             } else if (action === 'toggle-active') {
                 const ruleId = btn.dataset.ruleId;
+                const state = store.getState();
+                const rule = (state.rules || []).find(r => r.id === ruleId);
+                if (rule?.isSystem) { alert('Systemregler kan inte inaktiveras.'); return; }
                 store.update(s => {
                     if (!Array.isArray(s.rules)) return;
-                    const rule = s.rules.find(r => r.id === ruleId);
-                    if (rule) rule.isActive = !rule.isActive;
+                    const r = s.rules.find(r => r.id === ruleId);
+                    if (r) r.isActive = !r.isActive;
                 });
                 renderRules(container, ctx);
 
@@ -327,6 +536,7 @@ function setupRulesListeners(container, store, ctx) {
                 const state = store.getState();
                 const rule = (state.rules || []).find(r => r.id === ruleId);
                 if (!rule) return;
+                if (rule.isSystem) { alert('Systemregler kan inte tas bort.'); return; }
                 if (!confirm(`Ta bort regeln "${rule.name}"?`)) return;
                 store.update(s => {
                     if (!Array.isArray(s.rules)) return;
@@ -348,11 +558,13 @@ function readForm() {
     const value = rawValue !== '' && rawValue !== undefined ? parseFloat(rawValue) : null;
     const unit = document.getElementById('rule-unit')?.value?.trim() || '';
     const description = document.getElementById('rule-desc')?.value?.trim() || '';
+    const source = document.getElementById('rule-source')?.value?.trim() || '';
+    const severity = document.getElementById('rule-severity')?.value || 'P0';
     const appliesTo = document.getElementById('rule-applies')?.value?.trim() || 'Alla';
     const penalty = document.getElementById('rule-penalty')?.value?.trim() || '';
     const isActive = document.getElementById('rule-active')?.checked ?? true;
 
-    return { name, type, value, unit, description, appliesTo, penalty, isActive };
+    return { name, type, value, unit, description, source, severity, appliesTo, penalty, isActive };
 }
 
 /* ── XSS ── */
