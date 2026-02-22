@@ -192,13 +192,9 @@ export function generate(state, input) {
     const vacancies = [];
     const notes = [];
 
-    /* ====================================================================
-       BLOCK 9 — MAIN SCHEDULING LOOP
-       [AUTOPATCH v1.4] Entry-format standardiserat:
-         - start  → startTime
-         - end    → endTime
-         - +groupId (krävs för kalender-vy)
-         - +shiftId (krävs för schedule-engine.js validateRules)
+        /* ====================================================================
+       BLOCK 9 — MAIN SCHEDULING LOOP v2.0
+       [ÄNDRING] findBestCandidate() får nu year + month för datumberäkning
        ==================================================================== */
 
     days.forEach((dayData, dayIdx) => {
@@ -210,7 +206,8 @@ export function generate(state, input) {
         let filledToday = 0;
 
         for (let slot = 0; slot < need; slot++) {
-            const candidate = findBestCandidate(personTargets, dayIdx, days);
+            // [v2.0] Skickar year + month till findBestCandidate
+            const candidate = findBestCandidate(personTargets, dayIdx, days, year, month);
 
             if (candidate) {
                 if (!candidate.id || typeof candidate.id !== 'string') {
@@ -220,19 +217,15 @@ export function generate(state, input) {
                     );
                 }
 
-                // [AUTOPATCH v1.4] Standardiserat entry-format
-                // GAMMALT: { start, end }
-                // NYTT:    { startTime, endTime, groupId, shiftId }
-                // Kompatibelt med: kalender-vy, schedule-engine.js, rules.js
                 const entry = {
                     personId: String(candidate.id),
                     status: 'A',
-                    startTime: null,        // ← ÄNDRAT från 'start'
-                    endTime: null,          // ← ÄNDRAT från 'end'
+                    startTime: null,
+                    endTime: null,
                     breakStart: null,
                     breakEnd: null,
-                    groupId: '',            // ← NYTT (krävs för kalender-vy)
-                    shiftId: '',            // ← NYTT (krävs för schedule-engine.js validateRules)
+                    groupId: '',
+                    shiftId: '',
                 };
 
                 dayData.entries.push(entry);
@@ -243,30 +236,32 @@ export function generate(state, input) {
                 if (dayIdx > 0) {
                     const prevDay = days[dayIdx - 1];
                     const prevEntry = Array.isArray(prevDay.entries)
-                        ? prevDay.entries.find((e) => e && e.status === 'A' && e.personId === candidate.id)
+                        ? prevDay.entries.find(
+                              (e) => e && e.status === 'A' && e.personId === candidate.id
+                          )
                         : null;
-                    personTargets[candidate.id].streak = prevEntry ? (personTargets[candidate.id].streak + 1) : 1;
+                    personTargets[candidate.id].streak = prevEntry
+                        ? personTargets[candidate.id].streak + 1
+                        : 1;
                 } else {
                     personTargets[candidate.id].streak = 1;
                 }
             } else {
-                // [AUTOPATCH v1.4] Vakans-entry med standardiserat format
                 const extraEntry = {
                     personId: null,
                     status: 'EXTRA',
-                    startTime: null,        // ← ÄNDRAT från 'start'
-                    endTime: null,          // ← ÄNDRAT från 'end'
+                    startTime: null,
+                    endTime: null,
                     breakStart: null,
                     breakEnd: null,
-                    groupId: '',            // ← NYTT
-                    shiftId: '',            // ← NYTT
+                    groupId: '',
+                    shiftId: '',
                 };
                 dayData.entries.push(extraEntry);
                 vacancies.push({ date: dayData.date, needed: 1 });
             }
         }
     });
-
     /* ====================================================================
        BLOCK 10 — GENERATED SCHEMA VALIDATION (month-level)
        ==================================================================== */
