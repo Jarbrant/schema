@@ -1,6 +1,6 @@
 /* ========================================================================
    NAVBAR — “DI style”
-   AUTOPATCH v1.6 — SINGLE TOPBAR + SCROLL FIX (GRID min-width:0)
+   AUTOPATCH v1.7 — SINGLE TOPBAR + SCROLL FIX (GRID min-width:0) + VISIBLE
    ======================================================================== */
 
 :root{
@@ -21,7 +21,7 @@
   --pill-active-bg: rgba(255,255,255,0.16);
   --pill-active-border: rgba(255,255,255,0.24);
 
-  --fade-w: 34px;
+  --fade-w: 26px;
 }
 
 #navbar{
@@ -43,20 +43,20 @@
   background: linear-gradient(90deg, var(--nav-accent), rgba(185,28,28,0.55));
 }
 
-/* ✅ Grid: tillåt att mittenkolumnen faktiskt kan krympa */
+/* ✅ Grid: mittenkolumnen MÅSTE få krympa -> min-width:0 */
 .navbar-content{
   max-width: var(--frame-max);
   margin: 0 auto;
 
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto; /* P0 */
   grid-template-areas: "brand menu actions";
   align-items: center;
 
   padding: 10px var(--frame-pad);
   gap: 10px;
 
-  min-width: 0; /* viktig i vissa layouter */
+  min-width: 0; /* P0 */
 }
 
 .navbar-brand{
@@ -83,9 +83,11 @@
   min-width: 0;
 }
 
-/* ✅ Menu: scroll MÅSTE funka i grid -> min-width:0 + max-width:100% */
+/* ✅ Scroll: min-width:0 + max-width:100% + touch-action pan-x */
 .navbar-menu{
   grid-area: menu;
+  min-width: 0;     /* P0 */
+  max-width: 100%;  /* P0 */
 
   display: flex;
   align-items: center;
@@ -97,16 +99,20 @@
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
+
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
 
-  min-width: 0;     /* P0: gör att overflow triggas */
-  max-width: 100%;  /* P0: stoppar att den “läcker” utanför */
+  /* gör det tydligt att det går att “dra” */
+  cursor: grab;
 
-  scrollbar-width: none;
+  /* visa scrollbar (så du ser att det går) */
+  scrollbar-width: thin;
 }
-.navbar-menu::-webkit-scrollbar{ display: none; }
+.navbar-menu:active{ cursor: grabbing; }
 
-/* Fade-hint utan pseudo-sticky (mask fungerar bättre) */
+/* Fade-hint via mask (stabilt) */
 @supports (-webkit-mask-image: linear-gradient(#000,#000)) or (mask-image: linear-gradient(#000,#000)){
   .navbar-menu{
     -webkit-mask-image: linear-gradient(90deg,
@@ -178,7 +184,7 @@
 }
 
 @media (max-width: 768px){
-  :root{ --frame-pad: 1rem; --fade-w: 24px; }
+  :root{ --frame-pad: 1rem; --fade-w: 18px; }
   #navbar{ margin-bottom: 12px; }
   .navbar-content{ padding: 10px var(--frame-pad); gap: 8px; }
   .nav-link{ padding: 0.44rem 0.56rem; font-size: 0.88rem; }
