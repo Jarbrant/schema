@@ -1,7 +1,10 @@
 /*
- * UI.JS — Shared UI Utilities (UPPDATERAD AO-06)
+ * UI.JS — Shared UI Utilities (UPPDATERAD AO-06 + NAV FIX)
  *
  * AO-06: Ny nav-länk "Veckomallar" tillagd i NAV_ITEMS
+ * AO-16: Navbar fix:
+ *  - Markerar aktiv route (nav-link.active)
+ *  - Stabil markup (ingen extra wrappers)
  */
 
 import { diagnostics } from './diagnostics.js';
@@ -35,14 +38,28 @@ function routeToHash(route) {
   return `#/` + String(route || '').replace(/^\#\/?/, '');
 }
 
+function getCurrentRoute() {
+  return String(window.location.hash || '#/home')
+    .replace(/^#\/?/, '')
+    .split('?')[0]
+    .split('/')[0] || 'home';
+}
+
 /* ============================================================
  * BLOCK 2 — Navbar/topbar
  * ============================================================ */
 export function renderNavbar(container) {
   try {
+    const current = getCurrentRoute();
+
     const linksHtml = NAV_ITEMS.map(item => {
       const href = routeToHash(item.route);
-      return `<a href="${escapeHtml(href)}" class="nav-link">${escapeHtml(item.icon)} ${escapeHtml(item.label)}</a>`;
+      const isActive = item.route === current;
+
+      return `<a href="${escapeHtml(href)}" class="nav-link${isActive ? ' active' : ''}" aria-current="${isActive ? 'page' : 'false'}">
+        <span class="nav-icon">${escapeHtml(item.icon)}</span>
+        <span class="nav-label">${escapeHtml(item.label)}</span>
+      </a>`;
     }).join('');
 
     const html = `
@@ -51,13 +68,14 @@ export function renderNavbar(container) {
           <h2>📅 Schema-Program</h2>
         </div>
 
-        <nav class="navbar-menu">
+        <nav class="navbar-menu" aria-label="Huvudmeny">
           ${linksHtml}
         </nav>
 
         <div class="navbar-actions">
-          <button onclick="window.location.hash = '#/login'" class="btn-logout">
-            🚪 Logga ut
+          <button type="button" onclick="window.location.hash = '#/login'" class="btn-logout">
+            <span class="nav-icon">🚪</span>
+            <span class="nav-label">Logga ut</span>
           </button>
         </div>
       </div>
