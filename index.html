@@ -2,10 +2,11 @@
 <html lang="sv">
 <head>
   <!-- =========================================================
-       SCHEMA-PROGRAM — index.html (AUTOPATCH v2)
+       SCHEMA-PROGRAM — index.html (AUTOPATCH v3 + PICO SAFE MODE)
        Syfte: Stabil start för UI-only app (GitHub Pages)
        Kontrakt: router.js kräver #app, #error-panel, #navbar
        FIX: Länka MASTER stylesheet (import-kedjan) så home/cards/grid syns
+       NYTT: Pico CSS (safe mode) + pico-overrides.css
        ========================================================= -->
 
   <!-- BLOCK 1 — Meta -->
@@ -17,12 +18,15 @@
   <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75'>📅</text></svg>">
 
-  <!-- BLOCK 3 — CSS (SINGLE SOURCE OF TRUTH)
+  <!-- BLOCK 3 — CSS (PICO + SINGLE SOURCE OF TRUTH)
        VIKTIGT:
-       - Ladda master.css (som i sin tur @import:ar base/forms/cards/home/navbar/responsive osv)
-       - Ta bort separata base.css/navbar.css här för att undvika dubbel-import och “konstiga overrides”
+       - Ladda Pico FÖRE master.css (baseline typografi/forms)
+       - Ladda master.css (som @import:ar base/forms/cards/home/navbar/responsive osv)
+       - Ladda pico-overrides.css EFTER master.css för att minimera krockar
   -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <link rel="stylesheet" href="assets/css/master.css" />
+  <link rel="stylesheet" href="assets/css/pico-overrides.css" />
 
   <!-- BLOCK 4 — Baslinje: undvik “flash” av tomma paneler -->
   <style>
