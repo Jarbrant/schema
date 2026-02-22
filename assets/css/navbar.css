@@ -1,32 +1,22 @@
 /* ========================================================================
    NAVBAR — “DI style”
-   AUTOPATCH v1.3 — POLISH + ALIGN + AIR
+   AUTOPATCH v1.4 — SINGLE TOPBAR (EN RAD)
 
    Mål:
-   - Få navbaren att kännas som EN komponent (inte två barer)
-   - Matcha bredd med view-container (“ramen”)
-   - Skapa luft mellan navbar och innehåll
-   - Behåll chips/scroll på små skärmar
+   - Slå ihop “brand/actions” + “menu” till EN toppbar
+   - Menyn ligger i mitten och kan scrolla horisontellt
+   - Logga ut ligger längst till höger
    ======================================================================== */
 
-/* NOTE:
-   Om du fortfarande har “extra topbar” någonstans: använd kill-switchen igen.
-   Men när UI.js är fixad ska den helst vara av.
-*/
-
-/* Design tokens (håll dem här) */
 :root{
-  /* aligna mot din ram i base.css */
+  /* aligna mot din ram (base.css) */
   --frame-max: 1400px;
   --frame-pad: 2rem;
 
-  --nav-outer-bg: #0b1220;
-  --nav-inner-bg: rgba(255,255,255,0.04); /* mjukare än solid platta */
+  --nav-bg: #0b1220;
   --nav-accent: #b91c1c;
 
   --nav-text: rgba(255,255,255,0.96);
-  --nav-text-dim: rgba(255,255,255,0.78);
-
   --nav-border: rgba(255,255,255,0.10);
   --nav-shadow: 0 12px 34px rgba(0,0,0,0.28);
 
@@ -38,7 +28,7 @@
   --pill-active-border: rgba(255,255,255,0.24);
 }
 
-/* Hela navbarens “ram” */
+/* En bar */
 #navbar{
   position: sticky;
   top: 0;
@@ -48,8 +38,8 @@
   border-bottom: 1px solid var(--nav-border);
   box-shadow: var(--nav-shadow);
 
-  /* P0: luft mot innehåll */
-  margin-bottom: 18px;
+  /* Luft mot innehåll */
+  margin-bottom: 16px;
 }
 
 /* Accent-linje */
@@ -60,20 +50,18 @@
   background: linear-gradient(90deg, var(--nav-accent), rgba(185,28,28,0.55));
 }
 
-/* Inre container: aligna mot view-container */
+/* ✅ EN RAD: brand | menu | actions */
 .navbar-content{
   max-width: var(--frame-max);
   margin: 0 auto;
 
   display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas:
-    "brand actions"
-    "menu  menu";
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "brand menu actions";
+  align-items: center;
 
-  /* P0: samma sidpadding som ramen */
-  padding: 10px var(--frame-pad) 12px var(--frame-pad);
-  gap: 10px;
+  padding: 10px var(--frame-pad);
+  gap: 12px;
 }
 
 /* Brand */
@@ -92,6 +80,27 @@
   white-space: nowrap;
 }
 
+/* Menu i mitten (scroll) */
+.navbar-menu{
+  grid-area: menu;
+
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+
+  /* inga egna “plattor” – allt är samma bar */
+  padding: 0;
+  margin: 0;
+
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+
+  scrollbar-width: none;
+}
+.navbar-menu::-webkit-scrollbar{ display: none; }
+
 /* Actions */
 .navbar-actions{
   grid-area: actions;
@@ -100,7 +109,7 @@
   justify-content: flex-end;
 }
 
-/* Logout: mer “enterprise” och mindre pill */
+/* Logout */
 .btn-logout{
   padding: 0.55rem 0.9rem;
   border-radius: 12px;
@@ -117,31 +126,7 @@
 }
 .btn-logout:active{ transform: translateY(1px); }
 
-/* Menyrad: gör den “inbäddad” istället för en hård platta */
-.navbar-menu{
-  grid-area: menu;
-
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-
-  padding: 10px 10px;
-  border-radius: 16px;
-
-  background: var(--nav-inner-bg);
-  border: 1px solid rgba(255,255,255,0.08);
-
-  /* scroll på små skärmar */
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-
-  scrollbar-width: none;
-}
-.navbar-menu::-webkit-scrollbar{ display: none; }
-
-/* Chips: lite mindre och luftigare */
+/* Chips */
 .nav-link{
   display: inline-flex;
   align-items: center;
@@ -167,28 +152,21 @@
   border-color: rgba(255,255,255,0.20);
 }
 .nav-link:active{ transform: translateY(1px); }
-
 .nav-link.active{
   background: var(--pill-active-bg);
   border-color: var(--pill-active-border);
 }
 
-/* Icon/label */
 .nav-icon{ display: inline-flex; opacity: 0.95; }
 .nav-label{ display: inline; }
 
-/* Mobil: dölj labels om du vill */
 @media (max-width: 520px){
   .nav-label{ display: none; }
 }
 
-/* Små skärmar: tightare padding */
 @media (max-width: 768px){
   :root{ --frame-pad: 1rem; }
-
-  #navbar{ margin-bottom: 14px; }
-  .navbar-content{ padding: 10px var(--frame-pad) 10px var(--frame-pad); gap: 8px; }
-
-  .navbar-menu{ padding: 8px 8px; border-radius: 14px; }
+  #navbar{ margin-bottom: 12px; }
+  .navbar-content{ padding: 10px var(--frame-pad); gap: 10px; }
   .nav-link{ padding: 0.48rem 0.7rem; font-size: 0.9rem; }
 }
