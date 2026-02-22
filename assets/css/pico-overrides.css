@@ -1,1 +1,48 @@
+/* ==========================================================================
+   Pico overrides — SAFE MODE
+   Ladda EFTER master.css för att undvika visuella krockar.
+   Målet: få Pico-typografi + form-controls utan att din navbar/buttons spricker.
+   ========================================================================== */
 
+:root{
+  /* Accent som matchar appen */
+  --pico-primary: #667eea;
+  --pico-primary-hover: #5a6fe0;
+  --pico-primary-focus: rgba(102,126,234,0.25);
+}
+
+/* Pico ger default padding/margins; låt era views styra layout */
+body{
+  margin: 0;
+}
+
+/* Din app har egen layout – hindra Pico från att ge extra spacing här */
+#app{
+  padding: 0;
+}
+
+/* Förhindra att Pico styles “vinner” på era custom-knappar */
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-sm,
+.btn-logout{
+  font: inherit;
+}
+
+/* Gör så att <button> i din app inte får Pico-min-width som kan förstöra grids */
+button.btn,
+button.btn-primary,
+button.btn-secondary,
+button.btn-danger,
+button.btn-sm,
+button.btn-logout{
+  width: auto;
+  min-width: 0;
+}
+
+/* Om Pico påverkar länkar i navbaren: låt er navbar-css styra */
+.nav-link{
+  text-decoration: none;
+}
