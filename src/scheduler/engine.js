@@ -368,30 +368,123 @@ export function generate(state, input) {
 }
 
 /* ========================================================================
-   BLOCK 14 — CANDIDATE SELECTION (stabilare, deterministisk sort)
+   BLOCK 14 — CANDIDATE SELECTION v2.0 (MED REGELINTEGRATION)
+
+   NYTT I v2.0:
+   - P0: Kontrollerar person.availability[dayIdx] (lör/sön-tillgänglighet)
+   - P0: Kontrollerar frånvaro (vacationDates, leaveDates)
+   - P0: Max 5 arbetsdagar per vecka (person.workdaysPerWeek)
+   - P0: Streak max 6 (istället för 9) — garanterar minst 1 ledig dag/vecka
+   - P1: Helg-rotation — straffar person som jobbade FÖRRA helgen
+   - P1: Veckobalans — sprider dagar jämnare över veckan
    ======================================================================== */
 
-/**
- * Hitta bästa kandidat för nästa slot (heuristik)
- */
-function findBestCandidate(personTargets, dayIdx, days) {
+function findBestCandidate(personTargets, dayIdx, days, year, month) {
     const dayData = days[dayIdx];
     const entries = Array.isArray(dayData.entries) ? dayData.entries : [];
+
+    // Beräkna veckodag (0=Mån..6=Sön)
+    const date = new Date(year, month - 1, dayIdx + 1);
+    const jsDay = date.getDay();
+    const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1; // 0=Mån, 5=Lör, 6=Sön
+    const isWeekend = (dayOfWeek === 5 || dayOfWeek === 6);
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(dayIdx + 1).padStart(2, '0')}`;
+
+    // Beräkna vilken vecka (0-baserad) i månaden denna dag tillhör
+    const weekIndex = Math.floor(dayIdx / 7);
 
     const candidates = [];
 
     Object.values(personTargets).forEach((t) => {
         const person = t.person;
 
-        const alreadyScheduled = entries.some((e) => e && e.status === 'A' && e.personId === person.id);
+        /* ════════════════════════════════════════════
+         * P0 REGLER — Blockerar kandidaten helt
+         * ════════════════════════════════════════════ */
+
+        // P0: Redan schemalagd idag
+        const alreadyScheduled = entries.some(
+            (e) => e && e.status === 'A' && e.personId === person.id
+        );
         if (alreadyScheduled) return;
 
-        if ((t.streak || 0) >= 9) return;
+        // P0: Tillgänglighet — kontrollera person.availability för denna veckodag
+        if (Array.isArray(person.availability) && person.availability.length >= 7) {
+            if (person.availability[dayOfWeek] === false) return;
+        }
 
+        // P0: Frånvaro — semester eller ledighet
+        if (Array.isArray(person.vacationDates) && person.vacationDates.includes(dateStr)) return;
+        if (Array.isArray(person.leaveDates) && person.leaveDates.includes(dateStr)) return;
+
+        // P0: Max dagar i rad — sänkt från 9 till 6 för att garantera vila
+        const maxConsecutive = person.maxConsecutiveDays || 6;
+        if ((t.streak || 0) >= maxConsecutive) return;
+
+        // P0: Max arbetsdagar denna vecka (räkna redan schemalagda dagar i samma vecka)
+        const maxDaysPerWeek = person.workdaysPerWeek || 5;
+        const weekStart = weekIndex * 7;
+        const weekEnd = Math.min(weekStart + 7, days.length);
+        let daysThisWeek = 0;
+        for (let d = weekStart; d < weekEnd; d++) {
+            if (d === dayIdx) continue; // räkna inte den dag vi försöker fylla
+            const dayEntries = Array.isArray(days[d].entries) ? days[d].entries : [];
+            const isScheduled = dayEntries.some(
+                (e) => e && e.status === 'A' && e.personId === person.id
+            );
+            if (isScheduled) daysThisWeek++;
+        }
+        if (daysThisWeek >= maxDaysPerWeek) return;
+
+        // P0: Behöver fortfarande fler dagar
         const under = (t.target || 0) - (t.current || 0);
         if (under <= 0) return;
 
-        const priority = under * 1000 - (t.current || 0);
+        /* ════════════════════════════════════════════
+         * P1 REGLER — Påverkar prioritet (penalty/bonus)
+         * ════════════════════════════════════════════ */
+
+        let priority = under * 1000 - (t.current || 0);
+
+        // P1: Helg-rotation — kontrollera om personen jobbade FÖRRA helgen
+        if (isWeekend && weekIndex > 0) {
+            const prevWeekStart = (weekIndex - 1) * 7;
+            const prevWeekEnd = Math.min(prevWeekStart + 7, days.length);
+            let workedLastWeekend = false;
+
+            for (let d = prevWeekStart; d < prevWeekEnd; d++) {
+                const prevDate = new Date(year, month - 1, d + 1);
+                const prevJsDay = prevDate.getDay();
+                const isPrevWeekend = (prevJsDay === 0 || prevJsDay === 6);
+
+                if (isPrevWeekend) {
+                    const prevEntries = Array.isArray(days[d].entries) ? days[d].entries : [];
+                    const wasScheduled = prevEntries.some(
+                        (e) => e && e.status === 'A' && e.personId === person.id
+                    );
+                    if (wasScheduled) {
+                        workedLastWeekend = true;
+                        break;
+                    }
+                }
+            }
+
+            if (workedLastWeekend) {
+                // Kraftig penalty: varannan helg ledig
+                priority -= 3000;
+            }
+        }
+
+        // P1: Streak-penalty — ju längre streak, desto mer ovillig
+        if ((t.streak || 0) >= 4) {
+            priority -= ((t.streak || 0) - 3) * 500;
+        }
+
+        // P1: Veckobalans — bonus om personen har många dagar kvar att fylla denna vecka
+        const daysBalanceThisWeek = maxDaysPerWeek - daysThisWeek;
+        if (daysBalanceThisWeek > 2) {
+            priority += daysBalanceThisWeek * 50;
+        }
 
         candidates.push({
             person,
@@ -402,10 +495,11 @@ function findBestCandidate(personTargets, dayIdx, days) {
         });
     });
 
+    // Deterministisk sortering: prioritet → lägst current → namn
     candidates.sort((a, b) => {
         if (b.priority !== a.priority) return b.priority - a.priority;
         if (a.current !== b.current) return a.current - b.current;
-        return a.nameKey.localeCompare(b.nameKey);
+        return a.nameKey.localeCompare(b.nameKey, 'sv');
     });
 
     return candidates.length > 0 ? candidates[0].person : null;
