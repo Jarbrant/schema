@@ -1,9 +1,20 @@
-/* ==========================================================
-   HOME — Dashboard header polish (Start efter inloggning)
-   Scope: endast home-vyn
-   ========================================================== */
+/* ==========================================================================
+   HOME — Modern v3 (polish: hero + stats + quick cards)
+   AUTOPATCH v3.2:
+   - Header/KPI: modern “dashboard header”
+   - P0: LÅSER snabbnavigationens rutgrid (så den inte faller tillbaka till textlänkar)
+   - Döljer home-tabs (extra navrad)
+   ========================================================================== */
 
-/* 1) Luft + ren header */
+.home-container{
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: clamp(1rem, 2.2vw, 1.75rem);
+}
+
+/* =======================
+   TOPP: H1 + KPI-kort
+   ======================= */
 .home-toprow{
   display: grid;
   grid-template-columns: 1fr;
@@ -20,7 +31,6 @@
   color: #101828;
 }
 
-/* 2) KPI-rad: 3 kort på samma rad */
 .home-mini-stats{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -28,7 +38,6 @@
   align-items: stretch;
 }
 
-/* KPI-kort (enterprise) */
 .home-mini-card{
   background: rgba(255,255,255,0.92);
   border: 1px solid rgba(16,24,40,0.10);
@@ -79,12 +88,14 @@
   white-space: nowrap;
 }
 
-/* 3) Dölj “extra nav-rad” på home (du har redan toppbaren) */
+/* DÖLJ extra navrad på home (du har redan toppbaren) */
 .home-tabs{
   display: none !important;
 }
 
-/* 4) Gör home-hero till en kompakt info-banner (inte stor platta) */
+/* =======================
+   HERO/BANNER (kompakt)
+   ======================= */
 .home-hero{
   margin-top: 10px;
   border-radius: 18px;
@@ -95,15 +106,135 @@
   box-shadow: none;
 }
 
-/* 5) Responsivt */
+/* =======================
+   QUICK NAV (RUTOR) — LÅS
+   ======================= */
+.home-nav-section{
+  margin-top: 1.25rem;
+}
+
+.home-nav-section h2{
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  color: #101828;
+}
+
+/* P0: högre specificitet så den inte kan “ramla ur” */
+.home-container .home-nav-grid{
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 0.85rem !important;
+  align-items: stretch;
+}
+
+/* P0: säkerställ att rutorna blir cards även om någon global a-stil stör */
+.home-container .home-nav-item{
+  display: block !important;
+  text-decoration: none !important;
+
+  padding: 1rem 1rem;
+  border-radius: 18px;
+
+  background: rgba(255,255,255,0.96);
+  border: 1px solid rgba(16,24,40,0.08);
+  box-shadow: 0 12px 26px rgba(16,24,40,0.08);
+
+  transition: transform 0.10s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.home-container .home-nav-item:hover{
+  transform: translateY(-2px);
+  border-color: rgba(102,126,234,0.35);
+  box-shadow: 0 18px 34px rgba(16,24,40,0.12);
+}
+
+.home-container .home-nav-item-icon{
+  display: grid;
+  place-items: center;
+
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+
+  font-size: 1.35rem;
+  margin-bottom: 0.55rem;
+
+  background: linear-gradient(135deg, rgba(102,126,234,0.18), rgba(118,75,162,0.10));
+  border: 1px solid rgba(102,126,234,0.18);
+}
+
+.home-container .home-nav-item-title{
+  display: block;
+  font-weight: 950;
+  color: #101828;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.15rem;
+}
+
+.home-container .home-nav-item-desc{
+  display: block;
+  color: rgba(102,112,133,0.98);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+/* Active */
+.home-container .home-nav-item.active{
+  border-color: rgba(102,126,234,0.42);
+  box-shadow: 0 18px 34px rgba(102,126,234,0.16);
+}
+
+/* =======================
+   ABOUT (ersätter inline styles)
+   ======================= */
+.home-about{
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid #eee;
+}
+.home-about h3{
+  font-size: 1.2rem;
+  margin: 0 0 1rem;
+  color: #333;
+}
+.home-about-card{
+  background: #f9f9f9;
+  padding: 1.5rem;
+  border-radius: 10px;
+  border-left: 4px solid #667eea;
+}
+.home-about-card p{
+  margin: 0 0 0.5rem;
+  color: #666;
+}
+.home-about-card p:last-child{ margin-bottom: 0; }
+
+/* =======================
+   RESPONSIVE
+   ======================= */
 @media (max-width: 980px){
   .home-mini-stats{
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .home-container .home-nav-grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
 }
+
 @media (max-width: 640px){
   .home-mini-stats{
     grid-template-columns: 1fr;
   }
   .home-mini-sub{ white-space: normal; }
+
+  .home-container .home-nav-grid{
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 520px){
+  .home-container{
+    padding: 1rem;
+  }
 }
