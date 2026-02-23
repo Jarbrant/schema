@@ -1,11 +1,10 @@
 /*
  * AO-07: HOME — Startsida med gradient bakgrund & card-layout
  *
- * Patch v2 (Design enligt screenshot):
- * - Tagline under H1 borttagen
- * - Stats (Personal/År/System) flyttade upp till topp-rad (höger om H1)
- * - Stats gjorda kompaktare (mini-cards) utan att kräva extern CSS-ändring
- * - Snabb-navigation (ALLA toppbar-länkar) kvar längre ned
+ * AUTOPATCH v3:
+ * - P0: Tar bort inline <style> (flyttar styling till home.css)
+ * - P0: Stabil topprad: H1 vänster + 3 mini-stats på samma rad höger
+ * - P1: Renare markup (lättare att styla, mindre risk för krockar)
  */
 
 export function renderHome(container, ctx) {
@@ -19,7 +18,6 @@ export function renderHome(container, ctx) {
   const people = Array.isArray(state.people) ? state.people : [];
   const activePeople = people.filter((p) => p && p.isActive).length;
 
-  // Få aktuell route från context
   const currentRoute = ctx?.currentRoute || 'home';
 
   const yearValue = state.schedule?.year || '2026';
@@ -29,65 +27,7 @@ export function renderHome(container, ctx) {
     <div class="home-container">
       <div class="home-content">
 
-        <!-- Home-scoped mini-stats styles (ingen extern CSS krävs) -->
-        <style>
-          .home-toprow{
-            display:flex;
-            align-items:flex-end;
-            justify-content:space-between;
-            gap:1rem;
-            margin-top:0.25rem;
-            margin-bottom:0.5rem;
-          }
-          .home-titlewrap h1{ margin:0; }
-          .home-mini-stats{
-            display:flex;
-            gap:0.75rem;
-            flex-wrap:wrap;
-            justify-content:flex-end;
-          }
-          .home-mini-card{
-            background:#fff;
-            border:1px solid rgba(0,0,0,0.10);
-            border-radius:10px;
-            padding:0.55rem 0.75rem;
-            min-width:120px;
-            box-shadow:0 6px 18px rgba(0,0,0,0.06);
-          }
-          .home-mini-top{
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:0.5rem;
-            margin-bottom:0.15rem;
-          }
-          .home-mini-icon{ font-size:1.05rem; line-height:1; }
-          .home-mini-label{
-            font-weight:600;
-            color:#333;
-            font-size:0.85rem;
-            white-space:nowrap;
-          }
-          .home-mini-value{
-            font-size:1.1rem;
-            font-weight:800;
-            color:#667eea;
-            margin:0.05rem 0 0;
-          }
-          .home-mini-sub{
-            font-size:0.75rem;
-            color:#777;
-            margin:0.1rem 0 0;
-            white-space:nowrap;
-          }
-          @media (max-width: 880px){
-            .home-toprow{ align-items:flex-start; }
-            .home-titlewrap{ width:100%; }
-            .home-mini-stats{ width:100%; justify-content:flex-start; }
-          }
-        </style>
-
-        <!-- TOPP-RAD: H1 + 3 mini-stats (flyttade upp) -->
+        <!-- TOPP-RAD: H1 + 3 mini-stats -->
         <div class="home-toprow">
           <div class="home-titlewrap">
             <h1>Välkommen till Schema-Program</h1>
@@ -143,7 +83,6 @@ export function renderHome(container, ctx) {
         <div class="home-nav-section">
           <h2>Snabb-navigation</h2>
 
-          <!-- ALLA toppbar-länkar som rutor -->
           <div class="home-nav-grid">
             <a href="#/home" class="home-nav-item">
               <span class="home-nav-item-icon">🏠</span>
@@ -201,18 +140,12 @@ export function renderHome(container, ctx) {
           </div>
         </div>
 
-        <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #eee;">
-          <h3 style="font-size: 1.2rem; margin-bottom: 1rem; color: #333;">ℹ️ Om Schema-Program</h3>
-          <div style="background: #f9f9f9; padding: 1.5rem; border-radius: 8px; border-left: 4px solid #667eea;">
-            <p style="margin-bottom: 0.5rem; color: #666;">
-              <strong>Projekt:</strong> Schema-Program v1 (UI-only / GitHub Pages)
-            </p>
-            <p style="margin-bottom: 0.5rem; color: #666;">
-              <strong>Avtal:</strong> HRF/Visita Gröna Riks
-            </p>
-            <p style="color: #666;">
-              <strong>Status:</strong> Produktion
-            </p>
+        <div class="home-about">
+          <h3>ℹ️ Om Schema-Program</h3>
+          <div class="home-about-card">
+            <p><strong>Projekt:</strong> Schema-Program v1 (UI-only / GitHub Pages)</p>
+            <p><strong>Avtal:</strong> HRF/Visita Gröna Riks</p>
+            <p><strong>Status:</strong> Produktion</p>
           </div>
         </div>
 
