@@ -11,6 +11,11 @@
  * - store.setState finns inte -> store.update(...)
  * - skriver schema till state.schedule.months[].days[].entries[] (ingen ny top-level key)
  * - använder lokalt resultDiv (inte document.getElementById)
+ *
+ * AUTOPATCH v2 — Konsoliderad regelmotor-fix:
+ * - peopleForScheduler: fullständig persondata (groups, availability, startDate, etc.)
+ * - entry: inkluderar shiftId, groupId, startTime, endTime, hours
+ * - dedupe: baserad på shiftId + groupId istället för start/end
  */
 
 // RÄTT IMPORT:
@@ -290,29 +295,29 @@ function handleGenerate({ btn, monthRadio, yearInput, monthSelect, fromInput, to
         }
 
         // Build scheduler-compatible people (FULLSTÄNDIG DATA för rules-engine)
-const peopleForScheduler = peopleArr.map((p) => ({
-    id: String(p?.id ?? ''),
-    name: `${String(p?.firstName ?? '').trim()} ${String(p?.lastName ?? '').trim()}`.trim() || 'Okänd',
-    firstName: String(p?.firstName ?? '').trim(),
-    lastName: String(p?.lastName ?? '').trim(),
-    employmentPct: typeof p?.employmentPct === 'number' ? p.employmentPct : 100,
-    degree: typeof p?.employmentPct === 'number' ? p.employmentPct : 100,
-    groups: Array.isArray(p?.groups) ? p.groups.map(String)
-          : Array.isArray(p?.groupIds) ? p.groupIds.map(String)
-          : [],
-    availability: Array.isArray(p?.availability) ? p.availability : [true, true, true, true, true, false, false],
-    workdaysPerWeek: typeof p?.workdaysPerWeek === 'number' ? p.workdaysPerWeek : 5,
-    startDate: p?.startDate || '2020-01-01',
-    sector: p?.sector || 'private',
-    vacationDates: Array.isArray(p?.vacationDates) ? p.vacationDates : [],
-    leaveDates: Array.isArray(p?.leaveDates) ? p.leaveDates : [],
-    isActive: p?.isActive !== false,
-    collectiveAgreement: p?.collectiveAgreement || 'HRF',
-    hourlyWage: p?.hourlyWage || 0,
-    preferredShifts: Array.isArray(p?.preferredShifts) ? p.preferredShifts : [],
-    avoidShifts: Array.isArray(p?.avoidShifts) ? p.avoidShifts : [],
-    employmentType: p?.employmentType || 'regular',
-})).filter(p => !!p.id && p.isActive);
+        const peopleForScheduler = peopleArr.map((p) => ({
+            id: String(p?.id ?? ''),
+            name: `${String(p?.firstName ?? '').trim()} ${String(p?.lastName ?? '').trim()}`.trim() || 'Okänd',
+            firstName: String(p?.firstName ?? '').trim(),
+            lastName: String(p?.lastName ?? '').trim(),
+            employmentPct: typeof p?.employmentPct === 'number' ? p.employmentPct : 100,
+            degree: typeof p?.employmentPct === 'number' ? p.employmentPct : 100,
+            groups: Array.isArray(p?.groups) ? p.groups.map(String)
+                  : Array.isArray(p?.groupIds) ? p.groupIds.map(String)
+                  : [],
+            availability: Array.isArray(p?.availability) ? p.availability : [true, true, true, true, true, false, false],
+            workdaysPerWeek: typeof p?.workdaysPerWeek === 'number' ? p.workdaysPerWeek : 5,
+            startDate: p?.startDate || '2020-01-01',
+            sector: p?.sector || 'private',
+            vacationDates: Array.isArray(p?.vacationDates) ? p.vacationDates : [],
+            leaveDates: Array.isArray(p?.leaveDates) ? p.leaveDates : [],
+            isActive: p?.isActive !== false,
+            collectiveAgreement: p?.collectiveAgreement || 'HRF',
+            hourlyWage: p?.hourlyWage || 0,
+            preferredShifts: Array.isArray(p?.preferredShifts) ? p.preferredShifts : [],
+            avoidShifts: Array.isArray(p?.avoidShifts) ? p.avoidShifts : [],
+            employmentType: p?.employmentType || 'regular',
+        })).filter(p => !!p.id && p.isActive);
 
         if (peopleForScheduler.length === 0) {
             showWarning('⚠️ Personer saknar giltiga id (kan inte generera)');
@@ -426,18 +431,24 @@ const peopleForScheduler = peopleArr.map((p) => ({
                 const dayObj = monthObj.days[dd - 1];
                 if (!dayObj || !Array.isArray(dayObj.entries)) return;
 
+                // FULLSTÄNDIGT ENTRY-FORMAT (kompatibelt med schedule-engine + kalender + stats)
                 const entry = {
                     personId: String(gs.personId ?? ''),
+                    shiftId: String(gs.shiftId ?? ''),
+                    groupId: String(gs.groupId ?? ''),
                     status: 'A',
+                    startTime: (gs.startTime ?? null),
+                    endTime: (gs.endTime ?? null),
                     start: (gs.startTime ?? null),
                     end: (gs.endTime ?? null),
                     breakStart: (gs.breakStart ?? null),
-                    breakEnd: (gs.breakEnd ?? null)
+                    breakEnd: (gs.breakEnd ?? null),
+                    hours: gs.hours || 0,
                 };
 
                 if (!entry.personId) return;
 
-                // Dedupe: samma person + datum + start/end (enkelt skydd)
+                // Dedupe: samma person + shiftId + groupId (säkrare än start/end)
                 const already = dayObj.entries.some((e) =>
                     String(e?.personId) === entry.personId &&
                     String(e?.shiftId ?? '') === entry.shiftId &&
