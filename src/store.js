@@ -23,9 +23,6 @@
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
 
-// S3-03: Shifts sync middleware — synkar state.shifts → state.shiftTemplates
-import { shiftsSyncHook } from './modules/shifts-sync.js';
-
 /* ========================================================================
    BLOCK 1: DEFAULT GROUPS (AO-02B) — OFÖRÄNDRAD
    ======================================================================== */
