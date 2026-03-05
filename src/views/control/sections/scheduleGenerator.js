@@ -440,8 +440,8 @@ const peopleForScheduler = peopleArr.map((p) => ({
                 // Dedupe: samma person + datum + start/end (enkelt skydd)
                 const already = dayObj.entries.some((e) =>
                     String(e?.personId) === entry.personId &&
-                    String(e?.start ?? '') === String(entry.start ?? '') &&
-                    String(e?.end ?? '') === String(entry.end ?? '') &&
+                    String(e?.shiftId ?? '') === entry.shiftId &&
+                    String(e?.groupId ?? '') === entry.groupId &&
                     String(e?.status ?? '') === 'A'
                 );
                 if (!already) dayObj.entries.push(entry);
