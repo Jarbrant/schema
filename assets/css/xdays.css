@@ -1,1 +1,233 @@
+/* ========================================================================
+ * S3-07 — X-DAGAR CSS — Styling för X-dagar-vyn
+ * FIL: assets/css/xdays.css
+ * ======================================================================== */
 
+.xdays-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+.xdays-header {
+    margin-bottom: 1.5rem;
+}
+
+.xdays-header h2 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.5rem;
+    color: #2d3436;
+}
+
+.xdays-subtitle {
+    color: #636e72;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+/* ── KPI-kort ── */
+.xdays-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.xdays-kpi {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+    transition: transform 0.2s;
+}
+
+.xdays-kpi:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.xdays-kpi-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #0984e3;
+}
+
+.xdays-kpi-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #636e72;
+    margin-top: 0.25rem;
+}
+
+.xdays-kpi-danger .xdays-kpi-value {
+    color: #d63031;
+}
+
+/* ── Formulär ── */
+.xdays-form-panel {
+    background: #f0f7ff;
+    border: 1px solid #74b9ff;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.xdays-form-panel h3 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1rem;
+    color: #0984e3;
+}
+
+.xdays-form-row {
+    display: flex;
+    gap: 1rem;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.xdays-form-field {
+    flex: 1;
+    min-width: 150px;
+}
+
+.xdays-form-field label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 0.3rem;
+}
+
+.xdays-form-field select,
+.xdays-form-field input[type="date"] {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.xdays-form-btn-field {
+    flex: 0 0 auto;
+}
+
+/* ── Tabell ── */
+.xdays-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 1.5rem;
+}
+
+.xdays-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.xdays-table th {
+    background: #f0f0f0;
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: #555;
+    border-bottom: 2px solid #ddd;
+}
+
+.xdays-table td {
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid #eee;
+}
+
+.xdays-table tbody tr:hover {
+    background: #f5f7fa;
+}
+
+/* Rad-statusfärger */
+.xdays-row-negative {
+    background: #fff5f5;
+}
+
+.xdays-row-warning {
+    background: #fffbf0;
+}
+
+/* Kvarvarande-cell */
+.xdays-remaining-good { color: #00b894; }
+.xdays-remaining-warning { color: #fdcb6e; }
+.xdays-remaining-zero { color: #636e72; }
+.xdays-remaining-negative { color: #d63031; }
+
+/* ── Badges ── */
+.xdays-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.xdays-badge-good {
+    background: #e8f8f0;
+    color: #00b894;
+}
+
+.xdays-badge-warning {
+    background: #fff3e0;
+    color: #e17055;
+}
+
+.xdays-badge-zero {
+    background: #f0f0f0;
+    color: #636e72;
+}
+
+.xdays-badge-negative {
+    background: #ffe8e8;
+    color: #d63031;
+}
+
+/* ── Info ── */
+.xdays-info {
+    background: #f0f7ff;
+    border: 1px solid #74b9ff;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-top: 1rem;
+}
+
+.xdays-info h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.95rem;
+    color: #0984e3;
+}
+
+.xdays-info ul {
+    margin: 0;
+    padding-left: 1.2rem;
+}
+
+.xdays-info li {
+    font-size: 0.85rem;
+    color: #555;
+    line-height: 1.6;
+}
+
+.xdays-empty {
+    text-align: center;
+    color: #999;
+    padding: 2rem;
+    font-style: italic;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .xdays-kpi-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .xdays-form-row {
+        flex-direction: column;
+    }
+}
