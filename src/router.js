@@ -1,5 +1,5 @@
 /* ============================================================
- * FIL: src/router.js  (HEL FIL) — AUTOPATCH v10 + AO-14
+ * FIL: src/router.js  (HEL FIL) — AUTOPATCH v10 + AO-14 + SPRINT 1
  * NAMN: ROUTER — Route Management & Navigation
  *
  * AO-06:  Route 'week-templates' → renderWeekTemplates
@@ -9,6 +9,7 @@
  * AO-10:  Route 'rules'          → renderRules
  * AO-11:  Route 'export'         → renderExport
  * AO-14:  Route 'help'           → renderHelp
+ * S1-01:  Route 'absence'        → renderAbsence
  *
  * ALLA ROUTES IMPLEMENTERADE — INGA PLACEHOLDERS KVAR
  * ============================================================ */
@@ -27,6 +28,7 @@ import { renderSummary } from './views/summary.js';                 // AO-09
 import { renderRules } from './views/rules.js';                     // AO-10
 import { renderExport } from './views/export.js';                   // AO-11
 import { renderHelp } from './views/help.js';                       // AO-14
+import { renderAbsence } from './views/absence.js';                 // S1-01
 import { renderLogin } from './views/login-pin.js';
 import { renderError, renderNavbar } from './ui.js';
 import { reportError } from './diagnostics.js';
@@ -58,6 +60,7 @@ const routes = {
     rules: renderRules,                                                            // AO-10
     export: renderExport,                                                          // AO-11
     help: renderHelp,                                                              // AO-14
+    absence: renderAbsence,                                                        // S1-01
 };
 /* ============================================================
  * BLOCK 4 — Router state (DOM hooks + ctx)
