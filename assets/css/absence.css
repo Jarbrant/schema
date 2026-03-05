@@ -1,1 +1,252 @@
+/* ============================================================
+ * S3-01 — ABSENCE VIEW STYLES
+ * Lägg till i slutet av din huvudsakliga CSS-fil
+ * ============================================================ */
 
+/* --- Container --- */
+.abs-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+.abs-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+.abs-header h1 {
+    margin: 0 0 0.25rem;
+    font-size: 1.75rem;
+}
+.abs-subtitle {
+    margin: 0;
+    color: #666;
+    font-size: 0.95rem;
+}
+
+/* --- Stats --- */
+.abs-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+}
+.abs-stat-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.abs-stat-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+.abs-stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1a1a2e;
+}
+.abs-stat-label {
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 0.15rem;
+}
+
+/* --- Form --- */
+.abs-form-section {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 1.25rem;
+}
+.abs-form-section h2 {
+    margin: 0 0 1rem;
+    font-size: 1.15rem;
+}
+.abs-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.abs-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+.abs-form-full {
+    grid-column: 1 / -1;
+}
+.abs-form-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #444;
+    margin-bottom: 0.25rem;
+}
+.abs-form-group select,
+.abs-form-group input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+}
+.abs-form-group select:focus,
+.abs-form-group input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+.abs-form-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+.abs-form-msg {
+    display: none;
+    padding: 0.5rem 0.75rem;
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+/* --- Filters --- */
+.abs-filter-section h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+}
+.abs-filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.abs-filters select {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    background: #fff;
+}
+
+/* --- List --- */
+.abs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.abs-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: box-shadow 0.15s;
+}
+.abs-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.abs-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+.abs-card-person strong {
+    font-size: 0.95rem;
+}
+.abs-card-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+.btn-icon {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0.25rem 0.4rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.15s;
+}
+.btn-icon:hover {
+    background: #f0f0f0;
+}
+.btn-icon-danger:hover {
+    background: #ffebee;
+}
+.abs-card-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+.abs-type-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.abs-card-dates {
+    color: #555;
+}
+.abs-card-days {
+    color: #999;
+    font-size: 0.8rem;
+}
+.abs-card-note {
+    color: #777;
+    font-style: italic;
+    font-size: 0.8rem;
+}
+
+/* --- Badges --- */
+.abs-badge {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.abs-badge-active {
+    background: #c8e6c9;
+    color: #2e7d32;
+}
+.abs-badge-future {
+    background: #bbdefb;
+    color: #1565c0;
+}
+.abs-badge-past {
+    background: #f0f0f0;
+    color: #888;
+}
+
+/* --- Empty state --- */
+.abs-empty {
+    text-align: center;
+    padding: 2rem;
+    color: #999;
+    font-size: 0.95rem;
+}
+
+/* --- Responsive --- */
+@media (max-width: 600px) {
+    .abs-form-row {
+        grid-template-columns: 1fr;
+    }
+    .abs-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .abs-filters {
+        flex-direction: column;
+    }
+}
