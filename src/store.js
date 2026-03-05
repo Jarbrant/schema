@@ -17,6 +17,8 @@
  * 6) normalizePerson() sätter defaults för nya fält
  */
 
+import { shiftsSyncHook } from './modules/shifts-sync.js';
+
 /* ========================================================================
    BLOCK 0: STORAGE KEY / ROOT CONSTANTS
    ======================================================================== */
