@@ -1,10 +1,9 @@
 /*
  * AO-07: HOME — Startsida med gradient bakgrund & card-layout
  *
- * AUTOPATCH v3:
- * - P0: Tar bort inline <style> (flyttar styling till home.css)
- * - P0: Stabil topprad: H1 vänster + 3 mini-stats på samma rad höger
- * - P1: Renare markup (lättare att styla, mindre risk för krockar)
+ * SPRINT 1 PATCH:
+ *   - "Skift" → "Grundpass" i tabs + snabb-navigation
+ *   - Beskrivning uppdaterad: "Passöversikt" istf "Planera skift"
  */
 
 export function renderHome(container, ctx) {
@@ -66,7 +65,7 @@ export function renderHome(container, ctx) {
         <!-- Horisontell tab-navigation -->
         <div class="home-tabs">
           <a href="#/home" class="home-tab ${currentRoute === 'home' ? 'active' : ''}">Hem</a>
-          <a href="#/shifts" class="home-tab ${currentRoute === 'shifts' ? 'active' : ''}">Skift</a>
+          <a href="#/shifts" class="home-tab ${currentRoute === 'shifts' ? 'active' : ''}">Grundpass</a>
           <a href="#/groups" class="home-tab ${currentRoute === 'groups' ? 'active' : ''}">Grupper</a>
           <a href="#/personal" class="home-tab ${currentRoute === 'personal' ? 'active' : ''}">Personal</a>
           <a href="#/calendar" class="home-tab ${currentRoute === 'calendar' ? 'active' : ''}">Kalender</a>
@@ -91,15 +90,15 @@ export function renderHome(container, ctx) {
             </a>
 
             <a href="#/shifts" class="home-nav-item">
-              <span class="home-nav-item-icon">📋</span>
-              <span class="home-nav-item-title">Skift</span>
-              <span class="home-nav-item-desc">Planera skift</span>
+              <span class="home-nav-item-icon">⏰</span>
+              <span class="home-nav-item-title">Grundpass</span>
+              <span class="home-nav-item-desc">Passöversikt</span>
             </a>
 
             <a href="#/groups" class="home-nav-item">
               <span class="home-nav-item-icon">👥</span>
               <span class="home-nav-item-title">Grupper</span>
-              <span class="home-nav-item-desc">Hantera grupper</span>
+              <span class="home-nav-item-desc">Hantera grupper & skapa pass</span>
             </a>
 
             <a href="#/personal" class="home-nav-item">
