@@ -1,1 +1,270 @@
+/* ============================================================
+ * S3-02 — DASHBOARD STYLES
+ * ============================================================ */
 
+.dash-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+.dash-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* --- Header --- */
+.dash-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.dash-header h1 {
+    margin: 0 0 0.25rem;
+    font-size: 1.75rem;
+}
+.dash-subtitle {
+    margin: 0;
+    color: #666;
+    font-size: 0.9rem;
+}
+.dash-header-date {
+    font-size: 0.95rem;
+    color: #555;
+    font-weight: 600;
+    text-align: right;
+    padding-top: 0.5rem;
+}
+
+/* --- KPI Row --- */
+.dash-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+}
+.dash-kpi-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.dash-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.dash-kpi-warn {
+    border-color: #ff9800;
+    background: #fff8e1;
+}
+.dash-kpi-error {
+    border-color: #f44336;
+    background: #ffebee;
+}
+.dash-kpi-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+.dash-kpi-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #1a1a2e;
+    line-height: 1;
+}
+.dash-kpi-label {
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 0.25rem;
+}
+
+/* --- Two-column grid --- */
+.dash-grid-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+}
+.dash-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+.dash-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.dash-card h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.05rem;
+    color: #333;
+}
+
+/* --- Heatmap table --- */
+.dash-table-wrap {
+    overflow-x: auto;
+}
+.dash-heatmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.dash-heatmap-table th,
+.dash-heatmap-table td {
+    padding: 0.4rem 0.5rem;
+    text-align: center;
+    border-bottom: 1px solid #f0f0f0;
+}
+.dash-heatmap-table th {
+    font-weight: 600;
+    color: #666;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+}
+.dash-heatmap-table td:first-child {
+    text-align: left;
+}
+.dash-heat-cell {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.dash-heat-ok { background: #c8e6c9; color: #2e7d32; }
+.dash-heat-warn { background: #fff9c4; color: #f57f17; }
+.dash-heat-bad { background: #ffcdd2; color: #c62828; }
+.dash-heat-zero { background: #f5f5f5; color: #bbb; }
+
+/* --- Absence rows --- */
+.dash-absence-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #f5f5f5;
+    font-size: 0.85rem;
+}
+.dash-absence-row:last-child { border-bottom: none; }
+.dash-absence-icon { font-size: 1rem; }
+.dash-absence-type {
+    background: #f0f0f0;
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    color: #666;
+}
+.dash-absence-dates {
+    margin-left: auto;
+    color: #999;
+    font-size: 0.8rem;
+}
+
+/* --- Period warnings --- */
+.dash-period-row {
+    padding: 0.6rem 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+.dash-period-row:last-child { border-bottom: none; }
+.dash-period-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+.dash-period-pct {
+    font-size: 0.8rem;
+    color: #888;
+}
+.dash-period-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #666;
+    margin-bottom: 0.3rem;
+}
+.dash-period-days {
+    font-weight: 700;
+}
+.dash-period-urgent .dash-period-days { color: #c62828; }
+.dash-period-soon .dash-period-days { color: #e65100; }
+.dash-period-ok .dash-period-days { color: #2e7d32; }
+.dash-period-bar {
+    height: 6px;
+    background: #e0e0e0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.dash-period-bar-fill {
+    height: 100%;
+    background: #667eea;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+.dash-period-urgent .dash-period-bar-fill { background: #f44336; }
+.dash-period-soon .dash-period-bar-fill { background: #ff9800; }
+
+/* --- Nav grid --- */
+.dash-nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 0.5rem;
+}
+.dash-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem 0.5rem;
+    border: 1px solid #e8e8e8;
+    border-radius: 10px;
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.15s, transform 0.15s;
+    text-align: center;
+}
+.dash-nav-item:hover {
+    background: #f5f5ff;
+    transform: translateY(-1px);
+}
+.dash-nav-icon { font-size: 1.25rem; margin-bottom: 0.2rem; }
+.dash-nav-title { font-weight: 600; font-size: 0.85rem; }
+.dash-nav-desc { font-size: 0.7rem; color: #999; }
+
+/* --- Empty state --- */
+.dash-empty {
+    color: #999;
+    font-size: 0.9rem;
+    padding: 0.5rem 0;
+}
+.dash-empty a {
+    color: #667eea;
+    text-decoration: underline;
+}
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+    .dash-grid-2col {
+        grid-template-columns: 1fr;
+    }
+    .dash-kpi-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .dash-header {
+        flex-direction: column;
+    }
+    .dash-header-date {
+        text-align: left;
+    }
+}
+
+@media (max-width: 480px) {
+    .dash-kpi-row {
+        grid-template-columns: 1fr 1fr;
+    }
+    .dash-nav-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
