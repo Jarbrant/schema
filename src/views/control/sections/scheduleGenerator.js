@@ -1,35 +1,33 @@
 /*
- * SCHEDULE GENERATOR SECTION
+ * SCHEDULE GENERATOR SECTION — SPRINT 2
  *
- * AO-04 — Schemagenerator: Månad + Period
- * Renderar UI för schemagenerering
+ * ÄNDRING: Byter från scheduler.js (gammal motor utan state.rules)
+ *          → scheduler/engine.js generate() (full regelmotor v3.0)
  *
- * AUTOPATCH (P0) — Anpassad till store.js-modellen:
- * - state.groups är map/object (inte array)  -> Object.values
- * - "pass" definieras av state.shifts (map/object med start/end/break)  -> Object.values
- * - bemanningsbehov tas från state.demand.groupDemands[groupId][weekdayIdx]
- * - store.setState finns inte -> store.update(...)
- * - skriver schema till state.schedule.months[].days[].entries[] (ingen ny top-level key)
- * - använder lokalt resultDiv (inte document.getElementById)
- *
- * AUTOPATCH v2 — Konsoliderad regelmotor-fix:
- * - peopleForScheduler: fullständig persondata (groups, availability, startDate, etc.)
- * - entry: inkluderar shiftId, groupId, startTime, endTime, hours
- * - dedupe: baserad på shiftId + groupId istället för start/end
+ * NYA FUNKTIONER:
+ * - Gruppväljare (checkboxar) — generate() kräver selectedGroupIds
+ * - Frånvaro-blockering via state.absences → vacationDates/leaveDates
+ * - Regelvarningar (P0/P1) visas i resultat
+ * - Vakanser visas tydligt
  */
 
-// RÄTT IMPORT:
-import { generateSchedule } from '../../../scheduler.js';
+import { generate } from '../../../scheduler/engine.js';
 import { showSuccess, showWarning } from '../../../ui.js';
 import { reportError } from '../../../diagnostics.js';
 
+/* ============================================================
+ * BLOCK 1 — RENDER UI
+ * ============================================================ */
 export function renderScheduleGeneratorSection(container, ctx) {
     try {
         const store = ctx?.store;
         if (!store) throw new Error('Store missing');
 
-        // Clear container
         while (container.firstChild) container.removeChild(container.firstChild);
+
+        const state = store.getState();
+        const groups = (state.groups && typeof state.groups === 'object') ? state.groups : {};
+        const groupsArr = Object.values(groups).filter(Boolean);
 
         // === HEADER ===
         const header = document.createElement('div');
@@ -39,19 +37,62 @@ export function renderScheduleGeneratorSection(container, ctx) {
         title.textContent = '⚙️ Schemagenerator';
 
         const desc = document.createElement('p');
-        desc.textContent = 'Generera automatiskt schema baserat på bemanningsbehov, grupper och tillgänglighet';
+        desc.textContent = 'Generera schema med full regelmotor (helgrotation, frånvaro, max-timmar m.m.)';
         desc.style.color = '#666';
 
         header.appendChild(title);
         header.appendChild(desc);
         container.appendChild(header);
 
+        // === RULES INFO ===
+        const rules = Array.isArray(state.rules) ? state.rules.filter(r => r.isActive) : [];
+        const rulesInfo = document.createElement('div');
+        rulesInfo.style.cssText = 'padding:0.75rem 1rem;background:#e8f5e9;border-left:4px solid #4caf50;border-radius:6px;margin-bottom:1.5rem;font-size:0.9rem;';
+        rulesInfo.innerHTML = `<strong>📋 ${rules.length} aktiva regler</strong> från <a href="#/rules" style="color:#2e7d32;">Arbetstidsregler-vyn</a> tillämpas automatiskt vid generering.`;
+        container.appendChild(rulesInfo);
+
+        // === GROUP SELECTOR ===
+        const groupSection = document.createElement('div');
+        groupSection.style.cssText = 'margin-bottom:1.5rem;padding:1rem;background:#f9f9f9;border-radius:6px;';
+
+        const groupLabel = document.createElement('h3');
+        groupLabel.textContent = '👥 Välj grupper att schemalägga';
+        groupLabel.style.margin = '0 0 1rem 0';
+        groupSection.appendChild(groupLabel);
+
+        const groupCheckboxes = document.createElement('div');
+        groupCheckboxes.style.cssText = 'display:flex;flex-wrap:wrap;gap:1rem;';
+        groupCheckboxes.id = 'generator-group-checkboxes';
+
+        if (groupsArr.length === 0) {
+            groupCheckboxes.innerHTML = '<p style="color:#999;">Inga grupper definierade. Skapa grupper först.</p>';
+        } else {
+            groupsArr.forEach(g => {
+                const label = document.createElement('label');
+                label.style.cssText = 'display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.5rem 0.75rem;border:1px solid #ddd;border-radius:6px;background:#fff;';
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = String(g.id);
+                cb.checked = true;
+                cb.className = 'generator-group-cb';
+
+                const dot = document.createElement('span');
+                dot.style.cssText = `display:inline-block;width:12px;height:12px;border-radius:50%;background:${sanitizeColor(g.color)};`;
+
+                label.appendChild(cb);
+                label.appendChild(dot);
+                label.appendChild(document.createTextNode(g.name || g.id));
+                groupCheckboxes.appendChild(label);
+            });
+        }
+
+        groupSection.appendChild(groupCheckboxes);
+        container.appendChild(groupSection);
+
         // === MODE SELECTOR ===
         const modeSection = document.createElement('div');
-        modeSection.style.marginBottom = '1.5rem';
-        modeSection.style.padding = '1rem';
-        modeSection.style.background = '#f9f9f9';
-        modeSection.style.borderRadius = '6px';
+        modeSection.style.cssText = 'margin-bottom:1.5rem;padding:1rem;background:#f9f9f9;border-radius:6px;';
 
         const modeLabel = document.createElement('h3');
         modeLabel.textContent = 'Välj läge';
@@ -59,38 +100,20 @@ export function renderScheduleGeneratorSection(container, ctx) {
         modeSection.appendChild(modeLabel);
 
         const modeContainer = document.createElement('div');
-        modeContainer.style.display = 'flex';
-        modeContainer.style.gap = '2rem';
+        modeContainer.style.cssText = 'display:flex;gap:2rem;';
 
-        // Month mode
         const monthLabel = document.createElement('label');
-        monthLabel.style.display = 'flex';
-        monthLabel.style.alignItems = 'center';
-        monthLabel.style.gap = '0.5rem';
-        monthLabel.style.cursor = 'pointer';
-
+        monthLabel.style.cssText = 'display:flex;align-items:center;gap:0.5rem;cursor:pointer;';
         const monthRadio = document.createElement('input');
-        monthRadio.type = 'radio';
-        monthRadio.name = 'mode';
-        monthRadio.value = 'month';
-        monthRadio.checked = true;
-
+        monthRadio.type = 'radio'; monthRadio.name = 'mode'; monthRadio.value = 'month'; monthRadio.checked = true;
         monthLabel.appendChild(monthRadio);
         monthLabel.appendChild(document.createTextNode('Månad'));
         modeContainer.appendChild(monthLabel);
 
-        // Period mode
         const periodLabel = document.createElement('label');
-        periodLabel.style.display = 'flex';
-        periodLabel.style.alignItems = 'center';
-        periodLabel.style.gap = '0.5rem';
-        periodLabel.style.cursor = 'pointer';
-
+        periodLabel.style.cssText = 'display:flex;align-items:center;gap:0.5rem;cursor:pointer;';
         const periodRadio = document.createElement('input');
-        periodRadio.type = 'radio';
-        periodRadio.name = 'mode';
-        periodRadio.value = 'period';
-
+        periodRadio.type = 'radio'; periodRadio.name = 'mode'; periodRadio.value = 'period';
         periodLabel.appendChild(periodRadio);
         periodLabel.appendChild(document.createTextNode('Period (Från-Till)'));
         modeContainer.appendChild(periodLabel);
@@ -101,500 +124,380 @@ export function renderScheduleGeneratorSection(container, ctx) {
         // === MONTH MODE ===
         const monthDiv = document.createElement('div');
         monthDiv.id = 'month-mode';
-        monthDiv.style.marginBottom = '1.5rem';
-        monthDiv.style.padding = '1rem';
-        monthDiv.style.background = '#fff';
-        monthDiv.style.border = '1px solid #ddd';
-        monthDiv.style.borderRadius = '6px';
+        monthDiv.style.cssText = 'margin-bottom:1.5rem;padding:1rem;background:#fff;border:1px solid #ddd;border-radius:6px;';
 
-        const monthYearGroup = document.createElement('div');
-        monthYearGroup.style.marginBottom = '1rem';
+        const yearInput = createLabeledInput('År:', 'number', String(state.schedule?.year || new Date().getFullYear()));
+        yearInput.input.min = '2000'; yearInput.input.max = '2100'; yearInput.input.style.width = '100px';
+        monthDiv.appendChild(yearInput.wrapper);
 
-        const yearLabel = document.createElement('label');
-        yearLabel.textContent = 'År:';
-        yearLabel.style.display = 'block';
-        yearLabel.style.marginBottom = '0.5rem';
-        yearLabel.style.fontWeight = '500';
-
-        const yearInput = document.createElement('input');
-        yearInput.type = 'number';
-        yearInput.id = 'generator-year';
-        yearInput.value = String(new Date().getFullYear());
-        yearInput.min = '2000';
-        yearInput.max = '2100';
-        yearInput.style.width = '100px';
-        yearInput.style.padding = '0.5rem';
-        yearInput.style.border = '1px solid #ddd';
-        yearInput.style.borderRadius = '4px';
-
-        monthYearGroup.appendChild(yearLabel);
-        monthYearGroup.appendChild(yearInput);
-        monthDiv.appendChild(monthYearGroup);
-
-        const monthGroup = document.createElement('div');
-        const monthLabel2 = document.createElement('label');
-        monthLabel2.textContent = 'Månad:';
-        monthLabel2.style.display = 'block';
-        monthLabel2.style.marginBottom = '0.5rem';
-        monthLabel2.style.fontWeight = '500';
-
+        const monthNames = ['Januari','Februari','Mars','April','Maj','Juni','Juli','Augusti','September','Oktober','November','December'];
         const monthSelect = document.createElement('select');
-        monthSelect.id = 'generator-month';
-        monthSelect.style.padding = '0.5rem';
-        monthSelect.style.border = '1px solid #ddd';
-        monthSelect.style.borderRadius = '4px';
-
-        const months = [
-            'Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni',
-            'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December'
-        ];
-        months.forEach((m, i) => {
-            const option = document.createElement('option');
-            option.value = String(i + 1);
-            option.textContent = m;
-            if (i === new Date().getMonth()) option.selected = true;
-            monthSelect.appendChild(option);
+        monthSelect.style.cssText = 'padding:0.5rem;border:1px solid #ddd;border-radius:4px;';
+        monthNames.forEach((m, i) => {
+            const opt = document.createElement('option');
+            opt.value = String(i + 1); opt.textContent = m;
+            if (i === new Date().getMonth()) opt.selected = true;
+            monthSelect.appendChild(opt);
         });
-
-        monthGroup.appendChild(monthLabel2);
-        monthGroup.appendChild(monthSelect);
-        monthDiv.appendChild(monthGroup);
+        const monthWrapper = document.createElement('div');
+        monthWrapper.style.marginTop = '1rem';
+        const ml = document.createElement('label');
+        ml.textContent = 'Månad:'; ml.style.cssText = 'display:block;margin-bottom:0.5rem;font-weight:500;';
+        monthWrapper.appendChild(ml); monthWrapper.appendChild(monthSelect);
+        monthDiv.appendChild(monthWrapper);
         container.appendChild(monthDiv);
 
         // === PERIOD MODE ===
         const periodDiv = document.createElement('div');
         periodDiv.id = 'period-mode';
-        periodDiv.style.marginBottom = '1.5rem';
-        periodDiv.style.padding = '1rem';
-        periodDiv.style.background = '#fff';
-        periodDiv.style.border = '1px solid #ddd';
-        periodDiv.style.borderRadius = '6px';
-        periodDiv.style.display = 'none';
-
-        const fromDateGroup = document.createElement('div');
-        fromDateGroup.style.marginBottom = '1rem';
-
-        const fromLabel = document.createElement('label');
-        fromLabel.textContent = 'Från datum:';
-        fromLabel.style.display = 'block';
-        fromLabel.style.marginBottom = '0.5rem';
-        fromLabel.style.fontWeight = '500';
-
-        const fromInput = document.createElement('input');
-        fromInput.type = 'date';
-        fromInput.id = 'generator-from-date';
-        fromInput.style.width = '100%';
-        fromInput.style.maxWidth = '200px';
-        fromInput.style.padding = '0.5rem';
-        fromInput.style.border = '1px solid #ddd';
-        fromInput.style.borderRadius = '4px';
-
-        fromDateGroup.appendChild(fromLabel);
-        fromDateGroup.appendChild(fromInput);
-        periodDiv.appendChild(fromDateGroup);
-
-        const toDateGroup = document.createElement('div');
-        const toLabel = document.createElement('label');
-        toLabel.textContent = 'Till datum:';
-        toLabel.style.display = 'block';
-        toLabel.style.marginBottom = '0.5rem';
-        toLabel.style.fontWeight = '500';
-
-        const toInput = document.createElement('input');
-        toInput.type = 'date';
-        toInput.id = 'generator-to-date';
-        toInput.style.width = '100%';
-        toInput.style.maxWidth = '200px';
-        toInput.style.padding = '0.5rem';
-        toInput.style.border = '1px solid #ddd';
-        toInput.style.borderRadius = '4px';
-
-        toDateGroup.appendChild(toLabel);
-        toDateGroup.appendChild(toInput);
-        periodDiv.appendChild(toDateGroup);
+        periodDiv.style.cssText = 'margin-bottom:1.5rem;padding:1rem;background:#fff;border:1px solid #ddd;border-radius:6px;display:none;';
+        const fromInput = createLabeledInput('Från datum:', 'date', '');
+        fromInput.input.style.maxWidth = '200px';
+        const toInput = createLabeledInput('Till datum:', 'date', '');
+        toInput.input.style.maxWidth = '200px';
+        periodDiv.appendChild(fromInput.wrapper);
+        periodDiv.appendChild(toInput.wrapper);
         container.appendChild(periodDiv);
 
         // === MODE TOGGLE ===
-        monthRadio.onchange = () => {
-            monthDiv.style.display = monthRadio.checked ? 'block' : 'none';
-            periodDiv.style.display = 'none';
-        };
+        monthRadio.onchange = () => { monthDiv.style.display = 'block'; periodDiv.style.display = 'none'; };
+        periodRadio.onchange = () => { periodDiv.style.display = 'block'; monthDiv.style.display = 'none'; };
 
-        periodRadio.onchange = () => {
-            periodDiv.style.display = periodRadio.checked ? 'block' : 'none';
-            monthDiv.style.display = 'none';
-        };
-
-        // === RESULT AREA (lokal ref) ===
+        // === RESULT AREA ===
         const resultDiv = document.createElement('div');
-        resultDiv.id = 'generator-result';
         resultDiv.style.marginTop = '1.5rem';
 
         // === GENERATE BUTTON ===
         const generateBtn = document.createElement('button');
         generateBtn.className = 'btn btn-primary';
-        generateBtn.textContent = '⚙️ Föreslå schema';
+        generateBtn.textContent = '⚙️ Generera schema';
         generateBtn.style.marginBottom = '1.5rem';
-        generateBtn.onclick = () =>
-            handleGenerate({
-                btn: generateBtn,
-                monthRadio,
-                yearInput,
-                monthSelect,
-                fromInput,
-                toInput,
-                store,
-                ctx,
-                resultDiv
-            });
+        generateBtn.onclick = () => handleGenerate({
+            btn: generateBtn, monthRadio, yearInput: yearInput.input,
+            monthSelect, fromInput: fromInput.input, toInput: toInput.input,
+            store, ctx, resultDiv
+        });
 
         container.appendChild(generateBtn);
         container.appendChild(resultDiv);
 
-        console.log('✓ Schedule generator section rendered');
+        console.log('✓ Schedule generator section rendered (Sprint 2)');
     } catch (err) {
         console.error('❌ Error rendering schedule generator:', err);
-        reportError(
-            'SCHEDULE_GENERATOR_RENDER_ERROR',
-            'CONTROL_SECTION',
-            'control/sections/scheduleGenerator.js',
-            err?.message || 'Unknown error'
-        );
+        reportError('SCHEDULE_GENERATOR_RENDER_ERROR', 'CONTROL_SECTION',
+            'control/sections/scheduleGenerator.js', err?.message || 'Unknown error');
         throw err;
     }
 }
 
+/* ============================================================
+ * BLOCK 2 — HANDLE GENERATE (anropar scheduler/engine.js)
+ * ============================================================ */
 function handleGenerate({ btn, monthRadio, yearInput, monthSelect, fromInput, toInput, store, ctx, resultDiv }) {
     try {
-        console.log('🔄 Generating schedule...');
-
+        console.log('🔄 Generating schedule (Sprint 2 — full engine)...');
         const state = store.getState();
 
-        // === Store-model bridge ===
-        const groupsArr = objectValuesSafe(state.groups); // groups map -> array
-        const passDefsArr = objectValuesSafe(state.shifts); // shifts map -> array of "pass defs"
-        const groupDemands = state?.demand?.groupDemands || null;
-        const peopleArr = Array.isArray(state.people) ? state.people : [];
+        // Hämta valda grupper
+        const checkboxes = document.querySelectorAll('.generator-group-cb:checked');
+        const selectedGroupIds = Array.from(checkboxes).map(cb => cb.value).filter(Boolean);
 
-        // Validate prerequisites (fail-closed men tydligt)
-        if (groupsArr.length === 0) {
-            showWarning('⚠️ Inga grupper definierade');
-            return;
-        }
-        if (passDefsArr.length === 0) {
-            showWarning('⚠️ Inga pass definierade (state.shifts saknas)');
-            return;
-        }
-        if (!groupDemands || typeof groupDemands !== 'object') {
-            showWarning('⚠️ Inget bemanningsbehov definierat (state.demand.groupDemands saknas)');
-            return;
-        }
-        if (peopleArr.length === 0) {
-            showWarning('⚠️ Ingen personal definierad');
+        if (selectedGroupIds.length === 0) {
+            showWarning('⚠️ Välj minst en grupp att schemalägga');
             return;
         }
 
-        // Build scheduler-compatible people (FULLSTÄNDIG DATA för rules-engine)
-        const peopleForScheduler = peopleArr.map((p) => ({
-            id: String(p?.id ?? ''),
-            name: `${String(p?.firstName ?? '').trim()} ${String(p?.lastName ?? '').trim()}`.trim() || 'Okänd',
-            firstName: String(p?.firstName ?? '').trim(),
-            lastName: String(p?.lastName ?? '').trim(),
-            employmentPct: typeof p?.employmentPct === 'number' ? p.employmentPct : 100,
-            degree: typeof p?.employmentPct === 'number' ? p.employmentPct : 100,
-            groups: Array.isArray(p?.groups) ? p.groups.map(String)
-                  : Array.isArray(p?.groupIds) ? p.groupIds.map(String)
-                  : [],
-            availability: Array.isArray(p?.availability) ? p.availability : [true, true, true, true, true, false, false],
-            workdaysPerWeek: typeof p?.workdaysPerWeek === 'number' ? p.workdaysPerWeek : 5,
-            startDate: p?.startDate || '2020-01-01',
-            sector: p?.sector || 'private',
-            vacationDates: Array.isArray(p?.vacationDates) ? p.vacationDates : [],
-            leaveDates: Array.isArray(p?.leaveDates) ? p.leaveDates : [],
-            isActive: p?.isActive !== false,
-            collectiveAgreement: p?.collectiveAgreement || 'HRF',
-            hourlyWage: p?.hourlyWage || 0,
-            preferredShifts: Array.isArray(p?.preferredShifts) ? p.preferredShifts : [],
-            avoidShifts: Array.isArray(p?.avoidShifts) ? p.avoidShifts : [],
-            employmentType: p?.employmentType || 'regular',
-        })).filter(p => !!p.id && p.isActive);
-
-        if (peopleForScheduler.length === 0) {
-            showWarning('⚠️ Personer saknar giltiga id (kan inte generera)');
+        // Validera grunddata
+        if (!state.schedule || !Array.isArray(state.schedule.months)) {
+            showWarning('⚠️ Schedule saknas — initiera schema först');
+            return;
+        }
+        if (!Array.isArray(state.people) || state.people.filter(p => p?.isActive).length === 0) {
+            showWarning('⚠️ Ingen aktiv personal — lägg till personal först');
             return;
         }
 
-        // Get mode + date interval
+        // Berika people med frånvarodatum från state.absences
+        const enrichedState = enrichStateWithAbsences(state);
+
+        // Bestäm period
         const mode = monthRadio.checked ? 'month' : 'period';
-        let startDate = null;
-        let endDate = null;
 
         if (mode === 'month') {
-            const y = parseInt(yearInput.value, 10);
-            const m = parseInt(monthSelect.value, 10);
-            if (!Number.isFinite(y) || y < 2000 || y > 2100) {
-                showWarning('⚠️ Ogiltigt år');
-                return;
+            const year = parseInt(yearInput.value, 10);
+            const month = parseInt(monthSelect.value, 10);
+
+            if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+                showWarning('⚠️ Ogiltigt år'); return;
             }
-            if (!Number.isFinite(m) || m < 1 || m > 12) {
-                showWarning('⚠️ Ogiltig månad');
-                return;
+            if (!Number.isFinite(month) || month < 1 || month > 12) {
+                showWarning('⚠️ Ogiltig månad'); return;
             }
-            startDate = new Date(y, m - 1, 1);
-            endDate = new Date(y, m, 0);
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Genererar...';
+
+            const result = generate(enrichedState, { year, month, selectedGroupIds });
+            applyResult(result, store, year, month, resultDiv);
+
         } else {
             if (!fromInput.value || !toInput.value) {
-                showWarning('⚠️ Välj både från- och till-datum');
-                return;
+                showWarning('⚠️ Välj både från- och till-datum'); return;
             }
-            startDate = new Date(fromInput.value);
-            endDate = new Date(toInput.value);
-            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-                showWarning('⚠️ Ogiltiga datum');
-                return;
+            const from = new Date(fromInput.value);
+            const to = new Date(toInput.value);
+            if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+                showWarning('⚠️ Ogiltiga datum'); return;
             }
-            if (endDate < startDate) {
-                showWarning('⚠️ Till-datum måste vara efter från-datum');
-                return;
+            if (to < from) {
+                showWarning('⚠️ Till-datum måste vara efter från-datum'); return;
             }
-            const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-            if (daysDiff > 93) {
-                showWarning(`⚠️ Period kan max vara 93 dagar (du valde ${daysDiff} dagar)`);
-                return;
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Genererar...';
+
+            // Period: kör per unik månad
+            const months = getMonthsInRange(from, to);
+            const allResults = [];
+
+            for (const { year, month } of months) {
+                try {
+                    const freshState = enrichStateWithAbsences(store.getState());
+                    const result = generate(freshState, { year, month, selectedGroupIds });
+                    applyResult(result, store, year, month, null);
+                    allResults.push(result);
+                } catch (err) {
+                    console.warn(`⚠️ Månad ${month}/${year} misslyckades:`, err.message);
+                }
             }
+
+            const totalFilled = allResults.reduce((s, r) => s + (r.summary?.filledSlots || 0), 0);
+            const totalVacancies = allResults.reduce((s, r) => s + (r.summary?.vacancyCount || 0), 0);
+            showSuccess(`✓ ${totalFilled} skift genererade över ${months.length} månad(er)`);
+            displayPeriodResult(resultDiv, allResults, months);
         }
-
-        // IMPORTANT: scheduler.js använder en statisk "demands"-lista (ingen weekday-logik).
-        // För att stödja weekday-variation utan att patcha scheduler.js kör vi dag-för-dag
-        // och skickar demands för just den dagen (count från groupDemands[groupId][weekdayIdx]).
-        const allGenerated = [];
-        const dayCount = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-
-        btn.disabled = true;
-
-        for (let di = 0; di < dayCount; di++) {
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + di);
-            const dateStr = formatDate(d);
-            const weekdayIdx = getWeekdayIdxMonday0(d); // mån=0 ... sön=6
-
-            const demandsForDay = buildDemandsForDay(groupsArr, passDefsArr, groupDemands, weekdayIdx);
-
-            // Om ingen efterfrågan den dagen: hoppa
-            if (demandsForDay.totalCount === 0) continue;
-
-            const paramsForDay = {
-                mode: 'period',
-                fromDate: dateStr,
-                toDate: dateStr,
-                groups: groupsArr,
-                passes: passDefsArr,
-                demands: demandsForDay.items,
-                people: peopleForScheduler
-            };
-
-            const res = generateSchedule(paramsForDay);
-            if (!res?.success) {
-                // Fortsätt, men logga och visa i result
-                console.warn('⚠️ Dag misslyckades:', dateStr, res?.errors);
-                allGenerated.push(...[]); // no-op, behåll flöde
-            } else {
-                allGenerated.push(...(res.shifts || []));
-            }
-        }
-
-        if (allGenerated.length === 0) {
-            showWarning('⚠️ Inga skift genererades (kontrollera bemanningsbehov + pass + grupper)');
-            displayResult(resultDiv, { success: false, errors: ['Inga skift genererades'] });
-            return;
-        }
-
-        // Skriv in i schedule (state.schedule.months[].days[].entries[]) via store.update
-        store.update((draft) => {
-            if (!draft.schedule || !Array.isArray(draft.schedule.months)) return;
-
-            // Bygg index för snabb lookup
-            const monthByNum = Object.create(null);
-            draft.schedule.months.forEach((m) => { monthByNum[m.month] = m; });
-
-            // Append entries per day
-            allGenerated.forEach((gs) => {
-                const date = String(gs.date || '');
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-
-                const yyyy = parseInt(date.slice(0, 4), 10);
-                const mm = parseInt(date.slice(5, 7), 10);
-                const dd = parseInt(date.slice(8, 10), 10);
-
-                const monthObj = monthByNum[mm];
-                if (!monthObj || !Array.isArray(monthObj.days)) return;
-                const dayObj = monthObj.days[dd - 1];
-                if (!dayObj || !Array.isArray(dayObj.entries)) return;
-
-                // FULLSTÄNDIGT ENTRY-FORMAT (kompatibelt med schedule-engine + kalender + stats)
-                const entry = {
-                    personId: String(gs.personId ?? ''),
-                    shiftId: String(gs.shiftId ?? ''),
-                    groupId: String(gs.groupId ?? ''),
-                    status: 'A',
-                    startTime: (gs.startTime ?? null),
-                    endTime: (gs.endTime ?? null),
-                    start: (gs.startTime ?? null),
-                    end: (gs.endTime ?? null),
-                    breakStart: (gs.breakStart ?? null),
-                    breakEnd: (gs.breakEnd ?? null),
-                    hours: gs.hours || 0,
-                };
-
-                if (!entry.personId) return;
-
-                // Dedupe: samma person + shiftId + groupId (säkrare än start/end)
-                const already = dayObj.entries.some((e) =>
-                    String(e?.personId) === entry.personId &&
-                    String(e?.shiftId ?? '') === entry.shiftId &&
-                    String(e?.groupId ?? '') === entry.groupId &&
-                    String(e?.status ?? '') === 'A'
-                );
-                if (!already) dayObj.entries.push(entry);
-            });
-
-            // meta.updatedAt
-            if (!draft.meta || typeof draft.meta !== 'object') draft.meta = {};
-            draft.meta.updatedAt = Date.now();
-        });
-
-        showSuccess(`✓ ${allGenerated.length} skift genererade och inskrivna i schemat`);
-        displayResult(resultDiv, { success: true, shifts: allGenerated, errors: [] });
 
     } catch (err) {
         console.error('❌ Error generating schedule:', err);
-        reportError(
-            'SCHEDULE_GENERATION_ERROR',
-            'SCHEDULE_GENERATOR',
-            'control/sections/scheduleGenerator.js',
-            err?.message || 'Unknown error'
-        );
-        showWarning('⚠️ Ett fel uppstod vid schemagenerering');
-        displayResult(resultDiv, { success: false, errors: [err?.message || 'Okänt fel'] });
+        reportError('SCHEDULE_GENERATION_ERROR', 'SCHEDULE_GENERATOR',
+            'control/sections/scheduleGenerator.js', err?.message || 'Unknown error');
+        showWarning(`⚠️ ${err.message || 'Ett fel uppstod vid schemagenerering'}`);
+        displayError(resultDiv, err.message);
     } finally {
-        try { btn.disabled = false; } catch (_) {}
+        try {
+            btn.disabled = false;
+            btn.textContent = '⚙️ Generera schema';
+        } catch (_) {}
     }
 }
 
-function displayResult(container, result) {
-    while (container.firstChild) container.removeChild(container.firstChild);
+/* ============================================================
+ * BLOCK 3 — APPLY RESULT (skriver proposedState till store)
+ * ============================================================ */
+function applyResult(result, store, year, month, resultDiv) {
+    if (!result?.proposedState) return;
 
-    if (result && result.success) {
-        const successDiv = document.createElement('div');
-        successDiv.className = 'alert alert-success';
-        successDiv.style.marginBottom = '1rem';
+    const proposedMonth = result.proposedState.schedule?.months?.[month - 1];
+    if (!proposedMonth) return;
 
-        const msg = document.createElement('p');
-        msg.textContent = `✓ ${(result.shifts || []).length} skift genererade`;
-        msg.style.margin = '0';
+    store.update(draft => {
+        if (!draft.schedule || !Array.isArray(draft.schedule.months)) return;
+        const targetMonth = draft.schedule.months[month - 1];
+        if (!targetMonth) return;
 
-        successDiv.appendChild(msg);
-        container.appendChild(successDiv);
+        // Ersätt månadens dagar med det genererade resultatet
+        targetMonth.days = proposedMonth.days;
 
-        if ((result.shifts || []).length > 0) {
-            const summary = document.createElement('div');
-            summary.style.marginTop = '1rem';
-            summary.style.padding = '1rem';
-            summary.style.background = '#f9f9f9';
-            summary.style.borderRadius = '6px';
-
-            const title = document.createElement('h4');
-            title.style.margin = '0 0 0.75rem 0';
-            title.textContent = 'Schemagenerering Klar';
-
-            const details = document.createElement('p');
-            details.style.margin = '0';
-            details.textContent = `Systemet har fördelat ${(result.shifts || []).length} skift baserat på bemanningsbehov och tillgänglighet.`;
-
-            summary.appendChild(title);
-            summary.appendChild(details);
-            container.appendChild(summary);
-        }
-    } else {
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'alert alert-danger';
-
-        const title = document.createElement('p');
-        title.textContent = '❌ Schemagenerering misslyckades';
-        title.style.margin = '0 0 0.5rem 0';
-        title.style.fontWeight = '600';
-
-        const errors = document.createElement('ul');
-        errors.style.margin = '0';
-        errors.style.paddingLeft = '1.5rem';
-
-        const list = (result && Array.isArray(result.errors) && result.errors.length)
-            ? result.errors
-            : ['Ett okänt fel uppstod'];
-
-        list.forEach((error) => {
-            const li = document.createElement('li');
-            li.textContent = String(error);
-            errors.appendChild(li);
-        });
-
-        errorDiv.appendChild(title);
-        errorDiv.appendChild(errors);
-        container.appendChild(errorDiv);
-    }
-}
-
-/* =========================
-   Helpers (local)
-   ========================= */
-
-function objectValuesSafe(obj) {
-    if (!obj || typeof obj !== 'object') return [];
-    return Object.values(obj).filter(Boolean);
-}
-
-// JS Date.getDay(): sön=0 ... lör=6
-// Vi vill: mån=0 ... sön=6
-function getWeekdayIdxMonday0(d) {
-    const js = d.getDay(); // 0..6 (sön..lör)
-    return (js + 6) % 7;   // mån=0, tis=1, ... sön=6
-}
-
-function buildDemandsForDay(groupsArr, passDefsArr, groupDemands, weekdayIdx) {
-    const items = [];
-    let total = 0;
-
-    groupsArr.forEach((g) => {
-        const gid = String(g?.id ?? '').trim();
-        if (!gid) return;
-
-        const week = groupDemands[gid];
-        const countForGroup = Array.isArray(week) && typeof week[weekdayIdx] === 'number'
-            ? week[weekdayIdx]
-            : 0;
-
-        // Om gruppen inte behöver någon: ingen demands för den dagen
-        if (!countForGroup || countForGroup <= 0) return;
-
-        // För enkel baseline: samma count används för alla pass i gruppen den dagen.
-        // (Vill ni fördela per pass: då behöver vi en annan demand-modell/AO.)
-        passDefsArr.forEach((p) => {
-            const pid = String(p?.id ?? '').trim();
-            if (!pid) return;
-            items.push({
-                key: `${gid}_${pid}`,
-                count: countForGroup
-            });
-            total += countForGroup;
-        });
+        if (!draft.meta || typeof draft.meta !== 'object') draft.meta = {};
+        draft.meta.updatedAt = Date.now();
     });
 
-    return { items, totalCount: total };
+    const filled = result.summary?.filledSlots || 0;
+    const vacancies = result.summary?.vacancyCount || 0;
+    const rulesApplied = result.summary?.activeRulesApplied || 0;
+
+    showSuccess(`✓ ${filled} skift genererade (${rulesApplied} regler tillämpade)`);
+
+    if (resultDiv) {
+        displayMonthResult(resultDiv, result, year, month);
+    }
+}
+
+/* ============================================================
+ * BLOCK 4 — ENRICH STATE (frånvaro → vacationDates/leaveDates)
+ * ============================================================ */
+function enrichStateWithAbsences(state) {
+    const enriched = JSON.parse(JSON.stringify(state));
+    const absences = Array.isArray(enriched.absences) ? enriched.absences : [];
+
+    if (absences.length === 0 || !Array.isArray(enriched.people)) return enriched;
+
+    // Bygg per-person datum-listor
+    const personAbsences = {};
+    absences.forEach(abs => {
+        if (!abs || !abs.personId) return;
+        if (!personAbsences[abs.personId]) personAbsences[abs.personId] = { vacation: [], leave: [] };
+
+        const dates = getAbsenceDates(abs);
+        const bucket = (abs.type === 'SEM' || abs.type === 'semester') ? 'vacation' : 'leave';
+        personAbsences[abs.personId][bucket].push(...dates);
+    });
+
+    // Berika person-objekt
+    enriched.people = enriched.people.map(p => {
+        if (!p || !p.id) return p;
+        const pa = personAbsences[p.id];
+        if (!pa) return p;
+
+        const existingVac = Array.isArray(p.vacationDates) ? p.vacationDates : [];
+        const existingLeave = Array.isArray(p.leaveDates) ? p.leaveDates : [];
+
+        return {
+            ...p,
+            vacationDates: [...new Set([...existingVac, ...pa.vacation])],
+            leaveDates: [...new Set([...existingLeave, ...pa.leave])],
+        };
+    });
+
+    return enriched;
+}
+
+function getAbsenceDates(abs) {
+    const dates = [];
+    if (!abs.startDate) return dates;
+
+    const start = new Date(abs.startDate);
+    const end = abs.endDate ? new Date(abs.endDate) : start;
+
+    if (isNaN(start.getTime())) return dates;
+    const endDate = isNaN(end.getTime()) ? start : end;
+
+    const d = new Date(start);
+    while (d <= endDate) {
+        dates.push(formatDate(d));
+        d.setDate(d.getDate() + 1);
+    }
+    return dates;
+}
+
+/* ============================================================
+ * BLOCK 5 — DISPLAY RESULTS
+ * ============================================================ */
+function displayMonthResult(container, result, year, month) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    const summary = result.summary || {};
+    const notes = result.notes || [];
+    const vacancies = result.vacancies || [];
+
+    // Summary card
+    const card = document.createElement('div');
+    card.style.cssText = 'padding:1.5rem;background:#f0f9f0;border:1px solid #c8e6c9;border-radius:8px;margin-bottom:1rem;';
+
+    const monthNames = ['Januari','Februari','Mars','April','Maj','Juni','Juli','Augusti','September','Oktober','November','December'];
+    card.innerHTML = `
+        <h3 style="margin:0 0 1rem 0;">✓ Schema genererat — ${monthNames[month - 1]} ${year}</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;">
+            <div><strong>${summary.filledSlots || 0}</strong><br><span style="color:#666;font-size:0.85rem;">Tilldelade pass</span></div>
+            <div><strong>${summary.vacancyCount || 0}</strong><br><span style="color:#666;font-size:0.85rem;">Vakanser</span></div>
+            <div><strong>${summary.activeRulesApplied || 0}</strong><br><span style="color:#666;font-size:0.85rem;">Regler tillämpade</span></div>
+            <div><strong>${summary.hasP0Warnings ? '⚠️ Ja' : '✅ Nej'}</strong><br><span style="color:#666;font-size:0.85rem;">P0-varningar</span></div>
+        </div>
+    `;
+    container.appendChild(card);
+
+    // Notes
+    if (notes.length > 0) {
+        const notesDiv = document.createElement('div');
+        notesDiv.style.cssText = 'padding:1rem;background:#fff3e0;border-left:4px solid #ff9800;border-radius:6px;margin-bottom:1rem;';
+        notesDiv.innerHTML = '<strong>📋 Noteringar:</strong><ul style="margin:0.5rem 0 0 1.5rem;">' +
+            notes.map(n => `<li>${escapeHtml(n)}</li>`).join('') + '</ul>';
+        container.appendChild(notesDiv);
+    }
+
+    // Vacancies
+    if (vacancies.length > 0) {
+        const vacDiv = document.createElement('div');
+        vacDiv.style.cssText = 'padding:1rem;background:#fce4ec;border-left:4px solid #e53935;border-radius:6px;';
+        vacDiv.innerHTML = `<strong>🚨 ${vacancies.length} vakans(er):</strong><p style="margin:0.5rem 0 0;color:#666;font-size:0.9rem;">Dessa tider kunde inte bemannas. Överväg att lägga till fler personer eller minska bemanningsbehov.</p>`;
+        container.appendChild(vacDiv);
+    }
+}
+
+function displayPeriodResult(container, results, months) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    const totalFilled = results.reduce((s, r) => s + (r.summary?.filledSlots || 0), 0);
+    const totalVacancies = results.reduce((s, r) => s + (r.summary?.vacancyCount || 0), 0);
+    const hasP0 = results.some(r => r.summary?.hasP0Warnings);
+
+    const card = document.createElement('div');
+    card.style.cssText = 'padding:1.5rem;background:#f0f9f0;border:1px solid #c8e6c9;border-radius:8px;';
+    card.innerHTML = `
+        <h3 style="margin:0 0 1rem 0;">✓ Period-schema genererat (${months.length} månader)</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;">
+            <div><strong>${totalFilled}</strong><br><span style="color:#666;font-size:0.85rem;">Tilldelade pass</span></div>
+            <div><strong>${totalVacancies}</strong><br><span style="color:#666;font-size:0.85rem;">Vakanser</span></div>
+            <div><strong>${hasP0 ? '⚠️ Ja' : '✅ Nej'}</strong><br><span style="color:#666;font-size:0.85rem;">P0-varningar</span></div>
+        </div>
+    `;
+    container.appendChild(card);
+}
+
+function displayError(container, message) {
+    if (!container) return;
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    const div = document.createElement('div');
+    div.className = 'alert alert-danger';
+    div.innerHTML = `<p style="font-weight:600;margin:0 0 0.5rem;">❌ Schemagenerering misslyckades</p>
+        <p style="margin:0;">${escapeHtml(message || 'Ett okänt fel uppstod')}</p>`;
+    container.appendChild(div);
+}
+
+/* ============================================================
+ * BLOCK 6 — HELPERS
+ * ============================================================ */
+function createLabeledInput(labelText, type, value) {
+    const wrapper = document.createElement('div');
+    wrapper.style.marginBottom = '1rem';
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    label.style.cssText = 'display:block;margin-bottom:0.5rem;font-weight:500;';
+    const input = document.createElement('input');
+    input.type = type;
+    input.value = value;
+    input.style.cssText = 'padding:0.5rem;border:1px solid #ddd;border-radius:4px;';
+    wrapper.appendChild(label);
+    wrapper.appendChild(input);
+    return { wrapper, input };
+}
+
+function getMonthsInRange(from, to) {
+    const months = [];
+    const d = new Date(from.getFullYear(), from.getMonth(), 1);
+    const end = new Date(to.getFullYear(), to.getMonth(), 1);
+    while (d <= end) {
+        months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
+        d.setMonth(d.getMonth() + 1);
+    }
+    return months;
 }
 
 function formatDate(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function escapeHtml(str) {
+    return String(str ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+}
+
+function sanitizeColor(c) {
+    if (!c || typeof c !== 'string') return '#999';
+    if (/^#[0-9a-fA-F]{3,8}$/.test(c)) return c;
+    if (/^[a-zA-Z]+$/.test(c)) return c;
+    return '#999';
 }
