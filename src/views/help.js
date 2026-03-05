@@ -2,15 +2,13 @@
  * AO-14 — HELP VIEW (Hjälp & Guide)
  * FIL: src/views/help.js
  *
- * Visar hjälp, guide och FAQ för varje vy i systemet.
- * Tillgänglig via #/help i navigeringen.
- *
- * Sektioner:
- *   1. Kom igång (steg-för-steg)
- *   2. Vyguide (en sektion per vy)
- *   3. Vanliga frågor (FAQ)
- *   4. Kortkommandon
- *   5. Om programmet
+ * SPRINT 1 PATCH:
+ *   - Steg 3 "Kom igång": uppdaterat — grundpass skapas i Grupper-vyn
+ *   - Vyguide "Grupper": nämner nu att grundpass skapas här
+ *   - Vyguide "Grundpass": uppdaterad till readonly-översikt
+ *   - Ny vyguide: "Frånvaro" tillagd
+ *   - Ny FAQ: "Var skapar jag grundpass?" tillagd
+ *   - Genvägar: #/shifts uppdaterad, #/absence tillagd
  *
  * Kontrakt:
  *   - Exporterar renderHelp(container, ctx)
@@ -61,18 +59,18 @@ export function renderHelp(container, ctx) {
                             <div class="help-step">
                                 <div class="help-step-number">2</div>
                                 <div class="help-step-content">
-                                    <h3>📂 Skapa grupper</h3>
-                                    <p>Gå till <strong>Grupper</strong>-vyn. Skapa grupper (t.ex. "Kök", "Servering", "Bar") och tilldela personal till dem.</p>
-                                    <div class="help-tip">💡 En person kan tillhöra flera grupper.</div>
+                                    <h3>📂 Skapa grupper & grundpass</h3>
+                                    <p>Gå till <strong>Grupper</strong>-vyn. Skapa grupper (t.ex. "Kök", "Servering", "Bar"), tilldela personal och <strong>skapa grundpass</strong> (passmallar) direkt i varje grupp.</p>
+                                    <div class="help-tip">💡 En person kan tillhöra flera grupper. Grundpass skapas och redigeras i Grupper-vyn.</div>
                                 </div>
                             </div>
 
                             <div class="help-step">
                                 <div class="help-step-number">3</div>
                                 <div class="help-step-content">
-                                    <h3>⏰ Definiera pass</h3>
-                                    <p>Gå till <strong>Pass</strong>-vyn. Skapa passmallar med tider (t.ex. "Förmiddag 07:00–15:00", "Kväll 15:00–23:00").</p>
-                                    <div class="help-tip">💡 Du kan hoppa över detta steg om du bara vill schemalägga dagar utan specifika tider.</div>
+                                    <h3>⏰ Granska grundpass</h3>
+                                    <p>Gå till <strong>Grundpass</strong>-vyn för en samlad översikt av alla passmallar. Här kan du redigera tider, rast och färg.</p>
+                                    <div class="help-tip">💡 Nya grundpass skapas alltid i Grupper-vyn — Grundpass-vyn visar en readonly-översikt med redigeringsmöjlighet.</div>
                                 </div>
                             </div>
 
@@ -116,21 +114,23 @@ export function renderHelp(container, ctx) {
                             ])}
 
                         ${renderViewGuide('📂', 'Grupper', '#/groups',
-                            'Organisera personal i grupper (t.ex. Kök, Servering). Grupper styr vilka som schemaläggas tillsammans och behovet per veckodag.',
+                            'Organisera personal i grupper (t.ex. Kök, Servering). Här skapar du också <strong>grundpass (passmallar)</strong> kopplade till varje grupp.',
                             [
                                 'En person kan tillhöra flera grupper.',
+                                '<strong>Grundpass skapas här</strong> — varje grupp har sina egna passmallar (t.ex. "Lunch 10–15", "Kväll 17–01").',
                                 'Bemanningsbehovet ställs in per grupp i Kontroll-vyn.',
                             ])}
 
-                        ${renderViewGuide('⏰', 'Pass', '#/shifts',
-                            'Skapa passmallar med start- och sluttid. Pass kan kopplas till veckomallar.',
+                        ${renderViewGuide('⏰', 'Grundpass', '#/shifts',
+                            'Samlad översikt av alla grundpass (passmallar) i systemet. Här kan du <strong>redigera</strong> befintliga pass men inte skapa nya.',
                             [
-                                'T.ex. "FM" = 07:00–15:00, "EM" = 15:00–23:00.',
-                                'Pass är valfria — schemat fungerar även med bara A/L-status.',
+                                'Nya grundpass skapas i <strong>Grupper</strong>-vyn.',
+                                'Här ser du alla pass samlat: namn, tider, rast, grupp och färg.',
+                                'Klicka på ett pass för att redigera start/slut/rast.',
                             ])}
 
                         ${renderViewGuide('📅', 'Veckomallar', '#/week-templates',
-                            'Skapa mallar för typveckor. En veckoomall visar vilka pass som ska köras vilken dag.',
+                            'Skapa mallar för typveckor. En veckomall visar vilka pass som ska köras vilken dag.',
                             [
                                 'Kopiera en mall till en specifik vecka i kalendern.',
                                 'Bra för återkommande scheman.',
@@ -161,6 +161,15 @@ export function renderHelp(container, ctx) {
                                 'Timbalans: positiv = övertid, negativ = undertid.',
                             ])}
 
+                        ${renderViewGuide('📋', 'Frånvaro', '#/absence',
+                            'Registrera och hantera frånvaro: semester, sjukdom, VAB, föräldraledighet, tjänstledighet och utbildning.',
+                            [
+                                '<strong>Typer:</strong> SEM (semester), SJ (sjukdom), VAB, FÖR (föräldraledighet), PERM (tjänstledighet), UTB (utbildning).',
+                                '<strong>Mönster:</strong> Enskild dag, sammanhängande period, eller upprepande (t.ex. mån-ons varje vecka).',
+                                'Frånvaro blockerar automatiskt schemaläggning (P0-regel).',
+                                'SEM räknas mot semesterdagar. SJ/VAB/FÖR minskar måltimmar.',
+                            ])}
+
                         ${renderViewGuide('⚖️', 'Regler', '#/rules',
                             'Arbetstidsregler som schemamotorn tar hänsyn till. CRUD: skapa, redigera, aktivera/inaktivera.',
                             [
@@ -185,6 +194,9 @@ export function renderHelp(container, ctx) {
                     <div class="help-section" id="help-faq">
                         <h2>❓ Vanliga frågor</h2>
 
+                        ${renderFAQ('Var skapar jag grundpass?',
+                            'Grundpass (passmallar) skapas i <strong>Grupper</strong>-vyn. Varje grupp har sina egna pass. Gå till Grupper → välj en grupp → lägg till grundpass med start/slut/rast. I <strong>Grundpass</strong>-vyn (#/shifts) ser du en samlad översikt och kan redigera befintliga pass.')}
+
                         ${renderFAQ('Varför schemaläggas samma person varje helg?',
                             'Motorn (v4.0) använder kumulativ helg-räkning. Om alla har 0 helg-dagar avgör namnet vem som får första helgen. Kontrollera att regeln <strong>"Helg-rotation"</strong> är aktiv i Regler-vyn (#/rules).')}
 
@@ -196,6 +208,9 @@ export function renderHelp(container, ctx) {
 
                         ${renderFAQ('Kan jag ändra schemat manuellt efter generering?',
                             'Ja! Schemat som genereras är ett <strong>förslag</strong>. Gå till Kalender-vyn och redigera enskilda dagar. Kontroll-vyn visar varningar om du bryter regler.')}
+
+                        ${renderFAQ('Hur registrerar jag frånvaro?',
+                            'Gå till <strong>Frånvaro</strong>-vyn (#/absence). Välj person, typ (SEM/SJ/VAB/FÖR/PERM/UTB) och mönster (enskild dag, period eller upprepande). Frånvaro blockerar automatiskt schemaläggning — personen kan inte tilldelas pass på dagar med registrerad frånvaro.')}
 
                         ${renderFAQ('Vad är "vakanser"?',
                             'En vakans uppstår när motorn inte hittar någon ledig person att schemalägga. Markeras som <strong>EXTRA</strong> i kalendern. Lös genom att lägga till fler personer, ändra tillgänglighet eller sänka behovet.')}
@@ -223,9 +238,11 @@ export function renderHelp(container, ctx) {
                             <tbody>
                                 <tr><td><kbd>#/home</kbd></td><td>Gå till startsidan</td></tr>
                                 <tr><td><kbd>#/personal</kbd></td><td>Gå till Personal</td></tr>
-                                <tr><td><kbd>#/groups</kbd></td><td>Gå till Grupper</td></tr>
+                                <tr><td><kbd>#/groups</kbd></td><td>Gå till Grupper (+ skapa grundpass)</td></tr>
+                                <tr><td><kbd>#/shifts</kbd></td><td>Gå till Grundpass (översikt)</td></tr>
                                 <tr><td><kbd>#/calendar</kbd></td><td>Gå till Kalender</td></tr>
                                 <tr><td><kbd>#/control</kbd></td><td>Gå till Kontroll</td></tr>
+                                <tr><td><kbd>#/absence</kbd></td><td>Gå till Frånvaro</td></tr>
                                 <tr><td><kbd>#/rules</kbd></td><td>Gå till Regler</td></tr>
                                 <tr><td><kbd>#/help</kbd></td><td>Visa denna hjälp</td></tr>
                                 <tr><td><kbd>#/export</kbd></td><td>Export / Backup</td></tr>
@@ -239,6 +256,8 @@ export function renderHelp(container, ctx) {
                                 <li>Börja med <strong>en grupp</strong> tills du förstår hur motorn fungerar.</li>
                                 <li>Kontrollera <strong>Regler-vyn</strong> om schemat ser konstigt ut — kanske en regel är inaktiv.</li>
                                 <li>Om en person aldrig schemaläggas: kontrollera tillgänglighet, startdatum och gruppmedlemskap.</li>
+                                <li><strong>Grundpass skapas i Grupper-vyn</strong> — inte i Grundpass-vyn.</li>
+                                <li>Registrera frånvaro <strong>innan</strong> du genererar schema — annars kan motorn schemalägga på semesterdagar.</li>
                                 <li>Du kan använda <strong>F12 → Console</strong> för att se motorns logg under generering.</li>
                             </ul>
                         </div>
