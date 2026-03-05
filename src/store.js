@@ -1,6 +1,11 @@
 /*
- * AO-01 to AO-03B — STORE: Komplett state-hantering (AUTOPATCH v3.0)
+ * AO-01 to AO-03B + S3-03 — STORE: Komplett state-hantering (AUTOPATCH v3.0)
  * FIL: store.js (HEL FIL)
+ *
+ * S3-03 ÄNDRING:
+ *   - Import av shiftsSyncHook från modules/shifts-sync.js
+ *   - Hook körs i update() och setState() FÖRE migrate/validate
+ *   - Säkerställer att state.shiftTemplates alltid speglar state.shifts
  *
  * AO-03B ÄNDRINGAR (additiv):
  * 1) Ny konstant: VALID_COLLECTIVE_AGREEMENTS, DEFAULT_COST_RATES
@@ -17,6 +22,9 @@
    ======================================================================== */
 
 const STORAGE_KEY_STATE = 'SCHEMA_APP_V1_STATE';
+
+// S3-03: Shifts sync middleware — synkar state.shifts → state.shiftTemplates
+import { shiftsSyncHook } from './modules/shifts-sync.js';
 
 /* ========================================================================
    BLOCK 1: DEFAULT GROUPS (AO-02B) — OFÖRÄNDRAD
@@ -292,9 +300,12 @@ class Store {
 
     update(mutatorFn) {
         try {
-            // PATTERN: clone -> mutera -> migrate -> validate -> save -> notify
+            // PATTERN: clone -> mutera -> sync -> migrate -> validate -> save -> notify
             const clone = this.getState();
             mutatorFn(clone);
+
+            // S3-03: Automatisk synk shifts → shiftTemplates
+            shiftsSyncHook(clone);
 
             const migrated = this.migrate(clone);
             this.validate(migrated);
@@ -323,6 +334,9 @@ class Store {
 
             // Om inte full => merge partial över current
             const candidate = looksFull ? next : { ...current, ...next };
+
+            // S3-03: Automatisk synk shifts → shiftTemplates
+            shiftsSyncHook(candidate);
 
             const migrated = this.migrate(candidate);
             this.validate(migrated);
@@ -430,7 +444,7 @@ class Store {
             });
         }
 
-        // NOTE: “nya” schedule.entries-formatet (dateKey -> entries[])
+        // NOTE: "nya" schedule.entries-formatet (dateKey -> entries[])
         let newEntryCount = 0;
         if (state.schedule && state.schedule.entries && typeof state.schedule.entries === 'object') {
             Object.values(state.schedule.entries).forEach((dayEntries) => {
@@ -841,7 +855,7 @@ class Store {
         }
         if (typeof person.hourlyWage !== 'number' || person.hourlyWage < 0) throw new Error(`people[${idx}].hourlyWage måste vara number >= 0`);
 
-        // NOTE: employerTaxRate/taxRate här är “personliga overrides”, inte settings-defaults
+        // NOTE: employerTaxRate/taxRate här är "personliga overrides", inte settings-defaults
         if (person.employerTaxRate !== undefined && person.employerTaxRate !== null) {
             if (typeof person.employerTaxRate !== 'number' || person.employerTaxRate < 0 || person.employerTaxRate > 1) {
                 throw new Error(`people[${idx}].employerTaxRate måste vara 0–1 (decimal)`);
@@ -898,7 +912,7 @@ class Store {
             const skillNames = ['KITCHEN', 'PACK', 'DISH', 'SYSTEM', 'ADMIN'];
             skillNames.forEach((skill) => {
                 if (person.skills[skill] !== undefined && typeof person.skills[skill] !== 'boolean') {
-                    throw new Error(`people[${idx}].skills.${skill} m��ste vara boolean`);
+                    throw new Error(`people[${idx}].skills.${skill} måste vara boolean`);
                 }
             });
         }
@@ -1098,7 +1112,7 @@ class Store {
             shifts: safeDeepClone(DEFAULT_SHIFTS),
             groupShifts: safeDeepClone(DEFAULT_GROUP_SHIFTS),
 
-            // notifications finns men är “avstängt” default (provider mock)
+            // notifications finns men är "avstängt" default (provider mock)
             notifications: {
                 queue: [],
                 settings: {
@@ -1217,7 +1231,7 @@ function normalizeGroupsMap(groups, fallback) {
     const src = (groups && typeof groups === 'object') ? groups : {};
     const out = Object.create(null);
 
-    // Ingest: läs existerande grupper men “sanera” shape
+    // Ingest: läs existerande grupper men "sanera" shape
     Object.values(src).forEach((g) => {
         if (!g || typeof g !== 'object') return;
         const id = String(g.id ?? '').trim();
