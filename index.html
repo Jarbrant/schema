@@ -2,11 +2,12 @@
 <html lang="sv">
 <head>
   <!-- =========================================================
-       SCHEMA-PROGRAM — index.html (AUTOPATCH v3 + PICO SAFE MODE)
+       SCHEMA-PROGRAM — index.html (AUTOPATCH v3 + PICO SAFE MODE + SPRINT 3)
        Syfte: Stabil start för UI-only app (GitHub Pages)
        Kontrakt: router.js kräver #app, #error-panel, #navbar
        FIX: Länka MASTER stylesheet (import-kedjan) så home/cards/grid syns
        NYTT: Pico CSS (safe mode) + pico-overrides.css
+       S3-05: print.css för utskriftsvänlig veckovy
        ========================================================= -->
 
   <!-- BLOCK 1 — Meta -->
@@ -23,12 +24,14 @@
        - Ladda Pico FÖRE master.css (baseline typografi/forms)
        - Ladda master.css (som @import:ar base/forms/cards/home/navbar/responsive osv)
        - Ladda pico-overrides.css EFTER master.css för att minimera krockar
+       - print.css laddas med media="print" (S3-05)
   -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <link rel="stylesheet" href="assets/css/master.css" />
   <link rel="stylesheet" href="assets/css/pico-overrides.css" />
+  <link rel="stylesheet" href="assets/css/print.css" media="print" />
 
-  <!-- BLOCK 4 — Baslinje: undvik “flash” av tomma paneler -->
+  <!-- BLOCK 4 — Baslinje: undvik "flash" av tomma paneler -->
   <style>
     /* Fail-closed: error-panel ska inte synas förrän ui.js sätter innehåll */
     #error-panel { display: none; }
