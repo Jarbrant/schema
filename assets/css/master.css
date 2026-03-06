@@ -1,5 +1,5 @@
 /* ========================================================================
-   SCHEMA-PROGRAM: Master stylesheet (PROD)
+   SCHEMA-PROGRAM: Master stylesheet (PROD) — SPRINT 3
    FIL: assets/css/master.css
 
    Importordning är KRITISK:
@@ -24,7 +24,8 @@
    19) healthcheck.css— Modulstatus (AO-05)
    20) help.css       — Hjälpvy (AO-14)
    21) rules-enhanced.css — Regler (AO-15)
-   22) responsive.css — ALLTID SIST
+   22) xdays.css      — X-dagar (S3-07)
+   23) responsive.css — ALLTID SIST
    ======================================================================== */
 
 /* 1) Global reset + layout */
@@ -90,5 +91,8 @@
 /* 21) Rules enhanced (AO-15) */
 @import url('./rules-enhanced.css');
 
-/* 22) Responsive (ALLTID SIST!) */
+/* 22) X-dagar (S3-07) */
+@import url('./xdays.css');
+
+/* 23) Responsive (ALLTID SIST!) */
 @import url('./responsive.css');
