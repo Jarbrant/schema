@@ -1,5 +1,5 @@
 /*
- * UI.JS — Shared UI Utilities (AUTOPATCH v1 — NAVBAR GRID ORDER FIX + SPRINT 1)
+ * UI.JS — Shared UI Utilities (AUTOPATCH v1 — NAVBAR GRID ORDER FIX + SPRINT 1 + SPRINT 3)
  *
  * Fixar (P0):
  * - renderNavbar(): matchar CSS grid-areas genom att placera actions före menu
@@ -7,6 +7,9 @@
  *
  * SPRINT 1:
  * - NAV_ITEMS: lagt till 'absence' (Frånvaro)
+ *
+ * SPRINT 3:
+ * - NAV_ITEMS: lagt till 'xdays' (X-dagar / Kompensationsledighet)
  *
  * Policy: UI-only. Ingen store/routing ändras.
  */
@@ -20,10 +23,11 @@ const NAV_ITEMS = [
   { route: 'home',            label: 'Hem',            icon: '🏠', desc: 'Startsida' },
   { route: 'shifts',          label: 'Grundpass',      icon: '📋', desc: 'Passöversikt' },
   { route: 'groups',          label: 'Grupper',        icon: '👥', desc: 'Hantera grupper & skapa pass' },
-  { route: 'week-templates',  label: 'Veckomallar',    icon: '🗓️', desc: 'Bemanningsbehov per vecka' },  // AO-06
+  { route: 'week-templates',  label: 'Veckomallar',    icon: '🗓️', desc: 'Bemanningsbehov per vecka' },
   { route: 'personal',        label: 'Personal',       icon: '👤', desc: 'Hantera personaldata' },
   { route: 'calendar',        label: 'Kalender',       icon: '📅', desc: 'Redigera schema' },
-  { route: 'absence',         label: 'Frånvaro',       icon: '📋', desc: 'Semester, sjukdom, VAB m.m.' },  // S1-01
+  { route: 'absence',         label: 'Frånvaro',       icon: '📋', desc: 'Semester, sjukdom, VAB m.m.' },
+  { route: 'xdays',           label: 'X-dagar',        icon: '🎯', desc: 'Kompensationsledighet (HRF)' },
   { route: 'control',         label: 'Kontroll',       icon: '✓',  desc: 'Regelöversikt' },
   { route: 'summary',         label: 'Sammanfattning', icon: '📊', desc: 'Timsummering' },
   { route: 'rules',           label: 'Regler',         icon: '⚖️', desc: 'HRF-avtalsregler' },
